@@ -20,6 +20,10 @@
  *
  */
 
+#include <fstream>
+#include <map>
+#include <string>
+#include "common/config-manager.h"
 
 #include "common/debug.h"
 #include "common/endian.h"
@@ -32,6 +36,7 @@
 #include "sky/skydefs.h"
 #include "sky/struc.h"
 #include "sky/compact.h"
+#include "common/fs.h"
 
 namespace Sky {
 
@@ -119,11 +124,13 @@ void Text::fnTextModule(uint32 textInfoId, uint32 textNo) {
 void Text::getText(uint32 textNr) { //load text #"textNr" into textBuffer
 	if (patchMessage(textNr))
 		return;
-
+        
+        uint32 textNrForFileOutput = textNr;
+        
 	uint32 sectionNo = (textNr & 0x0F000) >> 12;
 
 	if (SkyEngine::_itemList[FIRST_TEXT_SEC + sectionNo] == NULL) { //check if already loaded
-		debug(5, "Loading Text item(s) for Section %d", (sectionNo >> 2));
+		debug(2, "Loading Text item(s) for Section %d", (sectionNo >> 2));
 
 		uint32 fileNo = sectionNo + ((SkyEngine::_systemVars.language * NO_OF_TEXT_SECTIONS) + 60600);
 		SkyEngine::_itemList[FIRST_TEXT_SEC + sectionNo] = (void **)_skyDisk->loadFile((uint16)fileNo);
@@ -175,6 +182,44 @@ void Text::getText(uint32 textNr) { //load text #"textNr" into textBuffer
 		textChar = getTextChar(&textDataPtr, &bitPos);
 		*dest++ = textChar;
 	} while (textChar);
+        
+        Common::FSNode dir(ConfMan.get("path"));
+        const char* pathToSky = dir.getPath().c_str();        
+        char ownTextFilename[300];
+        sprintf(ownTextFilename, "%s/opensky/text.txt", pathToSky);
+
+        //read from own file into map
+        std::ifstream ifile;
+        ifile.open(ownTextFilename);
+        std::map<int, std::string> ownText;
+        if (ifile.is_open()) {
+            std::string line;
+            while(getline(ifile, line)) {
+                std::size_t splitIndex = line.find(' ');
+                std::string key = line.substr(0, splitIndex);
+                int int_key = atoi(key.c_str());
+                std::string value = line.substr(splitIndex + 1);
+                ownText[int_key] = value;
+            } 
+        }
+        ifile.close();
+        
+        //if map has textNr key, read into _textBuffer
+        if (ownText.find(textNrForFileOutput) != ownText.end()) {
+            debug(2, "Displaying own text for Text item %d", textNrForFileOutput);
+            std::string ownString = ownText[textNrForFileOutput];
+            strncpy(_textBuffer, ownString.c_str(), ownString.size());
+            _textBuffer[ownString.size()] = 0;
+        }
+        //if map does not have textNr key, read into map and back to file
+        else {
+            ownText[textNrForFileOutput] = _textBuffer;
+            std::ofstream ofile(ownTextFilename);
+            for (std::map<int, std::string>::iterator ite=ownText.begin(); ite!=ownText.end(); ++ite) {
+                ofile << ite->first << ' ' << ite->second << '\n';
+            }
+            ofile.close();
+        }
 }
 
 void Text::fnPointerText(uint32 pointedId, uint16 mouseX, uint16 mouseY) {
@@ -238,6 +283,7 @@ DisplayedText Text::displayText(uint32 textNum, uint8 *dest, bool center, uint16
 
 DisplayedText Text::displayText(char *textPtr, uint8 *dest, bool center, uint16 pixelWidth, uint8 color) {
 	//Render text pointed to by *textPtr in buffer *dest
+	debug(2, "Displaying text: %s", textPtr);
 	uint32 centerTable[10];
 	uint16 lineWidth = 0;
 

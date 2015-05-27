@@ -1,3 +1,9 @@
+#NetBeans project
+/nbproject
+
+#Codeblocks project files
+*.cbp
+*.layout
 
 *~
 .*.swp
