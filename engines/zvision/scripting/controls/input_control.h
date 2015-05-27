@@ -38,12 +38,14 @@ namespace ZVision {
 class InputControl : public Control {
 public:
 	InputControl(ZVision *engine, uint32 key, Common::SeekableReadStream &stream);
+	~InputControl();
 
 private:
+	Graphics::Surface *_background;
 	Common::Rect _textRectangle;
 	Common::Rect _headerRectangle;
-	cTxtStyle _stringInit;
-	cTxtStyle _stringChooserInit;
+	TextStyleState _stringInit;
+	TextStyleState _stringChooserInit;
 	uint32 _nextTabstop;
 	bool _focused;
 
@@ -54,6 +56,7 @@ private:
 	bool _readOnly;
 
 	int16 _txtWidth;
+	int16 _maxTxtWidth;
 	Video::VideoDecoder *_animation;
 	int32 _frameDelay;
 	int16 _frame;

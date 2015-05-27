@@ -87,6 +87,7 @@ enum StateKey {
 	StateKey_JapanFonts = 75,
 	StateKey_ExecScopeStyle = 76,
 	StateKey_Brightness = 77,
+	StateKey_MPEGMovies = 78,
 	StateKey_EF9_R = 91,
 	StateKey_EF9_G = 92,
 	StateKey_EF9_B = 93,
@@ -111,6 +112,28 @@ struct Location {
 	char view;
 	uint32 offset;
 };
+
+inline bool operator==(const Location& lhs, const Location& rhs) {
+	return (
+		lhs.world == rhs.world &&
+		lhs.room == rhs.room &&
+		lhs.node == rhs.node &&
+		lhs.view == rhs.view
+	);
+}
+
+inline bool operator==(const Location& lhs, const char* rhs) {
+	Common::String lhsStr = Common::String::format("%c%c%c%c", lhs.world, lhs.room, lhs.node, lhs.view);
+	return lhsStr == rhs;
+}
+
+inline bool operator!=(const Location& lhs, const Location& rhs) {
+	return !(lhs == rhs);
+}
+
+inline bool operator!=(const Location& lhs, const char* rhs) {
+	return !(lhs == rhs);
+}
 
 typedef Common::List<Puzzle *> PuzzleList;
 typedef Common::Queue<Puzzle *> PuzzleQueue;
@@ -272,7 +295,7 @@ private:
 	bool execScope(ScriptScope &scope);
 
 	/** Perform change location */
-	void ChangeLocationReal();
+	void ChangeLocationReal(bool isLoading);
 
 	int8 inventoryGetCount();
 	void inventorySetCount(int8 cnt);
@@ -311,9 +334,10 @@ private:
 	 *
 	 * @param criteria    Pointer to the Criteria object to fill
 	 * @param stream      Scr file stream
+	 * @param key         Puzzle key (for workarounds)
 	 * @return            Whether any criteria were read
 	 */
-	bool parseCriteria(Common::SeekableReadStream &stream, Common::List<Common::List<Puzzle::CriteriaEntry> > &criteriaList) const;
+	bool parseCriteria(Common::SeekableReadStream &stream, Common::List<Common::List<Puzzle::CriteriaEntry> > &criteriaList, uint32 key) const;
 
 	/**
 	 * Parses the stream into a ResultAction objects

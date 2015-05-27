@@ -69,7 +69,7 @@ bool SaveManager::scummVMSaveLoadDialog(bool isSave) {
 		return false;
 
 	if (isSave) {
-		saveGame(slot, desc);
+		saveGame(slot, desc, false);
 		return true;
 	} else {
 		Common::ErrorCode result = loadGame(slot).getCode();
@@ -77,46 +77,34 @@ bool SaveManager::scummVMSaveLoadDialog(bool isSave) {
 	}
 }
 
-void SaveManager::saveGame(uint slot, const Common::String &saveName) {
+void SaveManager::saveGame(uint slot, const Common::String &saveName, bool useSaveBuffer) {
+	if (!_tempSave && useSaveBuffer)
+		return;
+
 	Common::SaveFileManager *saveFileManager = g_system->getSavefileManager();
 	Common::OutSaveFile *file = saveFileManager->openForSaving(_engine->generateSaveFileName(slot));
 
-	writeSaveGameHeader(file, saveName);
+	writeSaveGameHeader(file, saveName, useSaveBuffer);
 
-	_engine->getScriptManager()->serialize(file);
+	if (useSaveBuffer)
+		file->write(_tempSave->getData(), _tempSave->size());
+	else
+		_engine->getScriptManager()->serialize(file);
 
 	file->finalize();
 	delete file;
 
-	_lastSaveTime = g_system->getMillis();
-}
-
-void SaveManager::saveGame(uint slot, const Common::String &saveName, Common::MemoryWriteStreamDynamic *stream) {
-	Common::SaveFileManager *saveFileManager = g_system->getSavefileManager();
-	Common::OutSaveFile *file = saveFileManager->openForSaving(_engine->generateSaveFileName(slot));
-
-	writeSaveGameHeader(file, saveName);
-
-	file->write(stream->getData(), stream->size());
-
-	file->finalize();
-	delete file;
-
-	_lastSaveTime = g_system->getMillis();
-}
-
-void SaveManager::saveGameBuffered(uint slot, const Common::String &saveName) {
-	if (_tempSave) {
-		saveGame(slot, saveName, _tempSave);
+	if (useSaveBuffer)
 		flushSaveBuffer();
-	}
+
+	_lastSaveTime = g_system->getMillis();
 }
 
 void SaveManager::autoSave() {
-	saveGame(0, "Auto save");
+	saveGame(0, "Auto save", false);
 }
 
-void SaveManager::writeSaveGameHeader(Common::OutSaveFile *file, const Common::String &saveName) {
+void SaveManager::writeSaveGameHeader(Common::OutSaveFile *file, const Common::String &saveName, bool useSaveBuffer) {
 	file->writeUint32BE(SAVEGAME_ID);
 
 	// Write version
@@ -126,8 +114,11 @@ void SaveManager::writeSaveGameHeader(Common::OutSaveFile *file, const Common::S
 	file->writeString(saveName);
 	file->writeByte(0);
 
-	// Create a thumbnail and save it
-	Graphics::saveThumbnail(*file);
+	// Save the game thumbnail
+	if (useSaveBuffer)
+		file->write(_tempThumbnail->getData(), _tempThumbnail->size());
+	else
+		Graphics::saveThumbnail(*file);
 
 	// Write out the save date/time
 	TimeDate td;
@@ -139,39 +130,27 @@ void SaveManager::writeSaveGameHeader(Common::OutSaveFile *file, const Common::S
 	file->writeSint16LE(td.tm_min);
 }
 
-Common::Error SaveManager::loadGame(uint slot) {
-	Common::SeekableReadStream *saveFile = getSlotFile(slot);
-	if (saveFile == 0) {
-		return Common::kPathDoesNotExist;
-	}
+Common::Error SaveManager::loadGame(int slot) {
+	Common::SeekableReadStream *saveFile = NULL;
 
-	// Read the header
-	SaveGameHeader header;
-	if (!readSaveGameHeader(saveFile, header)) {
-		return Common::kUnknownError;
-	}
+	if (slot >= 0) {
+		saveFile = getSlotFile(slot);
+	} else {
+		saveFile = _engine->getSearchManager()->openFile("r.svr");
+		if (!saveFile) {
+			Common::File *restoreFile = new Common::File();
+			if (!restoreFile->open("r.svr")) {
+				delete restoreFile;
+				return Common::kPathDoesNotExist;
+			}
 
-	ScriptManager *scriptManager = _engine->getScriptManager();
-	// Update the state table values
-	scriptManager->deserialize(saveFile);
-
-	delete saveFile;
-	if (header.thumbnail)
-		delete header.thumbnail;
-
-	return Common::kNoError;
-}
-
-Common::Error SaveManager::loadGame(const Common::String &saveName) {
-	Common::File *saveFile = _engine->getSearchManager()->openFile(saveName);
-	if (saveFile == NULL) {
-		saveFile = new Common::File;
-		if (!saveFile->open(saveName)) {
-			delete saveFile;
-			return Common::kPathDoesNotExist;
+			saveFile = restoreFile;
 		}
 	}
 
+	if (!saveFile)
+		return Common::kPathDoesNotExist;
+
 	// Read the header
 	SaveGameHeader header;
 	if (!readSaveGameHeader(saveFile, header)) {
@@ -185,6 +164,27 @@ Common::Error SaveManager::loadGame(const Common::String &saveName) {
 	delete saveFile;
 	if (header.thumbnail)
 		delete header.thumbnail;
+
+	if (_engine->getGameId() == GID_NEMESIS && scriptManager->getCurrentLocation() == "tv2f") {
+		// WORKAROUND for script bug #6793: location tv2f (stairs) has two states:
+		// one at the top of the stairs, and one at the bottom. When the player
+		// goes to the bottom of the stairs, the screen changes, and hotspot
+		// 4652 (exit opposite the stairs) is enabled. However, the variable that
+		// controls the state (2408) is reset when the player goes down the stairs.
+		// Furthermore, the room's initialization script disables the stair exit
+		// control (4652). This leads to an impossible situation, where all the
+		// exit controls are disabled, and the player can't more anywhere. Thus,
+		// when loading a game in that room, we check for that impossible
+		// situation, which only occurs after the player has moved down the stairs,
+		// and fix it here by setting the correct background, and enabling the
+		// stair exit hotspot.
+		if ((scriptManager->getStateFlag(2411) & Puzzle::DISABLED) &&
+			(scriptManager->getStateFlag(2408) & Puzzle::DISABLED) &&
+			(scriptManager->getStateFlag(4652) & Puzzle::DISABLED)) {
+			_engine->getRenderManager()->setBackgroundImage("tv2fb21c.tga");
+			scriptManager->unsetStateFlag(4652, Puzzle::DISABLED);
+		}
+	}
 
 	return Common::kNoError;
 }
@@ -272,18 +272,20 @@ Common::SeekableReadStream *SaveManager::getSlotFile(uint slot) {
 }
 
 void SaveManager::prepareSaveBuffer() {
-	if (_tempSave)
-		delete _tempSave;
+	delete _tempThumbnail;
+	_tempThumbnail = new Common::MemoryWriteStreamDynamic;
+	Graphics::saveThumbnail(*_tempThumbnail);
 
+	delete _tempSave;
 	_tempSave = new Common::MemoryWriteStreamDynamic;
-
 	_engine->getScriptManager()->serialize(_tempSave);
 }
 
 void SaveManager::flushSaveBuffer() {
-	if (_tempSave)
-		delete _tempSave;
+	delete _tempThumbnail;
+	_tempThumbnail = NULL;
 
+	delete _tempSave;
 	_tempSave = NULL;
 }
 

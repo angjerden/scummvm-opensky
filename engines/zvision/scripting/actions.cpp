@@ -21,14 +21,13 @@
  */
 
 #include "common/scummsys.h"
+#include "video/video_decoder.h"
 
 #include "zvision/scripting/actions.h"
 
 #include "zvision/zvision.h"
 #include "zvision/scripting/script_manager.h"
 #include "zvision/graphics/render_manager.h"
-#include "zvision/sound/zork_raw.h"
-#include "zvision/video/zork_avi_decoder.h"
 #include "zvision/file/save_manager.h"
 #include "zvision/scripting/menu.h"
 #include "zvision/scripting/effects/timer_effect.h"
@@ -46,11 +45,10 @@
 #include "zvision/graphics/effects/wave.h"
 #include "zvision/graphics/cursors/cursor_manager.h"
 
-#include "common/file.h"
-
-#include "audio/decoders/wave.h"
-
 namespace ZVision {
+
+ResultAction::ResultAction(ZVision *engine, int32 slotkey) : _engine(engine), _slotKey(slotkey), _scriptManager(engine->getScriptManager()) {
+}
 
 //////////////////////////////////////////////////////////////////////////////
 // ActionAdd
@@ -65,7 +63,7 @@ ActionAdd::ActionAdd(ZVision *engine, int32 slotkey, const Common::String &line)
 }
 
 bool ActionAdd::execute() {
-	_engine->getScriptManager()->setStateValue(_key, _engine->getScriptManager()->getStateValue(_key) + _value);
+	_scriptManager->setStateValue(_key, _scriptManager->getStateValue(_key) + _value);
 	return true;
 }
 
@@ -80,16 +78,15 @@ ActionAssign::ActionAssign(ZVision *engine, int32 slotkey, const Common::String 
 	char buf[64];
 	memset(buf, 0, 64);
 	sscanf(line.c_str(), "%u, %s", &_key, buf);
-	_value = new ValueSlot(_engine->getScriptManager(), buf);
+	_value = new ValueSlot(_scriptManager, buf);
 }
 
 ActionAssign::~ActionAssign() {
-	if (_value)
-		delete _value;
+	delete _value;
 }
 
 bool ActionAssign::execute() {
-	_engine->getScriptManager()->setStateValue(_key, _value->getValue());
+	_scriptManager->setStateValue(_key, _value->getValue());
 	return true;
 }
 
@@ -106,10 +103,10 @@ ActionAttenuate::ActionAttenuate(ZVision *engine, int32 slotkey, const Common::S
 }
 
 bool ActionAttenuate::execute() {
-	ScriptingEffect *fx = _engine->getScriptManager()->getSideFX(_key);
+	ScriptingEffect *fx = _scriptManager->getSideFX(_key);
 	if (fx && fx->getType() == ScriptingEffect::SCRIPTING_EFFECT_AUDIO) {
-		MusicNode *mus = (MusicNode *)fx;
-		mus->setVolume(255 - (abs(_attenuation) >> 7));
+		MusicNodeBASE *mus = (MusicNodeBASE *)fx;
+		mus->setVolume(255 * (10000 - abs(_attenuation)) / 10000 );
 	}
 	return true;
 }
@@ -131,7 +128,7 @@ ActionChangeLocation::ActionChangeLocation(ZVision *engine, int32 slotkey, const
 
 bool ActionChangeLocation::execute() {
 	// We can't directly call ScriptManager::ChangeLocationIntern() because doing so clears all the Puzzles, and thus would corrupt the current puzzle checking
-	_engine->getScriptManager()->changeLocation(_world, _room, _node, _view, _offset);
+	_scriptManager->changeLocation(_world, _room, _node, _view, _offset);
 	// Tell the puzzle system to stop checking any more puzzles
 	return false;
 }
@@ -157,9 +154,9 @@ ActionCrossfade::ActionCrossfade(ZVision *engine, int32 slotkey, const Common::S
 
 bool ActionCrossfade::execute() {
 	if (_keyOne) {
-		ScriptingEffect *fx = _engine->getScriptManager()->getSideFX(_keyOne);
+		ScriptingEffect *fx = _scriptManager->getSideFX(_keyOne);
 		if (fx && fx->getType() == ScriptingEffect::SCRIPTING_EFFECT_AUDIO) {
-			MusicNode *mus = (MusicNode *)fx;
+			MusicNodeBASE *mus = (MusicNodeBASE *)fx;
 			if (_oneStartVolume >= 0)
 				mus->setVolume((_oneStartVolume * 255) / 100);
 
@@ -168,9 +165,9 @@ bool ActionCrossfade::execute() {
 	}
 
 	if (_keyTwo) {
-		ScriptingEffect *fx = _engine->getScriptManager()->getSideFX(_keyTwo);
+		ScriptingEffect *fx = _scriptManager->getSideFX(_keyTwo);
 		if (fx && fx->getType() == ScriptingEffect::SCRIPTING_EFFECT_AUDIO) {
-			MusicNode *mus = (MusicNode *)fx;
+			MusicNodeBASE *mus = (MusicNodeBASE *)fx;
 			if (_twoStartVolume >= 0)
 				mus->setVolume((_twoStartVolume * 255) / 100);
 
@@ -220,6 +217,9 @@ ActionDelayRender::ActionDelayRender(ZVision *engine, int32 slotkey, const Commo
 	ResultAction(engine, slotkey) {
 	_framesToDelay = 0;
 	sscanf(line.c_str(), "%u", &_framesToDelay);
+	// Limit to 10 frames maximum. This fixes the script bug in ZGI scene px10
+	// (outside Frobozz Electric building), where this is set to 100 (bug #6791).
+	_framesToDelay = MIN<uint32>(_framesToDelay, 10);
 }
 
 bool ActionDelayRender::execute() {
@@ -239,7 +239,7 @@ ActionDisableControl::ActionDisableControl(ZVision *engine, int32 slotkey, const
 }
 
 bool ActionDisableControl::execute() {
-	_engine->getScriptManager()->setStateFlag(_key, Puzzle::DISABLED);
+	_scriptManager->setStateFlag(_key, Puzzle::DISABLED);
 	return true;
 }
 
@@ -256,7 +256,7 @@ ActionDisplayMessage::ActionDisplayMessage(ZVision *engine, int32 slotkey, const
 }
 
 bool ActionDisplayMessage::execute() {
-	Control *ctrl = _engine->getScriptManager()->getControl(_control);
+	Control *ctrl = _scriptManager->getControl(_control);
 	if (ctrl && ctrl->getType() == Control::CONTROL_TITLER) {
 		TitlerControl *titler = (TitlerControl *)ctrl;
 		titler->setString(_msgid);
@@ -295,14 +295,14 @@ ActionDistort::ActionDistort(ZVision *engine, int32 slotkey, const Common::Strin
 }
 
 ActionDistort::~ActionDistort() {
-	_engine->getScriptManager()->killSideFx(_distSlot);
+	_scriptManager->killSideFx(_distSlot);
 }
 
 bool ActionDistort::execute() {
-	if (_engine->getScriptManager()->getSideFX(_distSlot))
+	if (_scriptManager->getSideFX(_distSlot))
 		return true;
 
-	_engine->getScriptManager()->addSideFX(new DistortNode(_engine, _distSlot, _speed, _startAngle, _endAngle, _startLineScale, _endLineScale));
+	_scriptManager->addSideFX(new DistortNode(_engine, _distSlot, _speed, _startAngle, _endAngle, _startLineScale, _endLineScale));
 
 	return true;
 }
@@ -319,7 +319,7 @@ ActionEnableControl::ActionEnableControl(ZVision *engine, int32 slotkey, const C
 }
 
 bool ActionEnableControl::execute() {
-	_engine->getScriptManager()->unsetStateFlag(_key, Puzzle::DISABLED);
+	_scriptManager->unsetStateFlag(_key, Puzzle::DISABLED);
 	return true;
 }
 
@@ -332,8 +332,8 @@ ActionFlushMouseEvents::ActionFlushMouseEvents(ZVision *engine, int32 slotkey) :
 }
 
 bool ActionFlushMouseEvents::execute() {
-	_engine->getScriptManager()->flushEvent(Common::EVENT_LBUTTONUP);
-	_engine->getScriptManager()->flushEvent(Common::EVENT_LBUTTONDOWN);
+	_scriptManager->flushEvent(Common::EVENT_LBUTTONUP);
+	_scriptManager->flushEvent(Common::EVENT_LBUTTONDOWN);
 	return true;
 }
 
@@ -366,22 +366,22 @@ ActionInventory::ActionInventory(ZVision *engine, int32 slotkey, const Common::S
 bool ActionInventory::execute() {
 	switch (_type) {
 	case 0: // add
-		_engine->getScriptManager()->inventoryAdd(_key);
+		_scriptManager->inventoryAdd(_key);
 		break;
 	case 1: // addi
-		_engine->getScriptManager()->inventoryAdd(_engine->getScriptManager()->getStateValue(_key));
+		_scriptManager->inventoryAdd(_scriptManager->getStateValue(_key));
 		break;
 	case 2: // drop
 		if (_key >= 0)
-			_engine->getScriptManager()->inventoryDrop(_key);
+			_scriptManager->inventoryDrop(_key);
 		else
-			_engine->getScriptManager()->inventoryDrop(_engine->getScriptManager()->getStateValue(StateKey_InventoryItem));
+			_scriptManager->inventoryDrop(_scriptManager->getStateValue(StateKey_InventoryItem));
 		break;
 	case 3: // dropi
-		_engine->getScriptManager()->inventoryDrop(_engine->getScriptManager()->getStateValue(_key));
+		_scriptManager->inventoryDrop(_scriptManager->getStateValue(_key));
 		break;
 	case 4: // cycle
-		_engine->getScriptManager()->inventoryCycle();
+		_scriptManager->inventoryCycle();
 		break;
 	default:
 		break;
@@ -422,9 +422,9 @@ ActionKill::ActionKill(ZVision *engine, int32 slotkey, const Common::String &lin
 
 bool ActionKill::execute() {
 	if (_type)
-		_engine->getScriptManager()->killSideFxType((ScriptingEffect::ScriptingEffectType)_type);
+		_scriptManager->killSideFxType((ScriptingEffect::ScriptingEffectType)_type);
 	else
-		_engine->getScriptManager()->killSideFx(_key);
+		_scriptManager->killSideFx(_key);
 	return true;
 }
 
@@ -450,16 +450,18 @@ bool ActionMenuBarEnable::execute() {
 
 ActionMusic::ActionMusic(ZVision *engine, int32 slotkey, const Common::String &line, bool global) :
 	ResultAction(engine, slotkey),
-	_volume(255),
 	_note(0),
 	_prog(0),
 	_universe(global) {
 	uint type = 0;
 	char fileNameBuffer[25];
 	uint loop = 0;
-	uint volume = 255;
+	char volumeBuffer[15];
 
-	sscanf(line.c_str(), "%u %24s %u %u", &type, fileNameBuffer, &loop, &volume);
+	// Volume is optional. If it doesn't appear, assume full volume
+	strcpy(volumeBuffer, "100");
+
+	sscanf(line.c_str(), "%u %24s %u %14s", &type, fileNameBuffer, &loop, volumeBuffer);
 
 	// Type 4 actions are MIDI commands, not files. These are only used by
 	// Zork: Nemesis, for the flute and piano puzzles (tj4e and ve6f, as well
@@ -468,39 +470,54 @@ ActionMusic::ActionMusic(ZVision *engine, int32 slotkey, const Common::String &l
 		_midi = true;
 		int note;
 		int prog;
-		sscanf(line.c_str(), "%u %d %d %u", &type, &prog, &note, &volume);
-		_volume = volume;
+		sscanf(line.c_str(), "%u %d %d %14s", &type, &prog, &note, volumeBuffer);
+		_volume = new ValueSlot(_scriptManager, volumeBuffer);
 		_note = note;
 		_prog = prog;
 	} else {
 		_midi = false;
 		_fileName = Common::String(fileNameBuffer);
 		_loop = loop == 1 ? true : false;
-
-		// Volume is optional. If it doesn't appear, assume full volume
-		if (volume != 255) {
-			// Volume in the script files is mapped to [0, 100], but the ScummVM mixer uses [0, 255]
-			_volume = volume * 255 / 100;
+		if (volumeBuffer[0] != '[' && atoi(volumeBuffer) > 100) {
+			// I thought I saw a case like this in Zork Nemesis, so
+			// let's guard against it.
+			warning("ActionMusic: Adjusting volume for %s from %s to 100", _fileName.c_str(), volumeBuffer);
+			strcpy(volumeBuffer, "100");
 		}
+		_volume = new ValueSlot(_scriptManager, volumeBuffer);
 	}
+
+	// WORKAROUND for a script bug in Zork Nemesis, rooms mq70/mq80.
+	// Fixes an edge case where the player goes to the dark room with the grue
+	// without holding a torch, and then quickly runs away before the grue's
+	// sound effect finishes. Fixes script bug #6794.
+	if (engine->getGameId() == GID_NEMESIS && _slotKey == 14822 && _scriptManager->getStateValue(_slotKey) == 2)
+		_scriptManager->setStateValue(_slotKey, 0);
+
 }
 
 ActionMusic::~ActionMusic() {
 	if (!_universe)
-		_engine->getScriptManager()->killSideFx(_slotKey);
+		_scriptManager->killSideFx(_slotKey);
+	delete _volume;
 }
 
 bool ActionMusic::execute() {
-	if (_engine->getScriptManager()->getSideFX(_slotKey))
-		return true;
+	if (_scriptManager->getSideFX(_slotKey)) {
+		_scriptManager->killSideFx(_slotKey);
+		_scriptManager->setStateValue(_slotKey, 2);
+	}
+
+	uint volume = _volume->getValue();
 
 	if (_midi) {
-		_engine->getScriptManager()->addSideFX(new MusicMidiNode(_engine, _slotKey, _prog, _note, _volume));
+		_scriptManager->addSideFX(new MusicMidiNode(_engine, _slotKey, _prog, _note, volume));
 	} else {
 		if (!_engine->getSearchManager()->hasFile(_fileName))
 			return true;
 
-		_engine->getScriptManager()->addSideFX(new MusicNode(_engine, _slotKey, _fileName, _loop, _volume));
+		// Volume in the script files is mapped to [0, 100], but the ScummVM mixer uses [0, 255]
+		_scriptManager->addSideFX(new MusicNode(_engine, _slotKey, _fileName, _loop, volume * 255 / 100));
 	}
 
 	return true;
@@ -519,14 +536,14 @@ ActionPanTrack::ActionPanTrack(ZVision *engine, int32 slotkey, const Common::Str
 }
 
 ActionPanTrack::~ActionPanTrack() {
-	_engine->getScriptManager()->killSideFx(_slotKey);
+	_scriptManager->killSideFx(_slotKey);
 }
 
 bool ActionPanTrack::execute() {
-	if (_engine->getScriptManager()->getSideFX(_slotKey))
+	if (_scriptManager->getSideFX(_slotKey))
 		return true;
 
-	_engine->getScriptManager()->addSideFX(new PanTrackNode(_engine, _slotKey, _musicSlot, _pos));
+	_scriptManager->addSideFX(new PanTrackNode(_engine, _slotKey, _musicSlot, _pos));
 
 	return true;
 }
@@ -576,18 +593,18 @@ ActionPreloadAnimation::ActionPreloadAnimation(ZVision *engine, int32 slotkey, c
 }
 
 ActionPreloadAnimation::~ActionPreloadAnimation() {
-	_engine->getScriptManager()->deleteSideFx(_slotKey);
+	_scriptManager->deleteSideFx(_slotKey);
 }
 
 bool ActionPreloadAnimation::execute() {
-	AnimationEffect *nod = (AnimationEffect *)_engine->getScriptManager()->getSideFX(_slotKey);
+	AnimationEffect *nod = (AnimationEffect *)_scriptManager->getSideFX(_slotKey);
 
 	if (!nod) {
 		nod = new AnimationEffect(_engine, _slotKey, _fileName, _mask, _framerate, false);
-		_engine->getScriptManager()->addSideFX(nod);
+		_scriptManager->addSideFX(nod);
 	} else
 		nod->stop();
-	_engine->getScriptManager()->setStateValue(_slotKey, 2);
+	_scriptManager->setStateValue(_slotKey, 2);
 	return true;
 }
 
@@ -603,10 +620,10 @@ ActionUnloadAnimation::ActionUnloadAnimation(ZVision *engine, int32 slotkey, con
 }
 
 bool ActionUnloadAnimation::execute() {
-	AnimationEffect *nod = (AnimationEffect *)_engine->getScriptManager()->getSideFX(_key);
+	AnimationEffect *nod = (AnimationEffect *)_scriptManager->getSideFX(_key);
 
 	if (nod && nod->getType() == ScriptingEffect::SCRIPTING_EFFECT_ANIM)
-		_engine->getScriptManager()->deleteSideFx(_key);
+		_scriptManager->deleteSideFx(_key);
 
 	return true;
 }
@@ -641,18 +658,25 @@ ActionPlayAnimation::ActionPlayAnimation(ZVision *engine, int32 slotkey, const C
 		_mask = -1;
 
 	_fileName = Common::String(fileName);
+
+	// WORKAROUND for bug #6769, location me1g.scr (the "Alchemical debacle"
+	// video in ZGI). We only scale up by 2x, in AnimationEffect::process(),
+	// but the dimensions of the target frame are off by 2 pixels. We fix that
+	// here, so that the video can be scaled.
+	if (_fileName == "me1ga011.avi" && _y2 == 213)
+		_y2 = 215;
 }
 
 ActionPlayAnimation::~ActionPlayAnimation() {
-	_engine->getScriptManager()->deleteSideFx(_slotKey);
+	_scriptManager->deleteSideFx(_slotKey);
 }
 
 bool ActionPlayAnimation::execute() {
-	AnimationEffect *nod = (AnimationEffect *)_engine->getScriptManager()->getSideFX(_slotKey);
+	AnimationEffect *nod = (AnimationEffect *)_scriptManager->getSideFX(_slotKey);
 
 	if (!nod) {
 		nod = new AnimationEffect(_engine, _slotKey, _fileName, _mask, _framerate);
-		_engine->getScriptManager()->addSideFX(nod);
+		_scriptManager->addSideFX(nod);
 	} else
 		nod->stop();
 
@@ -683,7 +707,7 @@ ActionPlayPreloadAnimation::ActionPlayPreloadAnimation(ZVision *engine, int32 sl
 }
 
 bool ActionPlayPreloadAnimation::execute() {
-	AnimationEffect *nod = (AnimationEffect *)_engine->getScriptManager()->getSideFX(_controlKey);
+	AnimationEffect *nod = (AnimationEffect *)_scriptManager->getSideFX(_controlKey);
 
 	if (nod)
 		nod->addPlayNode(_slotKey, _x1, _y1, _x2, _y2, _startFrame, _endFrame, _loopCount);
@@ -724,11 +748,11 @@ ActionRegion::ActionRegion(ZVision *engine, int32 slotkey, const Common::String 
 }
 
 ActionRegion::~ActionRegion() {
-	_engine->getScriptManager()->killSideFx(_slotKey);
+	_scriptManager->killSideFx(_slotKey);
 }
 
 bool ActionRegion::execute() {
-	if (_engine->getScriptManager()->getSideFX(_slotKey))
+	if (_scriptManager->getSideFX(_slotKey))
 		return true;
 
 	GraphicsEffect *effect = NULL;
@@ -773,7 +797,7 @@ bool ActionRegion::execute() {
 	}
 
 	if (effect) {
-		_engine->getScriptManager()->addSideFX(new RegionNode(_engine, _slotKey, effect, _delay));
+		_scriptManager->addSideFX(new RegionNode(_engine, _slotKey, effect, _delay));
 		_engine->getRenderManager()->addEffect(effect);
 	}
 
@@ -789,17 +813,16 @@ ActionRandom::ActionRandom(ZVision *engine, int32 slotkey, const Common::String 
 	char maxBuffer[64];
 	memset(maxBuffer, 0, 64);
 	sscanf(line.c_str(), "%s", maxBuffer);
-	_max = new ValueSlot(_engine->getScriptManager(), maxBuffer);
+	_max = new ValueSlot(_scriptManager, maxBuffer);
 }
 
 ActionRandom::~ActionRandom() {
-	if (_max)
-		delete _max;
+	delete _max;
 }
 
 bool ActionRandom::execute() {
 	uint randNumber = _engine->getRandomSource()->getRandomNumber(_max->getValue());
-	_engine->getScriptManager()->setStateValue(_slotKey, randNumber);
+	_scriptManager->setStateValue(_slotKey, randNumber);
 	return true;
 }
 
@@ -815,7 +838,7 @@ ActionRestoreGame::ActionRestoreGame(ZVision *engine, int32 slotkey, const Commo
 }
 
 bool ActionRestoreGame::execute() {
-	_engine->getSaveManager()->loadGame(_fileName);
+	_engine->getSaveManager()->loadGame(-1);
 	return false;
 }
 
@@ -906,7 +929,7 @@ ActionStop::ActionStop(ZVision *engine, int32 slotkey, const Common::String &lin
 }
 
 bool ActionStop::execute() {
-	_engine->getScriptManager()->stopSideFx(_key);
+	_scriptManager->stopSideFx(_key);
 	return true;
 }
 
@@ -932,35 +955,62 @@ ActionStreamVideo::ActionStreamVideo(ZVision *engine, int32 slotkey, const Commo
 }
 
 bool ActionStreamVideo::execute() {
-	ZorkAVIDecoder decoder;
-	Common::File *_file = _engine->getSearchManager()->openFile(_fileName);
+	Video::VideoDecoder *decoder;
+	Common::Rect destRect = Common::Rect(_x1, _y1, _x2 + 1, _y2 + 1);
+	Common::String subname = _fileName;
+	subname.setChar('s', subname.size() - 3);
+	subname.setChar('u', subname.size() - 2);
+	subname.setChar('b', subname.size() - 1);
+	bool subtitleExists = _engine->getSearchManager()->hasFile(subname);
+	bool switchToHires = false;
 
-	if (_file) {
-		if (!decoder.loadStream(_file)) {
+// NOTE: We only show the hires MPEG2 videos when libmpeg2 is compiled in,
+// otherwise we fall back to the lowres ones
+#ifdef USE_MPEG2
+	Common::String hiresFileName = _fileName;
+	hiresFileName.setChar('d', hiresFileName.size() - 8);
+	hiresFileName.setChar('v', hiresFileName.size() - 3);
+	hiresFileName.setChar('o', hiresFileName.size() - 2);
+	hiresFileName.setChar('b', hiresFileName.size() - 1);
+
+	if (_scriptManager->getStateValue(StateKey_MPEGMovies) == 1 &&_engine->getSearchManager()->hasFile(hiresFileName)) {
+		// TODO: Enable once AC3 support is implemented
+		if (!_engine->getSearchManager()->hasFile(_fileName))	// Check for the regular video
 			return true;
-		}
+		warning("The hires videos of the DVD version of ZGI aren't supported yet, using lowres");
+		//_fileName = hiresFileName;
+		//switchToHires = true;
+	} else if (!_engine->getSearchManager()->hasFile(_fileName))
+		return true;
+#else
+	if (!_engine->getSearchManager()->hasFile(_fileName))
+		return true;
+#endif
 
-		_engine->getCursorManager()->showMouse(false);
+	decoder = _engine->loadAnimation(_fileName);
+	Subtitle *sub = (subtitleExists) ? new Subtitle(_engine, subname, switchToHires) : NULL;
 
-		Common::Rect destRect = Common::Rect(_x1, _y1, _x2 + 1, _y2 + 1);
+	_engine->getCursorManager()->showMouse(false);
 
-		Common::String subname = _fileName;
-		subname.setChar('s', subname.size() - 3);
-		subname.setChar('u', subname.size() - 2);
-		subname.setChar('b', subname.size() - 1);
-
-		Subtitle *sub = NULL;
-
-		if (_engine->getSearchManager()->hasFile(subname))
-			sub = new Subtitle(_engine, subname);
-
-		_engine->playVideo(decoder, destRect, _skippable, sub);
-
-		_engine->getCursorManager()->showMouse(true);
-
-		if (sub)
-			delete sub;
+	if (switchToHires) {
+		_engine->initHiresScreen();
+		destRect = Common::Rect(40, -40, 760, 440);
+		Common::Rect workingWindow = _engine->_workingWindow;
+		workingWindow.translate(0, -40);
+		_engine->getRenderManager()->initSubArea(HIRES_WINDOW_WIDTH, HIRES_WINDOW_HEIGHT, workingWindow);
 	}
+
+	_engine->playVideo(*decoder, destRect, _skippable, sub);
+
+	if (switchToHires) {
+		_engine->initScreen();
+		_engine->getRenderManager()->initSubArea(WINDOW_WIDTH, WINDOW_HEIGHT, _engine->_workingWindow);
+	}
+
+	_engine->getCursorManager()->showMouse(true);
+
+	delete decoder;
+	delete sub;
 
 	return true;
 }
@@ -982,14 +1032,14 @@ ActionSyncSound::ActionSyncSound(ZVision *engine, int32 slotkey, const Common::S
 }
 
 bool ActionSyncSound::execute() {
-	ScriptingEffect *fx = _engine->getScriptManager()->getSideFX(_syncto);
+	ScriptingEffect *fx = _scriptManager->getSideFX(_syncto);
 	if (!fx)
 		return true;
 
 	if (!(fx->getType() & ScriptingEffect::SCRIPTING_EFFECT_ANIM))
 		return true;
 
-	_engine->getScriptManager()->addSideFX(new SyncSoundNode(_engine, _slotKey, _fileName, _syncto));
+	_scriptManager->addSideFX(new SyncSoundNode(_engine, _slotKey, _fileName, _syncto));
 	return true;
 }
 
@@ -1002,19 +1052,18 @@ ActionTimer::ActionTimer(ZVision *engine, int32 slotkey, const Common::String &l
 	char timeBuffer[64];
 	memset(timeBuffer, 0, 64);
 	sscanf(line.c_str(), "%s", timeBuffer);
-	_time = new ValueSlot(_engine->getScriptManager(), timeBuffer);
+	_time = new ValueSlot(_scriptManager, timeBuffer);
 }
 
 ActionTimer::~ActionTimer() {
-	if (_time)
-		delete _time;
-	_engine->getScriptManager()->killSideFx(_slotKey);
+	delete _time;
+	_scriptManager->killSideFx(_slotKey);
 }
 
 bool ActionTimer::execute() {
-	if (_engine->getScriptManager()->getSideFX(_slotKey))
+	if (_scriptManager->getSideFX(_slotKey))
 		return true;
-	_engine->getScriptManager()->addSideFX(new TimerNode(_engine, _slotKey, _time->getValue()));
+	_scriptManager->addSideFX(new TimerNode(_engine, _slotKey, _time->getValue()));
 	return true;
 }
 
@@ -1028,19 +1077,19 @@ ActionTtyText::ActionTtyText(ZVision *engine, int32 slotkey, const Common::Strin
 
 	char filename[64];
 	int32 x1 = 0, y1 = 0, x2 = 0, y2 = 0;
-	sscanf(line.c_str(), "%d %d %d %d %64s %u", &x1, &y1, &x2, &y2, filename, &_delay);
+	sscanf(line.c_str(), "%d %d %d %d %63s %u", &x1, &y1, &x2, &y2, filename, &_delay);
 	_r = Common::Rect(x1, y1, x2, y2);
 	_filename = Common::String(filename);
 }
 
 ActionTtyText::~ActionTtyText() {
-	_engine->getScriptManager()->killSideFx(_slotKey);
+	_scriptManager->killSideFx(_slotKey);
 }
 
 bool ActionTtyText::execute() {
-	if (_engine->getScriptManager()->getSideFX(_slotKey))
+	if (_scriptManager->getSideFX(_slotKey))
 		return true;
-	_engine->getScriptManager()->addSideFX(new ttyTextNode(_engine, _slotKey, _filename, _r, _delay));
+	_scriptManager->addSideFX(new ttyTextNode(_engine, _slotKey, _filename, _r, _delay));
 	return true;
 }
 

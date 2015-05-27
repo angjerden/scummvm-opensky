@@ -53,6 +53,9 @@ Console::Console(ZVision *engine) : GUI::Debugger(), _engine(engine) {
 	registerCmd("location", WRAP_METHOD(Console, cmdLocation));
 	registerCmd("dumpfile", WRAP_METHOD(Console, cmdDumpFile));
 	registerCmd("dumpfiles", WRAP_METHOD(Console, cmdDumpFiles));
+	registerCmd("dumpimage", WRAP_METHOD(Console, cmdDumpImage));
+	registerCmd("statevalue", WRAP_METHOD(Console, cmdStateValue));
+	registerCmd("stateflag", WRAP_METHOD(Console, cmdStateFlag));
 }
 
 bool Console::cmdLoadVideo(int argc, const char **argv) {
@@ -203,7 +206,7 @@ bool Console::cmdLocation(int argc, const char **argv) {
 	Common::String scrFile = Common::String::format("%c%c%c%c.scr", curLocation.world, curLocation.room, curLocation.node, curLocation.view);
 	debugPrintf("Current location: world '%c', room '%c', node '%c', view '%c', offset %d, script %s\n",
 				curLocation.world, curLocation.room, curLocation.node, curLocation.view, curLocation.offset, scrFile.c_str());
-	
+
 	if (argc != 6) {
 		debugPrintf("Use %s <char: world> <char: room> <char:node> <char:view> <int: x offset> to change your location\n", argv[0]);
 		return true;
@@ -262,9 +265,104 @@ bool Console::cmdDumpFiles(int argc, const char **argv) {
 		debugPrintf("Dumping %s\n", fileName.c_str());
 
 		in = iter->_value.arch->createReadStreamForMember(iter->_value.name);
-		dumpFile(in, fileName.c_str());
+		if (in)
+			dumpFile(in, fileName.c_str());
 		delete in;
 	}
+
+	return true;
+}
+
+bool Console::cmdDumpImage(int argc, const char **argv) {
+	if (argc != 2) {
+		debugPrintf("Use %s <TGA/TGZ name> to dump a ZVision TGA/TGZ image into a regular BMP image\n", argv[0]);
+		return true;
+	}
+
+	Common::String fileName = argv[1];
+	if (!fileName.hasSuffix(".tga")) {
+		debugPrintf("%s is not an image file", argv[1]);
+	}
+
+	Common::File f;
+	if (!_engine->getSearchManager()->openFile(f, argv[1])) {
+		warning("File not found: %s", argv[1]);
+		return true;
+	}
+
+	Graphics::Surface surface;
+	_engine->getRenderManager()->readImageToSurface(argv[1], surface, false);
+
+	// Open file
+	Common::DumpFile out;
+
+	fileName.setChar('b', fileName.size() - 3);
+	fileName.setChar('m', fileName.size() - 2);
+	fileName.setChar('p', fileName.size() - 1);
+
+	out.open(fileName);
+
+	// Write BMP header
+	out.writeByte('B');
+	out.writeByte('M');
+	out.writeUint32LE(surface.h * surface.pitch + 54);
+	out.writeUint32LE(0);
+	out.writeUint32LE(54);
+	out.writeUint32LE(40);
+	out.writeUint32LE(surface.w);
+	out.writeUint32LE(surface.h);
+	out.writeUint16LE(1);
+	out.writeUint16LE(16);
+	out.writeUint32LE(0);
+	out.writeUint32LE(0);
+	out.writeUint32LE(0);
+	out.writeUint32LE(0);
+	out.writeUint32LE(0);
+	out.writeUint32LE(0);
+
+	// Write pixel data to BMP
+	out.write(surface.getPixels(), surface.pitch * surface.h);
+
+	out.flush();
+	out.close();
+
+	surface.free();
+
+	return true;
+}
+
+bool Console::cmdStateValue(int argc, const char **argv) {
+	if (argc < 2) {
+		debugPrintf("Use %s <valuenum> to show the value of a state variable\n", argv[0]);
+		debugPrintf("Use %s <valuenum> <newvalue> to set the value of a state variable\n", argv[0]);
+		return true;
+	}
+
+	int valueNum = atoi(argv[1]);
+	int newValue = (argc > 2) ? atoi(argv[2]) : -1;
+
+	if (argc == 2)
+		debugPrintf("[%d] = %d\n", valueNum, _engine->getScriptManager()->getStateValue(valueNum));
+	else if (argc == 3)
+		_engine->getScriptManager()->setStateValue(valueNum, newValue);
+
+	return true;
+}
+
+bool Console::cmdStateFlag(int argc, const char **argv) {
+	if (argc < 2) {
+		debugPrintf("Use %s <flagnum> to show the value of a state flag\n", argv[0]);
+		debugPrintf("Use %s <flagnum> <newvalue> to set the value of a state flag\n", argv[0]);
+		return true;
+	}
+
+	int valueNum = atoi(argv[1]);
+	int newValue = (argc > 2) ? atoi(argv[2]) : -1;
+
+	if (argc == 2)
+		debugPrintf("[%d] = %d\n", valueNum, _engine->getScriptManager()->getStateFlag(valueNum));
+	else if (argc == 3)
+		_engine->getScriptManager()->setStateFlag(valueNum, newValue);
 
 	return true;
 }

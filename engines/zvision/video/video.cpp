@@ -23,13 +23,16 @@
 #include "common/scummsys.h"
 #include "common/system.h"
 #include "video/video_decoder.h"
+#ifdef USE_MPEG2
+#include "video/mpegps_decoder.h"
+#endif
 #include "engines/util.h"
 #include "graphics/surface.h"
 
 #include "zvision/zvision.h"
 #include "zvision/core/clock.h"
 #include "zvision/graphics/render_manager.h"
-#include "zvision/scripting//script_manager.h"
+#include "zvision/scripting/script_manager.h"
 #include "zvision/text/subtitles.h"
 #include "zvision/video/rlf_decoder.h"
 #include "zvision/video/zork_avi_decoder.h"
@@ -45,6 +48,10 @@ Video::VideoDecoder *ZVision::loadAnimation(const Common::String &fileName) {
 		animation = new RLFDecoder();
 	else if (tmpFileName.hasSuffix(".avi"))
 		animation = new ZorkAVIDecoder();
+#ifdef USE_MPEG2
+	else if (tmpFileName.hasSuffix(".vob"))
+		animation = new Video::MPEGPSDecoder();
+#endif
 	else
 		error("Unknown suffix for animation %s", fileName.c_str());
 
@@ -55,7 +62,7 @@ Video::VideoDecoder *ZVision::loadAnimation(const Common::String &fileName) {
 	bool loaded = animation->loadStream(_file);
 	if (!loaded)
 		error("Error loading animation %s", tmpFileName.c_str());
-	
+
 	return animation;
 }
 
