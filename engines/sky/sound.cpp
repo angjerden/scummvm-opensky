@@ -20,8 +20,12 @@
  *
  */
 
+#include <fstream>
+#include <sys/stat.h>
 
+#include "common/config-manager.h"
 #include "common/debug.h"
+#include "common/file.h"
 #include "common/endian.h"
 #include "common/textconsole.h"
 
@@ -1234,7 +1238,56 @@ bool Sound::startSpeech(uint16 textNum) {
 
 	uint32 speechSize = ((DataFileHeader *)speechData)->s_tot_size - sizeof(DataFileHeader);
 	uint8 *playBuffer = (uint8 *)malloc(speechSize);
-	memcpy(playBuffer, speechData + sizeof(DataFileHeader), speechSize);
+    memcpy(playBuffer, speechData + sizeof(DataFileHeader), speechSize);
+
+    Common::FSNode dir(ConfMan.get("path"));
+    const char* pathToSky = dir.getPath().c_str();
+    char openSkyPath[300];
+    sprintf(openSkyPath, "%s/opensky/", pathToSky);
+    
+    uint16 speechFileNumForOutput = 50000 + speechFileNum;
+    if (speechFileNumForOutput == 50659) { // I could make use of that (when looking at rung)
+        debug("I could make use of that speech file here, number 50659");
+        char inputFileName[300];
+        sprintf(inputFileName, "%s/newsounds/multer.raw", pathToSky);
+        std::ifstream speechFile;
+        speechFile.open(inputFileName, std::ios::in | std::ios::binary);
+        uint8 *speechDataCustom;
+
+        //get speechSize
+        uint32 speechSizeCustom;
+        struct stat results;
+
+        if (stat(inputFileName, &results) == 0) {
+            // The size of the file in bytes is in
+            // results.st_size
+            speechSizeCustom = results.st_size;
+        }
+        else {
+            // An error occurred
+        }
+
+//        speechFile.read(speechDataCustom, speechSizeCustom);
+//
+//        //prepare custom playBuffer
+//        uint8 *playBufferCustom = (uint8 *)malloc(speechSizeCustom);
+//        memcpy(playBufferCustom, speechDataCustom, speechSizeCustom);
+//
+//        _mixer->stopID(SOUND_SPEECH);
+//
+//        //send to scummvm mixer
+//        uint rate = 11025;
+//        Audio::AudioStream *stream = Audio::makeRawStream(playBufferCustom, speechSizeCustom, rate, Audio::FLAG_UNSIGNED);
+//        _mixer->playStream(Audio::Mixer::kSpeechSoundType, &_ingameSpeech, stream, SOUND_SPEECH);
+        speechFile.close();
+    } else{
+        char outputFileName[100];
+        sprintf(outputFileName, "%s/speech-%d", openSkyPath, speechFileNumForOutput);
+        std::ofstream file (outputFileName, std::ofstream::binary);
+        file.write((char *)speechData, speechSize);
+        file.close();
+    }
+
 
 	free(speechData);
 
@@ -1252,6 +1305,7 @@ bool Sound::startSpeech(uint16 textNum) {
 
 	Audio::AudioStream *stream = Audio::makeRawStream(playBuffer, speechSize, rate, Audio::FLAG_UNSIGNED);
 	_mixer->playStream(Audio::Mixer::kSpeechSoundType, &_ingameSpeech, stream, SOUND_SPEECH);
+	debug(2, "Playing speech: %d", speechFileNumForOutput);
 	return true;
 }
 

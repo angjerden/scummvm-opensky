@@ -239,15 +239,15 @@ namespace Sky {
 
 
 uint16 Intro::_mainIntroSeq[] = {
-	DELAY,       3000, // keep virgin screen up
+	DELAY,       250, // keep virgin screen up
 	FADEDOWN,
 	SHOWSCREEN, 60112, // revo screen + palette
 	FADEUP,     60113,
-	DELAY,       8000,
+	DELAY,       250,
 	FADEDOWN,
 	SHOWSCREEN, 60114, // gibbo screen + palette
 	FADEUP,     60115,
-	DELAY,       2000,
+	DELAY,       250,
 	FADEDOWN,
 	SEQEND
 };
@@ -656,7 +656,7 @@ bool Intro::doIntro(bool floppyIntro) {
 	_skyMusic->loadSection(0);
 	_skySound->loadSection(0);
 
-	if (!escDelay(3000))
+	if (!escDelay(250))
 		return false;
 
 	if (floppyIntro)
