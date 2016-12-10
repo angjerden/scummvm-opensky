@@ -1283,9 +1283,12 @@ bool Sound::startSpeech(uint16 textNum) {
     } else{
         char outputFileName[100];
         sprintf(outputFileName, "%s/speech-%d", openSkyPath, speechFileNumForOutput);
-        std::ofstream file (outputFileName, std::ofstream::binary);
-        file.write((char *)speechData, speechSize);
-        file.close();
+        struct stat buf;
+        if (stat(outputFileName, &buf) == -1) { //if file does not exist, write speechData to disk
+        	std::ofstream file (outputFileName, std::ofstream::binary);
+			file.write((char *)speechData, speechSize);
+			file.close();
+        }
     }
 
 
