@@ -125,7 +125,7 @@ void Text::getText(uint32 textNr) { //load text #"textNr" into textBuffer
 	if (patchMessage(textNr))
 		return;
         
-        uint32 textNrForFileOutput = textNr;
+	uint32 textNrForFileOutput = textNr;
         
 	uint32 sectionNo = (textNr & 0x0F000) >> 12;
 

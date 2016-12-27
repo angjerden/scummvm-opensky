@@ -1248,14 +1248,20 @@ bool Sound::startSpeech(uint16 textNum) {
     uint16 speechFileNumForOutput = 50000 + speechFileNum;
     if (speechFileNumForOutput == 50659) { // I could make use of that (when looking at rung)
         debug("I could make use of that speech file here, number 50659");
+
         char inputFileName[300];
-        sprintf(inputFileName, "%s/newsounds/multer.raw", pathToSky);
+        //sprintf(inputFileName, "%s/newsounds/multer.raw", pathToSky);
+        sprintf(inputFileName, "%s/sounds/speech-50659", pathToSky);
         std::ifstream speechFile;
         speechFile.open(inputFileName, std::ios::in | std::ios::binary);
-        uint8 *speechDataCustom;
+        //uint8 *speechDataCustom;
+        byte *speechDataCustom;
+
+        speechFile.seekg(0);
 
         //get speechSize
-        uint32 speechSizeCustom;
+        //uint32 speechSizeCustom;
+        long speechSizeCustom;
         struct stat results;
 
         if (stat(inputFileName, &results) == 0) {
@@ -1267,18 +1273,19 @@ bool Sound::startSpeech(uint16 textNum) {
             // An error occurred
         }
 
-//        speechFile.read(speechDataCustom, speechSizeCustom);
-//
-//        //prepare custom playBuffer
-//        uint8 *playBufferCustom = (uint8 *)malloc(speechSizeCustom);
-//        memcpy(playBufferCustom, speechDataCustom, speechSizeCustom);
-//
-//        _mixer->stopID(SOUND_SPEECH);
-//
-//        //send to scummvm mixer
-//        uint rate = 11025;
-//        Audio::AudioStream *stream = Audio::makeRawStream(playBufferCustom, speechSizeCustom, rate, Audio::FLAG_UNSIGNED);
-//        _mixer->playStream(Audio::Mixer::kSpeechSoundType, &_ingameSpeech, stream, SOUND_SPEECH);
+        speechFile.read((char *)speechDataCustom, speechSizeCustom);
+
+        //prepare custom playBuffer
+        byte *playBufferCustom = (byte *)malloc(speechSizeCustom);
+        memcpy(playBufferCustom, speechDataCustom, speechSizeCustom);
+        //memcpy(playBufferCustom, speechFile, speechSizeCustom);
+
+        _mixer->stopID(SOUND_SPEECH);
+
+        //send to scummvm mixer
+        uint rate = 11025;
+        Audio::AudioStream *stream = Audio::makeRawStream(playBufferCustom, speechSizeCustom, rate, Audio::FLAG_UNSIGNED);
+        _mixer->playStream(Audio::Mixer::kSpeechSoundType, &_ingameSpeech, stream, SOUND_SPEECH);
         speechFile.close();
     } else{
         char outputFileName[100];
@@ -1289,26 +1296,26 @@ bool Sound::startSpeech(uint16 textNum) {
 			file.write((char *)speechData, speechSize);
 			file.close();
         }
+
+        free(speechData);
+
+		// Workaround for BASS bug #897775 - some voice-overs are played at
+		// half speed in 0.0368 (the freeware CD version), in 0.0372 they sound
+		// just fine.
+
+		uint rate;
+		if (_skyDisk->determineGameVersion() == 368 && (textNum == 20905 || textNum == 20906))
+			rate = 22050;
+		else
+			rate = 11025;
+
+		_mixer->stopID(SOUND_SPEECH);
+
+		Audio::AudioStream *stream = Audio::makeRawStream(playBuffer, speechSize, rate, Audio::FLAG_UNSIGNED);
+		_mixer->playStream(Audio::Mixer::kSpeechSoundType, &_ingameSpeech, stream, SOUND_SPEECH);
+		debug(2, "Playing speech: %d", speechFileNumForOutput);
     }
 
-
-	free(speechData);
-
-	// Workaround for BASS bug #897775 - some voice-overs are played at
-	// half speed in 0.0368 (the freeware CD version), in 0.0372 they sound
-	// just fine.
-
-	uint rate;
-	if (_skyDisk->determineGameVersion() == 368 && (textNum == 20905 || textNum == 20906))
-		rate = 22050;
-	else
-		rate = 11025;
-
-	_mixer->stopID(SOUND_SPEECH);
-
-	Audio::AudioStream *stream = Audio::makeRawStream(playBuffer, speechSize, rate, Audio::FLAG_UNSIGNED);
-	_mixer->playStream(Audio::Mixer::kSpeechSoundType, &_ingameSpeech, stream, SOUND_SPEECH);
-	debug(2, "Playing speech: %d", speechFileNumForOutput);
 	return true;
 }
 
