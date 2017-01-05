@@ -41,6 +41,7 @@
 #include "sky/sound.h"
 #include "sky/text.h"
 #include "sky/compact.h"
+#include "sky/skyscraper.h"
 
 #include "audio/mididrv.h"
 #include "audio/mixer.h"
@@ -92,6 +93,7 @@ SkyEngine::~SkyEngine() {
 	delete _skyDisk;
 	delete _skyControl;
 	delete _skyCompact;
+	delete _skyScraper;
 
 	for (int i = 0; i < 300; i++)
 		if (_itemList[i])
@@ -201,6 +203,9 @@ Common::Error SkyEngine::go() {
 	_lastSaveTime = _system->getMillis();
 
 	uint32 delayCount = _system->getMillis();
+
+	_skyScraper->extractSpeechAndText();
+
 	while (!shouldQuit()) {
 		_debugger->onFrame();
 
@@ -310,6 +315,8 @@ Common::Error SkyEngine::init() {
 
 	_skyControl = new Control(_saveFileMan, _skyScreen, _skyDisk, _skyMouse, _skyText, _skyMusic, _skyLogic, _skySound, _skyCompact, _system);
 	_skyLogic->useControlInstance(_skyControl);
+
+	_skyScraper = new SkyScraper(_skyLogic, _skyCompact, _skyDisk, _skyText, _skySound);
 
 	switch (Common::parseLanguage(ConfMan.get("language"))) {
 	case Common::EN_USA:

@@ -1246,7 +1246,7 @@ bool Sound::startSpeech(uint16 textNum) {
     sprintf(openSkyPath, "%s/opensky/", pathToSky);
     
     uint16 speechFileNumForOutput = 50000 + speechFileNum;
-    if (speechFileNumForOutput == 50659) { // I could make use of that (when looking at rung)
+    if (speechFileNumForOutput == 50659 && true == false) { // I could make use of that (when looking at rung)
         debug("I could make use of that speech file here, number 50659");
 
         char inputFileName[300];
