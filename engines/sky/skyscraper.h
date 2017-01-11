@@ -24,8 +24,11 @@ public:
 	virtual ~SkyScraper();
 
 	void extractSpeechAndText();
+	void loopThroughLogicList();
+	bool checkProtection();
 
 	uint32 _scriptVariables[NUM_SKY_SCRIPTVARS];
+	Compact *_compact;
 
 protected:
 	Logic *_skyLogic;
@@ -33,7 +36,6 @@ protected:
 	Disk *_skyDisk;
 	Text *_skyText;
 	Sound *_skySound;
-
 };
 
 } // end of namespace Sky
