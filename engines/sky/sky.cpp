@@ -184,7 +184,7 @@ Common::Error SkyEngine::go() {
 		if (_systemVars.gameVersion > 272) { // don't do intro for floppydemos
 			Intro *skyIntro = new Intro(_skyDisk, _skyScreen, _skyMusic, _skySound, _skyText, _mixer, _system);
 			bool floppyIntro = ConfMan.getBool("alt_intro");
-			introSkipped = !skyIntro->doIntro(floppyIntro);
+			//introSkipped = !skyIntro->doIntro(floppyIntro);
 			delete skyIntro;
 		}
 
@@ -300,7 +300,7 @@ Common::Error SkyEngine::init() {
 		_systemVars.systemFlags |= SF_ALLOW_TEXT;
 
 	_systemVars.systemFlags |= SF_PLAY_VOCS;
-	_systemVars.gameSpeed = 80;
+	_systemVars.gameSpeed = 14;
 
 	_skyCompact = new SkyCompact();
 	_skyText = new Text(_skyDisk, _skyCompact);
