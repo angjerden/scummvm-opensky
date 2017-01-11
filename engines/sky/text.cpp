@@ -130,7 +130,7 @@ void Text::getText(uint32 textNr) { //load text #"textNr" into textBuffer
 	uint32 sectionNo = (textNr & 0x0F000) >> 12;
 
 	if (SkyEngine::_itemList[FIRST_TEXT_SEC + sectionNo] == NULL) { //check if already loaded
-		debug(2, "Loading Text item(s) for Section %d", (sectionNo >> 2));
+		debug("Loading Text item(s) for Section %d", (sectionNo >> 2));
 
 		uint32 fileNo = sectionNo + ((SkyEngine::_systemVars.language * NO_OF_TEXT_SECTIONS) + 60600);
 		SkyEngine::_itemList[FIRST_TEXT_SEC + sectionNo] = (void **)_skyDisk->loadFile((uint16)fileNo);
@@ -283,7 +283,7 @@ DisplayedText Text::displayText(uint32 textNum, uint8 *dest, bool center, uint16
 
 DisplayedText Text::displayText(char *textPtr, uint8 *dest, bool center, uint16 pixelWidth, uint8 color) {
 	//Render text pointed to by *textPtr in buffer *dest
-	debug(2, "Displaying text: %s", textPtr);
+	debug("Displaying text: %s", textPtr);
 	uint32 centerTable[10];
 	uint16 lineWidth = 0;
 

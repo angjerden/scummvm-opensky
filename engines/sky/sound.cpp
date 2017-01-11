@@ -1313,7 +1313,7 @@ bool Sound::startSpeech(uint16 textNum) {
 
 		Audio::AudioStream *stream = Audio::makeRawStream(playBuffer, speechSize, rate, Audio::FLAG_UNSIGNED);
 		_mixer->playStream(Audio::Mixer::kSpeechSoundType, &_ingameSpeech, stream, SOUND_SPEECH);
-		debug(2, "Playing speech: %d", speechFileNumForOutput);
+		debug("Playing speech: %d", speechFileNumForOutput);
     }
 
 	return true;
