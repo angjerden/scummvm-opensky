@@ -154,6 +154,9 @@ public:
 	void initScreen0();
 	void parseSaveData(uint32 *data);
 
+	const LogicTable* getLogicTable();
+	const McodeTable* getMcodeTable();
+
 private:
 	void setupLogicTable();
 	void setupMcodeTable();

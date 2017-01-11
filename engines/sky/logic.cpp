@@ -2616,4 +2616,12 @@ void Logic::stdSpeak(Compact *target, uint32 textNum, uint32 animNum, uint32 bas
 	target->logic = L_TALK;
 }
 
+const LogicTable* Logic::getLogicTable() {
+	return _logicTable;
+}
+
+const McodeTable* Logic::getMcodeTable() {
+	return _mcodeTable;
+}
+
 } // End of namespace Sky
