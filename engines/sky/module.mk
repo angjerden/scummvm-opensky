@@ -15,7 +15,6 @@ MODULE_OBJS := \
 	rnc_deco.o \
 	screen.o \
 	sky.o \
-	skyscraper.o \
 	sound.o \
 	text.o \
 	music/adlibchannel.o \
@@ -23,7 +22,9 @@ MODULE_OBJS := \
 	music/gmchannel.o \
 	music/gmmusic.o \
 	music/mt32music.o \
-	music/musicbase.o
+	music/musicbase.o \
+	skyscraper/skyscraper.o \
+	skyscraper/sound.o
 
 # This module can be built as a plugin
 ifeq ($(ENABLE_SKY), DYNAMIC_PLUGIN)

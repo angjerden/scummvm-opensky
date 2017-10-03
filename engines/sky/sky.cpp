@@ -41,7 +41,7 @@
 #include "sky/sound.h"
 #include "sky/text.h"
 #include "sky/compact.h"
-#include "sky/skyscraper.h"
+#include "sky/skyscraper/skyscraper.h"
 
 #include "audio/mididrv.h"
 #include "audio/mixer.h"
@@ -316,7 +316,7 @@ Common::Error SkyEngine::init() {
 	_skyControl = new Control(_saveFileMan, _skyScreen, _skyDisk, _skyMouse, _skyText, _skyMusic, _skyLogic, _skySound, _skyCompact, _system);
 	_skyLogic->useControlInstance(_skyControl);
 
-	_skyScraper = new SkyScraper(_skyLogic, _skyCompact, _skyDisk, _skyText, _skySound);
+	//_skyScraper = new SkyScraper();
 
 	switch (Common::parseLanguage(ConfMan.get("language"))) {
 	case Common::EN_USA:
