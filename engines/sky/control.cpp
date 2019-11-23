@@ -1585,8 +1585,8 @@ void Control::showGameQuitMsg() {
 }
 
 char Control::_quitTexts[16][35] = {
-	"Game over player one",
-	"BE VIGILANT",
+	"Spelet e slutt naa",
+	"PROEV AA FYLL LITT MED!",
 	"Das Spiel ist aus.",
 	"SEI WACHSAM",
 	"Game over joueur 1",
