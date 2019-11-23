@@ -1246,22 +1246,18 @@ bool Sound::startSpeech(uint16 textNum) {
     sprintf(openSkyPath, "%s/opensky/", pathToSky);
     
     uint16 speechFileNumForOutput = 50000 + speechFileNum;
-    if (speechFileNumForOutput == 50659 && true == false) { // I could make use of that (when looking at rung)
+    if (speechFileNumForOutput == 50659) { // I could make use of that (when looking at rung)
         debug("I could make use of that speech file here, number 50659");
 
         char inputFileName[300];
-        //sprintf(inputFileName, "%s/newsounds/multer.raw", pathToSky);
+        // sprintf(inputFileName, "%s/newsounds/multer.raw", pathToSky);
         sprintf(inputFileName, "%s/sounds/speech-50659", pathToSky);
         std::ifstream speechFile;
         speechFile.open(inputFileName, std::ios::in | std::ios::binary);
-        //uint8 *speechDataCustom;
-        byte *speechDataCustom;
-
-        speechFile.seekg(0);
 
         //get speechSize
-        //uint32 speechSizeCustom;
-        long speechSizeCustom;
+        uint32 speechSizeCustom;
+
         struct stat results;
 
         if (stat(inputFileName, &results) == 0) {
@@ -1272,13 +1268,17 @@ bool Sound::startSpeech(uint16 textNum) {
         else {
             // An error occurred
         }
+        char speechDataCustom[speechSizeCustom];
 
-        speechFile.read((char *)speechDataCustom, speechSizeCustom);
+        if (speechFile.is_open()) {
+
+        	speechFile.seekg(0, std::ios::beg);
+        	speechFile.getline(speechDataCustom, speechSizeCustom);
+        }
 
         //prepare custom playBuffer
-        byte *playBufferCustom = (byte *)malloc(speechSizeCustom);
+        uint8 *playBufferCustom = (uint8 *)malloc(speechSizeCustom);
         memcpy(playBufferCustom, speechDataCustom, speechSizeCustom);
-        //memcpy(playBufferCustom, speechFile, speechSizeCustom);
 
         _mixer->stopID(SOUND_SPEECH);
 
