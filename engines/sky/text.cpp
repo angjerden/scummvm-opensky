@@ -23,6 +23,7 @@
 #include <fstream>
 #include <map>
 #include <string>
+#include <sstream>
 #include "common/config-manager.h"
 
 #include "common/debug.h"
@@ -48,6 +49,18 @@ namespace Sky {
 #define MAX_SPEECH_SECTION	7
 #define CHAR_SET_HEADER	128
 #define	MAX_NO_LINES	10
+
+// Duplicate of the one in sound.cpp, used to get speechFileNum
+uint16 Text::_speechConvertTable[8] = {
+	0,									//;Text numbers to file numbers
+	600,								//; 553 lines in section 0
+	600+500,							//; 488 lines in section 1
+	600+500+1330,						//;1303 lines in section 2
+	600+500+1330+950,					//; 922 lines in section 3
+	600+500+1330+950+1150,				//;1140 lines in section 4
+	600+500+1330+950+1150+550,			//; 531 lines in section 5
+	600+500+1330+950+1150+550+150,		//; 150 lines in section 6
+};
 
 Text::Text(Disk *skyDisk, SkyCompact *skyCompact) {
 	_skyDisk = skyDisk;
@@ -126,7 +139,9 @@ void Text::fnTextModule(uint32 textInfoId, uint32 textNo) {
 void Text::getText(uint32 textNr) { //load text #"textNr" into textBuffer
 	if (patchMessage(textNr))
 		return;
-        
+
+	uint16 speechFileNum = (_speechConvertTable[textNr >> 12] + (textNr & 0xFFF)) + 50000;
+
 	uint32 textNrForFileOutput = textNr;
         
 	uint32 sectionNo = (textNr & 0x0F000) >> 12;
@@ -209,13 +224,15 @@ void Text::getText(uint32 textNr) { //load text #"textNr" into textBuffer
         //if map has textNr key, read into _textBuffer
         if (ownText.find(textNrForFileOutput) != ownText.end()) {
             debug(2, "Displaying own text for Text item %d", textNrForFileOutput);
-            std::string ownString = ownText[textNrForFileOutput];
+            std::string ownString = ownText[textNrForFileOutput].substr(6);
             strncpy(_textBuffer, ownString.c_str(), ownString.size());
             _textBuffer[ownString.size()] = 0;
         }
         //if map does not have textNr key, read into map and back to file
         else {
-            ownText[textNrForFileOutput] = _textBuffer;
+            std::ostringstream ss;
+            ss << speechFileNum;
+            ownText[textNrForFileOutput] = ss.str() + " " + _textBuffer;
             std::ofstream ofile(ownTextFilename);
             for (std::map<int, std::string>::iterator ite=ownText.begin(); ite!=ownText.end(); ++ite) {
                 ofile << ite->first << ' ' << ite->second << '\n';
