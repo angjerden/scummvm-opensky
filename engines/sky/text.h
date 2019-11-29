@@ -70,6 +70,8 @@ private:
 
 	bool patchMessage(uint32 textNum);
 
+	bool hasReadAllText;
+
 	Disk *_skyDisk;
 	SkyCompact *_skyCompact;
 

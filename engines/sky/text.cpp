@@ -73,6 +73,8 @@ Text::Text(Disk *skyDisk, SkyCompact *skyCompact) {
 		_controlCharacterSet.addr = NULL;
 		_linkCharacterSet.addr = NULL;
 	}
+
+	hasReadAllText = true;
 }
 
 Text::~Text() {
@@ -186,7 +188,7 @@ void Text::getText(uint32 textNr) { //load text #"textNr" into textBuffer
         Common::FSNode dir(ConfMan.get("path"));
         const char* pathToSky = dir.getPath().c_str();        
         char ownTextFilename[300];
-        sprintf(ownTextFilename, "%s/opensky/text.txt", pathToSky);
+        sprintf(ownTextFilename, "%s/opensky/opensky.txt", pathToSky);
 
         //read from own file into map
         std::ifstream ifile;
@@ -426,6 +428,39 @@ void Text::makeGameCharacter(uint8 textChar, uint8 *charSetPtr, uint8 *&dest, ui
 
 DisplayedText Text::lowTextManager(uint32 textNum, uint16 width, uint16 logicNum, uint8 color, bool center) {
 	getText(textNum);
+
+	// Going through all text to dump it to file.
+	// Set hasReadAllText to false to re-enable.
+	if (!hasReadAllText) {
+		// Get All Text
+		for (int i = 1; i < 565; i++){
+			getText(i);
+		}
+		for (int i = 4096; i < 4581; i++){
+			getText(i);
+		}
+		for (int i = 8193; i < 9496; i++){
+			getText(i);
+		}
+		for (int i = 12289; i < 13211; i++){
+			getText(i);
+		}
+		for (int i = 16385; i < 17525; i++){
+			getText(i);
+		}
+		for (int i = 20481; i < 21012; i++){
+			getText(i);
+		}
+		for (int i = 24577; i < 24696; i++){
+			getText(i);
+		}
+		for (int i = 28672; i < 28769; i++){
+			getText(i);
+		}
+		hasReadAllText = true;
+	}
+
+
 	DisplayedText textInfo = displayText(_textBuffer, NULL, center, width, color);
 
 	uint32 compactNum = FIRST_TEXT_COMPACT;
