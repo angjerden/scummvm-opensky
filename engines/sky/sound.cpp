@@ -1246,14 +1246,12 @@ bool Sound::startSpeech(uint16 textNum) {
     sprintf(openSkyPath, "%s/opensky/", pathToSky);
     
     uint16 speechFileNumForOutput = 50000 + speechFileNum;
-    if (speechFileNumForOutput == 50659) { // I could make use of that (when looking at rung)
-        debug("I could make use of that speech file here, number 50659");
 
-        char inputFileName[300];
-        // sprintf(inputFileName, "%s/newsounds/multer.raw", pathToSky);
-        sprintf(inputFileName, "%s/sounds/speech-50659", pathToSky);
-        std::ifstream speechFile;
-        speechFile.open(inputFileName, std::ios::in | std::ios::binary);
+	char inputFileName[300];
+	sprintf(inputFileName, "%s/speech-%d", openSkyPath, speechFileNumForOutput);
+	std::ifstream speechFile;
+	speechFile.open(inputFileName, std::ios::in | std::ios::binary);
+	if (speechFile.good()) {
 
         //get speechSize
         uint32 speechSizeCustom;
@@ -1289,7 +1287,7 @@ bool Sound::startSpeech(uint16 textNum) {
         speechFile.close();
     } else{
         char outputFileName[100];
-        sprintf(outputFileName, "%s/speech-%d", openSkyPath, speechFileNumForOutput);
+        sprintf(outputFileName, "%s/speech-orig/speech-%d", pathToSky, speechFileNumForOutput);
         struct stat buf;
         if (stat(outputFileName, &buf) == -1) { //if file does not exist, write speechData to disk
         	std::ofstream file (outputFileName, std::ofstream::binary);
