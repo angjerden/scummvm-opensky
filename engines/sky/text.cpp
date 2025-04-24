@@ -50,18 +50,6 @@ namespace Sky {
 #define CHAR_SET_HEADER	128
 #define	MAX_NO_LINES	10
 
-// Duplicate of the one in sound.cpp, used to get speechFileNum
-uint16 Text::_speechConvertTable[8] = {
-	0,									//;Text numbers to file numbers
-	600,								//; 553 lines in section 0
-	600+500,							//; 488 lines in section 1
-	600+500+1330,						//;1303 lines in section 2
-	600+500+1330+950,					//; 922 lines in section 3
-	600+500+1330+950+1150,				//;1140 lines in section 4
-	600+500+1330+950+1150+550,			//; 531 lines in section 5
-	600+500+1330+950+1150+550+150,		//; 150 lines in section 6
-};
-
 Text::Text(Disk *skyDisk, SkyCompact *skyCompact) {
 	_skyDisk = skyDisk;
 	_skyCompact = skyCompact;
@@ -86,8 +74,6 @@ Text::Text(Disk *skyDisk, SkyCompact *skyCompact) {
 		_controlCharacterSet.addr = NULL;
 		_linkCharacterSet.addr = NULL;
 	}
-
-	hasReadAllText = true;
 }
 
 Text::~Text() {
@@ -140,14 +126,12 @@ void Text::getText(uint32 textNr) { //load text #"textNr" into textBuffer
 	if (patchMessage(textNr))
 		return;
 
-	uint16 speechFileNum = (_speechConvertTable[textNr >> 12] + (textNr & 0xFFF)) + 50000;
-
 	uint32 textNrForFileOutput = textNr;
         
 	uint32 sectionNo = (textNr & 0x0F000) >> 12;
 
 	if (SkyEngine::_itemList[FIRST_TEXT_SEC + sectionNo] == NULL) { //check if already loaded
-		debug("Loading Text item(s) for Section %d", (sectionNo >> 2));
+		debug(5, "Loading Text item(s) for Section %d", (sectionNo >> 2));
 
 		uint32 fileNo = sectionNo + ((SkyEngine::_systemVars.language * NO_OF_TEXT_SECTIONS) + 60600);
 		SkyEngine::_itemList[FIRST_TEXT_SEC + sectionNo] = (void **)_skyDisk->loadFile((uint16)fileNo);
@@ -228,17 +212,6 @@ void Text::getText(uint32 textNr) { //load text #"textNr" into textBuffer
             strncpy(_textBuffer, ownString.c_str(), ownString.size());
             _textBuffer[ownString.size()] = 0;
         }
-        //if map does not have textNr key, read into map and back to file
-        else {
-            std::ostringstream ss;
-            ss << speechFileNum;
-            ownText[textNrForFileOutput] = ss.str() + " " + _textBuffer;
-            std::ofstream ofile(ownTextFilename);
-            for (std::map<int, std::string>::iterator ite=ownText.begin(); ite!=ownText.end(); ++ite) {
-                ofile << ite->first << ' ' << ite->second << '\n';
-            }
-            ofile.close();
-        }
 }
 
 void Text::fnPointerText(uint32 pointedId, uint16 mouseX, uint16 mouseY) {
@@ -302,7 +275,6 @@ DisplayedText Text::displayText(uint32 textNum, uint8 *dest, bool center, uint16
 
 DisplayedText Text::displayText(char *textPtr, uint8 *dest, bool center, uint16 pixelWidth, uint8 color) {
 	//Render text pointed to by *textPtr in buffer *dest
-	debug("Displaying text: %s", textPtr);
 	uint32 centerTable[10];
 	uint16 lineWidth = 0;
 
@@ -445,39 +417,6 @@ void Text::makeGameCharacter(uint8 textChar, uint8 *charSetPtr, uint8 *&dest, ui
 
 DisplayedText Text::lowTextManager(uint32 textNum, uint16 width, uint16 logicNum, uint8 color, bool center) {
 	getText(textNum);
-
-	// Going through all text to dump it to file.
-	// Set hasReadAllText to false to re-enable.
-	if (!hasReadAllText) {
-		// Get All Text
-		for (int i = 1; i < 565; i++){
-			getText(i);
-		}
-		for (int i = 4096; i < 4581; i++){
-			getText(i);
-		}
-		for (int i = 8193; i < 9496; i++){
-			getText(i);
-		}
-		for (int i = 12289; i < 13211; i++){
-			getText(i);
-		}
-		for (int i = 16385; i < 17525; i++){
-			getText(i);
-		}
-		for (int i = 20481; i < 21012; i++){
-			getText(i);
-		}
-		for (int i = 24577; i < 24696; i++){
-			getText(i);
-		}
-		for (int i = 28672; i < 28769; i++){
-			getText(i);
-		}
-		hasReadAllText = true;
-	}
-
-
 	DisplayedText textInfo = displayText(_textBuffer, NULL, center, width, color);
 
 	uint32 compactNum = FIRST_TEXT_COMPACT;

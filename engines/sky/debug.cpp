@@ -1080,10 +1080,6 @@ void Debug::script(uint32 command, uint16 *scriptData) {
 
 void Debug::mcode(uint32 mcode, uint32 a, uint32 b, uint32 c) {
 	debug(6, "MCODE: %s(%d, %d, %d)", mcodes[mcode], a, b, c);
-
-	if (mcode == 35 || mcode == 36 || mcode == 37 || mcode == 38) { //35 = fnSpeakMe, 36 = fnSpeakDir, 37 = fnSpeakWait, 38 = fnSpeakWaitDir
-		debug("MCODE %d: %s(%d, %d, %d)", mcode, mcodes[mcode], a, b, c);
-	}
 }
 
 

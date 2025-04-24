@@ -1354,10 +1354,6 @@ uint16 Logic::script(uint16 scriptNo, uint16 offset) {
 					uint16 mcode = *scriptData++ / 4; // get mcode number
 					Debug::mcode(mcode, a, b, c);
 
-					if (mcode == 35 || mcode == 36 || mcode == 37 || mcode == 38) { //35 = fnSpeakMe, 36 = fnSpeakDir, 37 = fnSpeakWait, 38 = fnSpeakWaitDir
-						debug("Doing Script: moduleNo: %d scriptNo: %d offset: %x", moduleNo, scriptNo & 0xFFF, offset ? (offset - moduleStart[scriptNo & 0xFFF]) : 0);
-					}
-
 					Compact *saveCpt = _compact;
 					bool ret = (this->*_mcodeTable[mcode]) (a, b, c);
 					_compact = saveCpt;
@@ -1724,8 +1720,6 @@ bool Logic::fnSpeakMe(uint32 targetId, uint32 mesgNum, uint32 animNum) {
 	if (targetId == 0x4039 && animNum == 0x9B && Logic::_scriptVariables[SCREEN] != 38) {
 		return false;
 	}
-
-	debug("Calling fnSpeakMe with targetId: %d, mesgNum: %d, animNum: %d", targetId, mesgNum, animNum);
 
 	stdSpeak(_skyCompact->fetchCpt(targetId), mesgNum, animNum, 0);
 	return false;	//drop out of script
@@ -2614,14 +2608,6 @@ void Logic::stdSpeak(Compact *target, uint32 textNum, uint32 animNum, uint32 bas
 		target->spTextId = 0;
 	}
 	target->logic = L_TALK;
-}
-
-const LogicTable* Logic::getLogicTable() {
-	return _logicTable;
-}
-
-const McodeTable* Logic::getMcodeTable() {
-	return _mcodeTable;
 }
 
 } // End of namespace Sky

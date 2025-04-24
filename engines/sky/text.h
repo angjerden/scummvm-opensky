@@ -70,9 +70,6 @@ private:
 
 	bool patchMessage(uint32 textNum);
 
-	bool hasReadAllText;
-	static uint16 _speechConvertTable[8];
-
 	Disk *_skyDisk;
 	SkyCompact *_skyCompact;
 

@@ -15,7 +15,6 @@ MODULE_OBJS := \
 	rnc_deco.o \
 	screen.o \
 	sky.o \
-	skyscraper.o \
 	sound.o \
 	text.o \
 	music/adlibchannel.o \

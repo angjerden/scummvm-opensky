@@ -60,7 +60,6 @@ class Control;
 class MusicBase;
 class Debugger;
 class SkyCompact;
-class SkyScraper;
 
 class SkyEngine : public Engine {
 protected:
@@ -75,7 +74,6 @@ protected:
 	Control *_skyControl;
 	SkyCompact *_skyCompact;
 	Debugger *_debugger;
-	SkyScraper *_skyScraper;
 
 	MusicBase *_skyMusic;
 
