@@ -1239,7 +1239,10 @@ bool Sound::startSpeech(uint16 textNum) {
 	uint32 speechSize = ((DataFileHeader *)speechData)->s_tot_size - sizeof(DataFileHeader);
 	uint8 *playBuffer = (uint8 *)malloc(speechSize);
     memcpy(playBuffer, speechData + sizeof(DataFileHeader), speechSize);
+	
+	free(speechData);
 
+	// Custom speech
     Common::FSNode dir(ConfMan.get("path"));
     const char* pathToSky = dir.getPath().c_str();
     char openSkyPath[300];
@@ -1285,36 +1288,25 @@ bool Sound::startSpeech(uint16 textNum) {
         Audio::AudioStream *stream = Audio::makeRawStream(playBufferCustom, speechSizeCustom, rate, Audio::FLAG_UNSIGNED);
         _mixer->playStream(Audio::Mixer::kSpeechSoundType, &_ingameSpeech, stream, SOUND_SPEECH);
         speechFile.close();
-    } else{
-        char outputFileName[100];
-        sprintf(outputFileName, "%s/speech-orig/speech-%d", pathToSky, speechFileNumForOutput);
-        struct stat buf;
-        if (stat(outputFileName, &buf) == -1) { //if file does not exist, write speechData to disk
-        	std::ofstream file (outputFileName, std::ofstream::binary);
-			file.write((char *)speechData, speechSize);
-			file.close();
-        }
-
-        free(speechData);
-
-		// Workaround for BASS bug #897775 - some voice-overs are played at
-		// half speed in 0.0368 (the freeware CD version), in 0.0372 they sound
-		// just fine.
-
-		uint rate;
-		if (_skyDisk->determineGameVersion() == 368 && (textNum == 20905 || textNum == 20906))
-			rate = 22050;
-		else
-			rate = 11025;
-
-		_mixer->stopID(SOUND_SPEECH);
-
-		Audio::AudioStream *stream = Audio::makeRawStream(playBuffer, speechSize, rate, Audio::FLAG_UNSIGNED);
-		_mixer->playStream(Audio::Mixer::kSpeechSoundType, &_ingameSpeech, stream, SOUND_SPEECH);
-		debug("Playing speech: %d", speechFileNumForOutput);
+		return true;
     }
 
-	return true;
+
+	// Workaround for BASS bug #897775 - some voice-overs are played at
+	// half speed in 0.0368 (the freeware CD version), in 0.0372 they sound
+	// just fine.
+
+	uint rate;
+	if (_skyDisk->determineGameVersion() == 368 && (textNum == 20905 || textNum == 20906))
+		rate = 22050;
+	else
+		rate = 11025;
+
+	_mixer->stopID(SOUND_SPEECH);
+
+	Audio::AudioStream *stream = Audio::makeRawStream(playBuffer, speechSize, rate, Audio::FLAG_UNSIGNED);
+	_mixer->playStream(Audio::Mixer::kSpeechSoundType, &_ingameSpeech, stream, SOUND_SPEECH);
+    return true;
 }
 
 void Sound::fnPauseFx() {

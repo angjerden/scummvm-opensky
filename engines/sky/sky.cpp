@@ -201,7 +201,6 @@ Common::Error SkyEngine::go() {
 	_lastSaveTime = _system->getMillis();
 
 	uint32 delayCount = _system->getMillis();
-
 	while (!shouldQuit()) {
 		_debugger->onFrame();
 
