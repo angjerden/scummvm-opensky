@@ -1243,14 +1243,14 @@ bool Sound::startSpeech(uint16 textNum) {
 
 	// Custom speech
     Common::FSNode dir(ConfMan.get("path"));
-    const char* pathToSky = dir.getPath().c_str();
+    std::string pathToSky = dir.getPath().toString();
     char openSkyPath[300];
-    sprintf(openSkyPath, "%s/opensky/", pathToSky);
+	std::string openSkyPath = std::format("{}/opensky/", pathToSky);
     
     uint16 speechFileNumForOutput = 50000 + speechFileNum;
 
-	char inputFileName[300];
-	sprintf(inputFileName, "%s/speech-%d", openSkyPath, speechFileNumForOutput);
+	// char inputFileName[300];
+	std::string inputFileName = std::format("{}/speech-{}", openSkyPath, speechFileNumForOutput);
 	std::ifstream speechFile;
 	speechFile.open(inputFileName, std::ios::in | std::ios::binary);
 	if (speechFile.good()) {
@@ -1260,7 +1260,7 @@ bool Sound::startSpeech(uint16 textNum) {
 
         struct stat results;
 
-        if (stat(inputFileName, &results) == 0) {
+        if (stat(inputFileName.c_str(), &results) == 0) {
             // The size of the file in bytes is in
             // results.st_size
             speechSizeCustom = results.st_size;

@@ -1659,7 +1659,7 @@ void Control::showGameQuitMsg() {
 	free(textBuf2);
 }
 
-char Control::_quitTexts[16][35] = {
+char Control::_quitTexts[20][45] = {
 	"Spelet e slutt naa",
 	"PROEV AA FYLL LITT MED!",
 	"Das Spiel ist aus.",

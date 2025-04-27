@@ -380,8 +380,8 @@ Common::Error SkyEngine::init() {
 	} else
 		_systemVars->systemFlags |= SF_ALLOW_TEXT;
 
-	_systemVars.systemFlags |= SF_PLAY_VOCS;
-	_systemVars.gameSpeed = 14;
+	_systemVars->systemFlags |= SF_PLAY_VOCS;
+	_systemVars->gameSpeed = 14;
 
 	_skyCompact = new SkyCompact();
 	_skyText = new Text(this, _skyDisk, _skyCompact);
