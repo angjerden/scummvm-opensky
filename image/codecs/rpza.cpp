@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -31,9 +30,8 @@
 
 namespace Image {
 
-RPZADecoder::RPZADecoder(uint16 width, uint16 height) : Codec() {
+RPZADecoder::RPZADecoder(uint16 width, uint16 height) : Codec(), _ditherPalette(0) {
 	_format = Graphics::PixelFormat(2, 5, 5, 5, 0, 10, 5, 0, 0);
-	_ditherPalette = 0;
 	_dirtyPalette = false;
 	_colorMap = 0;
 	_width = width;
@@ -49,7 +47,7 @@ RPZADecoder::~RPZADecoder() {
 		delete _surface;
 	}
 
-	delete[] _ditherPalette;
+	delete[] _colorMap;
 }
 
 #define ADVANCE_BLOCK() \
@@ -269,6 +267,7 @@ static inline void decodeFrameTmpl(Common::SeekableReadStream &stream, PixelInt 
 		// Fill blocks with 4 colors
 		case 0xc0:
 			colorA = stream.readUint16BE();
+			// fall through
 		case 0x20:
 			colorB = stream.readUint16BE();
 
@@ -352,8 +351,8 @@ bool RPZADecoder::canDither(DitherType type) const {
 void RPZADecoder::setDither(DitherType type, const byte *palette) {
 	assert(canDither(type));
 
-	_ditherPalette = new byte[256 * 3];
-	memcpy(_ditherPalette, palette, 256 * 3);
+	_ditherPalette.resize(256, false);
+	_ditherPalette.set(palette, 0, 256);
 
 	_dirtyPalette = true;
 	_format = Graphics::PixelFormat::createFormatCLUT8();

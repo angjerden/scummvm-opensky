@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -27,7 +26,7 @@
 
 #define DATAALIGNMENT 4
 
-#define NUM_LANGS 5
+#define NUM_LANGS 6
 #define NUM_TEXT 501
 #define NUM_TEXTD 84
 #define NUM_TEXTB 15
@@ -41,7 +40,7 @@
 #define NUM_TEXTSYS 4
 #define NUM_TEXTHIS 5
 #define NUM_TEXTVERBS 6
-#define NUM_TEXTMISC 3
+#define NUM_TEXTMISC 7
 #define NUM_TEXTD1 11
 
 typedef unsigned char   uint8;

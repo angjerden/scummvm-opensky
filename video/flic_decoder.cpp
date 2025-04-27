@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -85,10 +84,30 @@ void FlicDecoder::copyDirtyRectsToBuffer(uint8 *dst, uint pitch) {
 		((FlicVideoTrack *)track)->copyDirtyRectsToBuffer(dst, pitch);
 }
 
-FlicDecoder::FlicVideoTrack::FlicVideoTrack(Common::SeekableReadStream *stream, uint16 frameCount, uint16 width, uint16 height) {
+FlicDecoder::FlicVideoTrack::FlicVideoTrack(Common::SeekableReadStream *stream, uint16 frameCount, uint16 width, uint16 height, bool skipHeader) : _palette(256) {
 	_fileStream = stream;
 	_frameCount = frameCount;
 
+	_surface = new Graphics::Surface();
+	_surface->create(width, height, Graphics::PixelFormat::createFormatCLUT8());
+	_dirtyPalette = false;
+
+	_curFrame = -1;
+	_nextFrameStartTime = 0;
+	_atRingFrame = false;
+
+	if (!skipHeader)
+		readHeader();
+}
+
+FlicDecoder::FlicVideoTrack::~FlicVideoTrack() {
+	delete _fileStream;
+
+	_surface->free();
+	delete _surface;
+}
+
+void FlicDecoder::FlicVideoTrack::readHeader() {
 	_fileStream->readUint16LE();	// flags
 	// Note: The normal delay is a 32-bit integer (dword), whereas the overridden delay is a 16-bit integer (word)
 	// the frame delay is the FLIC "speed", in milliseconds.
@@ -98,26 +117,11 @@ FlicDecoder::FlicVideoTrack::FlicVideoTrack(Common::SeekableReadStream *stream, 
 	_offsetFrame1 = _fileStream->readUint32LE();
 	_offsetFrame2 = _fileStream->readUint32LE();
 
-	_surface = new Graphics::Surface();
-	_surface->create(width, height, Graphics::PixelFormat::createFormatCLUT8());
-	_palette = new byte[3 * 256];
-	memset(_palette, 0, 3 * 256);
-	_dirtyPalette = false;
-
-	_curFrame = -1;
-	_nextFrameStartTime = 0;
-	_atRingFrame = false;
+	if (_offsetFrame1 == 0)
+		_offsetFrame1 = 0x80; //length of FLIC header
 
 	// Seek to the first frame
 	_fileStream->seek(_offsetFrame1);
-}
-
-FlicDecoder::FlicVideoTrack::~FlicVideoTrack() {
-	delete _fileStream;
-	delete[] _palette;
-
-	_surface->free();
-	delete _surface;
 }
 
 bool FlicDecoder::FlicVideoTrack::endOfTrack() const {
@@ -125,14 +129,13 @@ bool FlicDecoder::FlicVideoTrack::endOfTrack() const {
 }
 
 bool FlicDecoder::FlicVideoTrack::rewind() {
-	_curFrame = -1;
-	_nextFrameStartTime = 0;
-
-	if (endOfTrack() && _fileStream->pos() < _fileStream->size())
+	if (endOfTrack() && _fileStream->pos() < _fileStream->size() && _frameCount != 1)
 		_atRingFrame = true;
 	else
 		_fileStream->seek(_offsetFrame1);
 
+	_curFrame = -1;
+	_nextFrameStartTime = 0;
 	_frameDelay = _startFrameDelay;
 	return true;
 }
@@ -149,84 +152,33 @@ Graphics::PixelFormat FlicDecoder::FlicVideoTrack::getPixelFormat() const {
 	return _surface->format;
 }
 
-#define FLI_SETPAL 4
-#define FLI_SS2    7
-#define FLI_BRUN   15
-#define FLI_COPY   16
-#define PSTAMP     18
-#define FRAME_TYPE 0xF1FA
+#define FLI_SETPAL            4
+#define FLI_SS2               7
+#define FLI_BLACK             13
+#define FLI_BRUN              15
+#define FLI_COPY              16
+#define PSTAMP                18
+#define FRAME_TYPE            0xF1FA
+#define FLC_FILE_HEADER       0xAF12
+#define FLC_FILE_HEADER_SIZE  0x80
 
 const Graphics::Surface *FlicDecoder::FlicVideoTrack::decodeNextFrame() {
 	// Read chunk
-	uint32 frameSize = _fileStream->readUint32LE();
+	/*uint32 frameSize = */ _fileStream->readUint32LE();
 	uint16 frameType = _fileStream->readUint16LE();
-	uint16 chunkCount = 0;
 
 	switch (frameType) {
 	case FRAME_TYPE:
-		{
-			chunkCount = _fileStream->readUint16LE();
-			// Note: The overridden delay is a 16-bit integer (word), whereas the normal delay is a 32-bit integer (dword)
-			// the frame delay is the FLIC "speed", in milliseconds.
-			uint16 newFrameDelay = _fileStream->readUint16LE();	// "speed", in milliseconds
-			if (newFrameDelay > 0)
-				_frameDelay = newFrameDelay;
-
-			_fileStream->readUint16LE();	// reserved, always 0
-			uint16 newWidth = _fileStream->readUint16LE();
-			uint16 newHeight = _fileStream->readUint16LE();
-
-			if ((newWidth != 0) || (newHeight != 0)) {
-				if (newWidth == 0)
-					newWidth = _surface->w;
-				if (newHeight == 0)
-					newHeight = _surface->h;
-
-				_surface->free();
-				delete _surface;
-				_surface = new Graphics::Surface();
-				_surface->create(newWidth, newHeight, Graphics::PixelFormat::createFormatCLUT8());
-			}
-		}
+		handleFrame();
+		break;
+	case FLC_FILE_HEADER:
+		// Skip 0x80 bytes of file header subtracting 6 bytes of header
+		_fileStream->skip(FLC_FILE_HEADER_SIZE - 6);
 		break;
 	default:
 		error("FlicDecoder::decodeFrame(): unknown main chunk type (type = 0x%02X)", frameType);
 		break;
 	 }
-
-	// Read subchunks
-	if (frameType == FRAME_TYPE) {
-		for (uint32 i = 0; i < chunkCount; ++i) {
-			frameSize = _fileStream->readUint32LE();
-			frameType = _fileStream->readUint16LE();
-			uint8 *data = new uint8[frameSize - 6];
-			_fileStream->read(data, frameSize - 6);
-
-			switch (frameType) {
-			case FLI_SETPAL:
-				unpackPalette(data);
-				_dirtyPalette = true;
-				break;
-			case FLI_SS2:
-				decodeDeltaFLC(data);
-				break;
-			case FLI_BRUN:
-				decodeByteRun(data);
-				break;
-			case FLI_COPY:
-				copyFrame(data);
-				break;
-			case PSTAMP:
-				/* PSTAMP - skip for now */
-				break;
-			default:
-				error("FlicDecoder::decodeNextFrame(): unknown subchunk type (type = 0x%02X)", frameType);
-				break;
-			 }
-
-			delete[] data;
-		}
-	}
 
 	_curFrame++;
 	_nextFrameStartTime += _frameDelay;
@@ -240,11 +192,73 @@ const Graphics::Surface *FlicDecoder::FlicVideoTrack::decodeNextFrame() {
 	return _surface;
 }
 
+void FlicDecoder::FlicVideoTrack::handleFrame() {
+	uint16 chunkCount = _fileStream->readUint16LE();
+	// Note: The overridden delay is a 16-bit integer (word), whereas the normal delay is a 32-bit integer (dword)
+	// the frame delay is the FLIC "speed", in milliseconds.
+	uint16 newFrameDelay = _fileStream->readUint16LE();	// "speed", in milliseconds
+	if (newFrameDelay > 0)
+		_frameDelay = newFrameDelay;
+
+	_fileStream->readUint16LE();	// reserved, always 0
+	uint16 newWidth = _fileStream->readUint16LE();
+	uint16 newHeight = _fileStream->readUint16LE();
+
+	if ((newWidth != 0) || (newHeight != 0)) {
+		if (newWidth == 0)
+			newWidth = _surface->w;
+		if (newHeight == 0)
+			newHeight = _surface->h;
+
+		_surface->free();
+		delete _surface;
+		_surface = new Graphics::Surface();
+		_surface->create(newWidth, newHeight, Graphics::PixelFormat::createFormatCLUT8());
+	}
+
+	// Read subchunks
+	for (uint32 i = 0; i < chunkCount; ++i) {
+		uint32 frameSize = _fileStream->readUint32LE();
+		uint16 frameType = _fileStream->readUint16LE();
+		uint8 *data = new uint8[frameSize - 6];
+		_fileStream->read(data, frameSize - 6);
+
+		switch (frameType) {
+		case FLI_SETPAL:
+			unpackPalette(data);
+			_dirtyPalette = true;
+			break;
+		case FLI_SS2:
+			decodeDeltaFLC(data);
+			break;
+		case FLI_BLACK:
+			_surface->fillRect(Common::Rect(0, 0, getWidth(), getHeight()), 0);
+			_dirtyRects.clear();
+			_dirtyRects.push_back(Common::Rect(0, 0, getWidth(), getHeight()));
+			break;
+		case FLI_BRUN:
+			decodeByteRun(data);
+			break;
+		case FLI_COPY:
+			copyFrame(data);
+			break;
+		case PSTAMP:
+			/* PSTAMP - skip for now */
+			break;
+		default:
+			error("FlicDecoder::decodeNextFrame(): unknown subchunk type (type = 0x%02X)", frameType);
+			break;
+		}
+
+		delete[] data;
+	}
+}
+
 void FlicDecoder::FlicVideoTrack::copyDirtyRectsToBuffer(uint8 *dst, uint pitch) {
-	for (Common::List<Common::Rect>::const_iterator it = _dirtyRects.begin(); it != _dirtyRects.end(); ++it) {
-		for (int y = (*it).top; y < (*it).bottom; ++y) {
-			const int x = (*it).left;
-			memcpy(dst + y * pitch + x, (byte *)_surface->getBasePtr(x, y), (*it).right - x);
+	for (const auto &dirtyRect : _dirtyRects) {
+		for (int y = dirtyRect.top; y < dirtyRect.bottom; ++y) {
+			const int x = dirtyRect.left;
+			memcpy(dst + y * pitch + x, (byte *)_surface->getBasePtr(x, y), dirtyRect.right - x);
 		}
 	}
 
@@ -261,9 +275,9 @@ void FlicDecoder::FlicVideoTrack::copyFrame(uint8 *data) {
 
 void FlicDecoder::FlicVideoTrack::decodeByteRun(uint8 *data) {
 	byte *ptr = (byte *)_surface->getPixels();
-	while ((int32)(ptr - (byte *)_surface->getPixels()) < (getWidth() * getHeight())) {
-		int chunks = *data++;
-		while (chunks--) {
+	for (int i = 0; i < getHeight(); ++i) {
+		data++;
+		for (int j = 0; j < getWidth();) {
 			int count = (int8)*data++;
 			if (count > 0) {
 				memset(ptr, *data++, count);
@@ -273,6 +287,7 @@ void FlicDecoder::FlicVideoTrack::decodeByteRun(uint8 *data) {
 				data += count;
 			}
 			ptr += count;
+			j += count;
 		}
 	}
 
@@ -303,6 +318,7 @@ void FlicDecoder::FlicVideoTrack::decodeDeltaFLC(uint8 *data) {
 				packetCount = opcode;
 				break;
 			case OP_UNDEFINED:
+			default:
 				break;
 			case OP_LASTPIXEL:
 				*((byte *)_surface->getBasePtr(getWidth() - 1, currentLine)) = (opcode & 0xFF);
@@ -331,8 +347,6 @@ void FlicDecoder::FlicVideoTrack::decodeDeltaFLC(uint8 *data) {
 					WRITE_UINT16((byte *)_surface->getBasePtr(column + i * 2, currentLine), dataWord);
 				}
 				_dirtyRects.push_back(Common::Rect(column, currentLine, column + rleCount * 2, currentLine + 1));
-			} else { // End of cutscene ?
-				return;
 			}
 			column += rleCount * 2;
 		}
@@ -347,7 +361,10 @@ void FlicDecoder::FlicVideoTrack::unpackPalette(uint8 *data) {
 	if (0 == READ_LE_UINT16(data)) { //special case
 		data += 2;
 		for (int i = 0; i < 256; ++i) {
-			memcpy(_palette + i * 3, data + i * 3, 3);
+			byte r = data[i * 3];
+			byte g = data[i * 3 + 1];
+			byte b = data[i * 3 + 2];
+			_palette.set(i, r, g, b);
 		}
 	} else {
 		uint8 palPos = 0;
@@ -357,7 +374,10 @@ void FlicDecoder::FlicVideoTrack::unpackPalette(uint8 *data) {
 			uint8 change = *data++;
 
 			for (int i = 0; i < change; ++i) {
-				memcpy(_palette + (palPos + i) * 3, data + i * 3, 3);
+				byte r = data[i * 3];
+				byte g = data[i * 3 + 1];
+				byte b = data[i * 3 + 2];
+				_palette.set(palPos + i, r, g, b);
 			}
 
 			palPos += change;

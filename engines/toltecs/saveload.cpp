@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -41,7 +40,7 @@ namespace Toltecs {
 
 #define TOLTECS_SAVEGAME_VERSION 4
 
-ToltecsEngine::kReadSaveHeaderError ToltecsEngine::readSaveHeader(Common::SeekableReadStream *in, bool loadThumbnail, SaveHeader &header) {
+WARN_UNUSED_RESULT ToltecsEngine::kReadSaveHeaderError ToltecsEngine::readSaveHeader(Common::SeekableReadStream *in, SaveHeader &header, bool skipThumbnail) {
 
 	header.version = in->readUint32LE();
 	if (header.version > TOLTECS_SAVEGAME_VERSION)
@@ -52,10 +51,8 @@ ToltecsEngine::kReadSaveHeaderError ToltecsEngine::readSaveHeader(Common::Seekab
 	while (descriptionLen--)
 		header.description += (char)in->readByte();
 
-	if (loadThumbnail) {
-		header.thumbnail = Graphics::loadThumbnail(*in);
-	} else {
-		Graphics::skipThumbnail(*in);
+	if (!Graphics::loadThumbnail(*in, header.thumbnail, skipThumbnail)) {
+		return kRSHEIoError;
 	}
 
 	// Not used yet, reserved for future usage
@@ -147,7 +144,7 @@ void ToltecsEngine::loadgame(const char *filename) {
 
 	SaveHeader header;
 
-	kReadSaveHeaderError errorCode = readSaveHeader(in, false, header);
+	kReadSaveHeaderError errorCode = readSaveHeader(in, header);
 
 	if (errorCode != kRSHENoError) {
 		warning("Error loading savegame '%s'", filename);
@@ -207,7 +204,7 @@ Common::Error ToltecsEngine::loadGameState(int slot) {
 	return Common::kNoError;
 }
 
-Common::Error ToltecsEngine::saveGameState(int slot, const Common::String &description) {
+Common::Error ToltecsEngine::saveGameState(int slot, const Common::String &description, bool isAutosave) {
 	const char *fileName = getSavegameFilename(slot);
 	savegame(fileName, description.c_str());
 	return Common::kNoError;
@@ -223,7 +220,7 @@ Common::String ToltecsEngine::getSavegameFilename(const Common::String &target, 
 	assert(num >= 0 && num <= 999);
 
 	char extension[5];
-	sprintf(extension, "%03d", num);
+	Common::sprintf_s(extension, "%03d", num);
 
 	return target + "." + extension;
 }

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -35,7 +34,7 @@ namespace Scumm {
  */
 class AppleII_SoundFunction1_FreqUpDown : public AppleII_SoundFunction {
 public:
-	virtual void init(Player_AppleII *player, const byte *params) {
+	void init(Player_AppleII *player, const byte *params) override {
 		_player = player;
 		_delta = params[0];
 		_count = params[1];
@@ -44,7 +43,7 @@ public:
 		_decInterval = (params[4] >= 0x40);
 	}
 
-	virtual bool update() { // D085
+	bool update() override { // D085
 		if (_decInterval) {
 			do {
 				_update(_interval, _count);
@@ -71,11 +70,11 @@ private:
 	}
 
 protected:
-	int _delta;
-	int _count;
-	byte _interval; // must be unsigned byte ("interval < delta" possible)
-	int _limit;
-	bool _decInterval;
+	int _delta = 0;
+	int _count = 0;
+	byte _interval = 0; // must be unsigned byte ("interval < delta" possible)
+	int _limit = 0;
+	bool _decInterval = false;
 };
 
 /*
@@ -83,13 +82,13 @@ protected:
  */
 class AppleII_SoundFunction2_SymmetricWave : public AppleII_SoundFunction {
 public:
-	virtual void init(Player_AppleII *player, const byte *params) {
+	void init(Player_AppleII *player, const byte *params) override {
 		_player = player;
 		_params = params;
 		_pos = 1;
 	}
 
-	virtual bool update() { // D0D6
+	bool update() override { // D0D6
 		// while (pos = 1; pos < 256; ++pos)
 		if (_pos < 256) {
 			byte interval = _params[_pos];
@@ -123,8 +122,8 @@ private:
 	}
 
 protected:
-	const byte *_params;
-	int _pos;
+	const byte *_params = 0;
+	int _pos = 0;
 };
 
 /*
@@ -132,13 +131,13 @@ protected:
  */
 class AppleII_SoundFunction3_AsymmetricWave : public AppleII_SoundFunction {
 public:
-	virtual void init(Player_AppleII *player, const byte *params) {
+	void init(Player_AppleII *player, const byte *params) override {
 		_player = player;
 		_params = params;
 		_pos = 1;
 	}
 
-	virtual bool update() { // D132
+	bool update() override { // D132
 		// while (pos = 1; pos < 256; ++pos)
 		if (_pos < 256) {
 			byte interval = _params[_pos];
@@ -168,8 +167,8 @@ private:
 	}
 
 protected:
-	const byte *_params;
-	int _pos;
+	const byte *_params = nullptr;
+	int _pos = 0;
 };
 
 /*
@@ -177,7 +176,7 @@ protected:
  */
 class AppleII_SoundFunction4_Polyphone : public AppleII_SoundFunction {
 public:
-	virtual void init(Player_AppleII *player, const byte *params) {
+	void init(Player_AppleII *player, const byte *params) override {
 		_player = player;
 		_params = params;
 		_updateRemain1 = 80;
@@ -185,7 +184,7 @@ public:
 		_count = 0;
 	}
 
-	virtual bool update() { // D170
+	bool update() override { // D170
 		// while (_params[0] != 0x01)
 		if (_params[0] != 0x01) {
 			if (_count == 0) // prepare next loop
@@ -245,8 +244,10 @@ private:
 			_speakerShiftReg ^= _bitmask1;
 		}
 
-		if (_speakerShiftReg & 0x1)
-			_player->speakerToggle();
+		if (_count < 0xff80) { // add a note separation towards the end of the note, otherwise, play the note
+			if (_speakerShiftReg & 0x1)
+				_player->speakerToggle();
+		}
 		_speakerShiftReg >>= 1;
 		_player->generateSamples(42); /* actually 42.5 */
 
@@ -255,17 +256,17 @@ private:
 	}
 
 protected:
-	const byte *_params;
+	const byte *_params = nullptr;
 
-	byte _updateRemain1;
-	byte _updateRemain2;
+	byte _updateRemain1 = 0;
+	byte _updateRemain2 = 0;
 
-	uint16 _count;
-	byte _bitmask1;
-	byte _bitmask2;
-	byte _updateInterval1;
-	byte _updateInterval2;
-	byte _speakerShiftReg;
+	uint16 _count = 0;
+	byte _bitmask1 = 0;
+	byte _bitmask2 = 0;
+	byte _updateInterval1 = 0;
+	byte _updateInterval2 = 0;
+	byte _speakerShiftReg = 0;
 };
 
 /*
@@ -273,14 +274,14 @@ protected:
  */
 class AppleII_SoundFunction5_Noise : public AppleII_SoundFunction {
 public:
-	virtual void init(Player_AppleII *player, const byte *params) {
+	void init(Player_AppleII *player, const byte *params) override {
 		_player = player;
 		_index = 0;
 		_param0 = params[0];
 		assert(_param0 > 0);
 	}
 
-	virtual bool update() { // D222
+	bool update() override { // D222
 		const byte noiseMask[] = {
 			0x3F, 0x3F, 0x7F, 0x7F, 0x7F, 0x7F, 0xFF, 0xFF, 0xFF, 0x0F, 0x0F
 		};
@@ -323,8 +324,8 @@ private:
 	}
 
 protected:
-	int _index;
-	int _param0;
+	int _index = 0;
+	int _param0 = 0;
 
 private:
 	static const byte _noiseTable[256];
@@ -355,7 +356,7 @@ const byte AppleII_SoundFunction5_Noise::_noiseTable[256] = {
  ************************************/
 
 Player_AppleII::Player_AppleII(ScummEngine *scumm, Audio::Mixer *mixer)
-	: _mixer(mixer), _vm(scumm), _soundFunc(0) {
+	: _mixer(mixer), _vm(scumm), _soundFunc(nullptr) {
 	resetState();
 	setSampleRate(_mixer->getOutputRate());
 	_mixer->playStream(Audio::Mixer::kPlainSoundType, &_soundHandle, this, -1, Audio::Mixer::kMaxChannelVolume, 0, DisposeAfterUse::NO, true);
@@ -370,10 +371,10 @@ void Player_AppleII::resetState() {
 	_soundNr = 0;
 	_type = 0;
 	_loop = 0;
-	_params = NULL;
+	_params = nullptr;
 	_speakerState = 0;
 	delete _soundFunc;
-	_soundFunc = 0;
+	_soundFunc = nullptr;
 	_sampleConverter.reset();
 }
 
@@ -409,6 +410,8 @@ void Player_AppleII::startSound(int nr) {
 	case 5:
 		_soundFunc = new AppleII_SoundFunction5_Noise();
 		break;
+	default:
+		break;
 	}
 	_soundFunc->init(this, _params);
 
@@ -426,7 +429,7 @@ bool Player_AppleII::updateSound() {
 		--_loop;
 		if (_loop <= 0) {
 			delete _soundFunc;
-			_soundFunc = 0;
+			_soundFunc = nullptr;
 		} else {
 			// reset function state on each loop
 			_soundFunc->init(this, _params);

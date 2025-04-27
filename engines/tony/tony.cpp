@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -26,7 +25,8 @@
 #include "common/debug-channels.h"
 #include "common/events.h"
 #include "common/file.h"
-#include "common/installshield_cab.h"
+#include "common/compression/installshield_cab.h"
+#include "common/translation.h"
 #include "tony/tony.h"
 #include "tony/custom.h"
 #include "tony/debugger.h"
@@ -43,14 +43,10 @@ TonyEngine::TonyEngine(OSystem *syst, const TonyGameDescription *gameDesc) : Eng
 	_loadSlotNumber = -1;
 
 	// Set the up the debugger
-	_debugger = new Debugger();
-	DebugMan.addDebugChannel(kTonyDebugAnimations, "animations", "Animations debugging");
-	DebugMan.addDebugChannel(kTonyDebugActions, "actions", "Actions debugging");
-	DebugMan.addDebugChannel(kTonyDebugSound, "sound", "Sound debugging");
-	DebugMan.addDebugChannel(kTonyDebugMusic, "music", "Music debugging");
+	setDebugger(new Debugger());
 
 	// Add folders to the search directory list
-	const Common::FSNode gameDataDir(ConfMan.get("path"));
+	const Common::FSNode gameDataDir(ConfMan.getPath("path"));
 	SearchMan.addSubDirectoryMatching(gameDataDir, "Voices");
 	SearchMan.addSubDirectoryMatching(gameDataDir, "Roasted");
 	SearchMan.addSubDirectoryMatching(gameDataDir, "Music");
@@ -82,6 +78,9 @@ TonyEngine::TonyEngine(OSystem *syst, const TonyGameDescription *gameDesc) : Eng
 	_bQuitNow = false;
 	_bTimeFreezed = false;
 	_nTimeFreezed = 0;
+	_vdbCodec = FPCODEC_UNKNOWN;
+
+	memset(_funcList, 0, sizeof(_funcList));
 }
 
 TonyEngine::~TonyEngine() {
@@ -91,8 +90,6 @@ TonyEngine::~TonyEngine() {
 	// Reset the coroutine scheduler
 	CoroScheduler.reset();
 	CoroScheduler.setResourceCallback(NULL);
-
-	delete _debugger;
 }
 
 /**
@@ -118,13 +115,9 @@ Common::ErrorCode TonyEngine::init() {
 		return Common::kUnknownError;
 
 	if (isCompressed()) {
-		Common::SeekableReadStream *stream = SearchMan.createReadStreamForMember("data1.cab");
-		if (!stream)
-			error("Failed to open data1.cab");
-
-		Common::Archive *cabinet = Common::makeInstallShieldArchive(stream);
+		Common::Archive *cabinet = Common::makeInstallShieldArchive("data");
 		if (!cabinet)
-			error("Failed to parse data1.cab");
+			error("Failed to open the InstallShield cabinet");
 
 		SearchMan.add("data1.cab", cabinet);
 	}
@@ -184,15 +177,17 @@ Common::ErrorCode TonyEngine::init() {
 }
 
 bool TonyEngine::loadTonyDat() {
-	Common::String msg;
+	Common::U32String errorMessage;
 	Common::File in;
+	Common::String filename = "tony.dat";
 
-	in.open("tony.dat");
+	in.open(filename.c_str());
 
 	if (!in.isOpen()) {
-		msg = "You're missing the 'tony.dat' file. Get it from the ScummVM website";
-		GUIErrorMessage(msg);
-		warning("%s", msg.c_str());
+		const char *msg = _s("Unable to locate the '%s' engine data file.");
+		errorMessage = Common::U32String::format(_(msg), filename.c_str());
+		GUIErrorMessage(errorMessage);
+		warning(msg, filename.c_str());
 		return false;
 	}
 
@@ -202,9 +197,10 @@ bool TonyEngine::loadTonyDat() {
 	buf[4] = '\0';
 
 	if (strcmp(buf, "TONY")) {
-		msg = "File 'tony.dat' is corrupt. Get it from the ScummVM website";
-		GUIErrorMessage(msg);
-		warning("%s", msg.c_str());
+		const char *msg = _s("The '%s' engine data file is corrupt.");
+		errorMessage = Common::U32String::format(_(msg), filename.c_str());
+		GUIErrorMessage(errorMessage);
+		warning(msg, filename.c_str());
 		return false;
 	}
 
@@ -212,9 +208,10 @@ bool TonyEngine::loadTonyDat() {
 	int minVer = in.readByte();
 
 	if ((majVer != TONY_DAT_VER_MAJ) || (minVer != TONY_DAT_VER_MIN)) {
-		msg = Common::String::format("File 'tony.dat' is wrong version. Expected %d.%d but got %d.%d. Get it from the ScummVM website", TONY_DAT_VER_MAJ, TONY_DAT_VER_MIN, majVer, minVer);
-		GUIErrorMessage(msg);
-		warning("%s", msg.c_str());
+		const char *msg = _s("Incorrect version of the '%s' engine data file found. Expected %d.%d but got %d.%d.");
+		errorMessage = Common::U32String::format(_(msg), filename.c_str(), TONY_DAT_VER_MAJ, TONY_DAT_VER_MIN, majVer, minVer);
+		GUIErrorMessage(errorMessage);
+		warning(msg, filename.c_str(), TONY_DAT_VER_MAJ, TONY_DAT_VER_MIN, majVer, minVer);
 
 		return false;
 	}
@@ -231,7 +228,7 @@ bool TonyEngine::loadTonyDat() {
 	case Common::RU_RUS:
 		expectedLangVariant = 2;
 		break;
-	case Common::CZ_CZE:
+	case Common::CS_CZE:
 		expectedLangVariant = 3;
 		break;
 	case Common::FR_FRA:
@@ -248,9 +245,10 @@ bool TonyEngine::loadTonyDat() {
 
 	int numVariant = in.readUint16BE();
 	if (expectedLangVariant > numVariant - 1) {
-		msg = Common::String::format("Font variant not present in 'tony.dat'. Get it from the ScummVM website");
-		GUIErrorMessage(msg);
-		warning("%s", msg.c_str());
+		const char *msg = _s("Font variant not present in '%s' engine data file.");
+		errorMessage = Common::U32String::format(_(msg), filename.c_str());
+		GUIErrorMessage(errorMessage);
+		warning(msg, filename.c_str());
 
 		return false;
 	}
@@ -274,13 +272,6 @@ void TonyEngine::initCustomFunctionMap() {
 	INIT_CUSTOM_FUNCTION(_funcList, _funcListStrings);
 }
 
-/**
- * Display an error message
- */
-void TonyEngine::GUIError(const Common::String &msg) {
-	GUIErrorMessage(msg);
-}
-
 void TonyEngine::playMusic(int nChannel, const Common::String &fname, int nFX, bool bLoop, int nSync) {
 	if (nChannel < 4) {
 		if (GLOBALS._flipflop)
@@ -296,6 +287,7 @@ void TonyEngine::playMusic(int nChannel, const Common::String &fname, int nFX, b
 		break;
 
 	case 22:
+	default:
 		break;
 	}
 
@@ -323,10 +315,10 @@ void TonyEngine::playMusic(int nChannel, const Common::String &fname, int nFX, b
 		_stream[GLOBALS._nextChannel]->unloadFile();
 
 		if (!getIsDemo()) {
-			if (!_stream[GLOBALS._nextChannel]->loadFile(fname, FPCODEC_ADPCM, nSync))
+			if (!_stream[GLOBALS._nextChannel]->loadFile(fname, nSync))
 				error("failed to open music file '%s'", fname.c_str());
 		} else {
-			_stream[GLOBALS._nextChannel]->loadFile(fname, FPCODEC_ADPCM, nSync);
+			_stream[GLOBALS._nextChannel]->loadFile(fname, nSync);
 		}
 
 		_stream[GLOBALS._nextChannel]->setLoop(bLoop);
@@ -335,10 +327,10 @@ void TonyEngine::playMusic(int nChannel, const Common::String &fname, int nFX, b
 		GLOBALS._flipflop = 1 - GLOBALS._flipflop;
 	} else {
 		if (!getIsDemo()) {
-			if (!_stream[nChannel]->loadFile(fname, FPCODEC_ADPCM, nSync))
+			if (!_stream[nChannel]->loadFile(fname, nSync))
 				error("failed to open music file '%s'", fname.c_str());
 		} else {
-			_stream[nChannel]->loadFile(fname, FPCODEC_ADPCM, nSync);
+			_stream[nChannel]->loadFile(fname, nSync);
 		}
 
 		_stream[nChannel]->setLoop(bLoop);
@@ -356,10 +348,10 @@ void TonyEngine::doNextMusic(CORO_PARAM, const void *param) {
 	CORO_BEGIN_CODE(_ctx);
 
 	if (!g_vm->getIsDemo()) {
-		if (!streams[GLOBALS._nextChannel]->loadFile(GLOBALS._nextMusic, FPCODEC_ADPCM, GLOBALS._nextSync))
+		if (!streams[GLOBALS._nextChannel]->loadFile(GLOBALS._nextMusic, GLOBALS._nextSync))
 			error("failed to open next music file '%s'", GLOBALS._nextMusic.c_str());
 	} else {
-		streams[GLOBALS._nextChannel]->loadFile(GLOBALS._nextMusic, FPCODEC_ADPCM, GLOBALS._nextSync);
+		streams[GLOBALS._nextChannel]->loadFile(GLOBALS._nextMusic, GLOBALS._nextSync);
 	}
 
 	streams[GLOBALS._nextChannel]->setLoop(GLOBALS._nextLoop);
@@ -385,6 +377,9 @@ void TonyEngine::playSFX(int nChannel, int nFX) {
 
 	case 1:
 		_sfx[nChannel]->setLoop(true);
+		break;
+
+	default:
 		break;
 	}
 
@@ -414,6 +409,9 @@ void TonyEngine::playUtilSFX(int nChannel, int nFX) {
 	case 1:
 		_utilSfx[nChannel]->setLoop(true);
 		break;
+
+	default:
+		break;
 	}
 
 	_utilSfx[nChannel]->setVolume(52);
@@ -433,7 +431,7 @@ void TonyEngine::preloadSFX(int nChannel, const char *fn) {
 
 	_theSound.createSfx(&_sfx[nChannel]);
 
-	_sfx[nChannel]->loadFile(fn, FPCODEC_ADPCM);
+	_sfx[nChannel]->loadFile(fn);
 }
 
 FPSfx *TonyEngine::createSFX(Common::SeekableReadStream *stream) {
@@ -453,7 +451,7 @@ void TonyEngine::preloadUtilSFX(int nChannel, const char *fn) {
 
 	_theSound.createSfx(&_utilSfx[nChannel]);
 
-	_utilSfx[nChannel]->loadFile(fn, FPCODEC_ADPCM);
+	_utilSfx[nChannel]->loadFile(fn);
 	_utilSfx[nChannel]->setVolume(63);
 }
 
@@ -538,6 +536,10 @@ Common::String TonyEngine::getSaveStateFileName(int n) {
 	return Common::String::format("tony.%03d", n);
 }
 
+Common::String TonyEngine::getSaveStateName(int slot) const {
+	return getSaveStateFileName(slot);
+}
+
 void TonyEngine::autoSave(CORO_PARAM) {
 	CORO_BEGIN_CONTEXT;
 	Common::String buf;
@@ -573,24 +575,32 @@ void TonyEngine::loadState(CORO_PARAM, int n) {
 }
 
 bool TonyEngine::openVoiceDatabase() {
-	char id[4];
-	uint32 numfiles;
-
 	// Open the voices database
 	if (!_vdbFP.open("voices.vdb"))
-		return false;
+		if (!_vdbFP.open("voices.mdb"))
+			if (!_vdbFP.open("voices.odb"))
+				if (!_vdbFP.open("voices.fdb"))
+					return false;
 
 	_vdbFP.seek(-8, SEEK_END);
-	numfiles = _vdbFP.readUint32LE();
-	_vdbFP.read(id, 4);
+	uint32 numfiles = _vdbFP.readUint32LE();
+	int32 id = _vdbFP.readUint32BE();
 
-	if (id[0] != 'V' || id[1] != 'D' || id[2] != 'B' || id[3] != '1') {
+	if (id == MKTAG('V', 'D', 'B', '1'))
+		_vdbCodec = FPCODEC_ADPCM;
+	else if (id == MKTAG('M', 'D', 'B', '1'))
+		_vdbCodec = FPCODEC_MP3;
+	else if (id == MKTAG('O', 'D', 'B', '1'))
+		_vdbCodec = FPCODEC_OGG;
+	else if (id == MKTAG('F', 'D', 'B', '1'))
+		_vdbCodec = FPCODEC_FLAC;
+	else {
 		_vdbFP.close();
 		return false;
 	}
 
 	// Read in the index
-	_vdbFP.seek(-8 - (numfiles * VOICE_HEADER_SIZE), SEEK_END);
+	_vdbFP.seek(-8 - (int64)(numfiles * VOICE_HEADER_SIZE), SEEK_END);
 
 	for (uint32 i = 0; i < numfiles; ++i) {
 		VoiceHeader vh;
@@ -677,9 +687,6 @@ void TonyEngine::playProcess(CORO_PARAM, const void *param) {
 
 		// Paint the frame onto the screen
 		g_vm->_window.repaint();
-
-		// Signal the ScummVM debugger
-		g_vm->_debugger->onFrame();
 	}
 
 	CORO_END_CODE;
@@ -729,11 +736,11 @@ uint32 TonyEngine::getTime() {
 	return g_system->getMillis();
 }
 
-bool TonyEngine::canLoadGameStateCurrently() {
+bool TonyEngine::canLoadGameStateCurrently(Common::U32String *msg) {
 	return GLOBALS._gfxEngine != NULL && GLOBALS._gfxEngine->canLoadSave();
 }
 
-bool TonyEngine::canSaveGameStateCurrently() {
+bool TonyEngine::canSaveGameStateCurrently(Common::U32String *msg) {
 	return GLOBALS._gfxEngine != NULL && GLOBALS._gfxEngine->canLoadSave();
 }
 
@@ -742,7 +749,7 @@ Common::Error TonyEngine::loadGameState(int slot) {
 	return Common::kNoError;
 }
 
-Common::Error TonyEngine::saveGameState(int slot, const Common::String &desc) {
+Common::Error TonyEngine::saveGameState(int slot, const Common::String &desc, bool isAutosave) {
 	if (!GLOBALS._gfxEngine)
 		return Common::kUnknownError;
 

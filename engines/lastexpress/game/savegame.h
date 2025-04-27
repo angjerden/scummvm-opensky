@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -77,10 +76,15 @@
 #include "common/serializer.h"
 #include "common/memstream.h"
 
+#include "engines/savestate.h"
+
 namespace LastExpress {
 
+// our own hack until compression code will be confirmed stable
+#define DISABLE_COMPRESSION 1
+
 // Savegame signatures
-#define SAVEGAME_SIGNATURE       0x12001200    // 301994496
+#define SAVEGAME_SIGNATURE       (0x12001200 ^ DISABLE_COMPRESSION)    // 301994496
 #define SAVEGAME_ENTRY_SIGNATURE 0xE660E660    // 3865110112
 
 #define WRAP_SYNC_FUNCTION(instance, className, method) \
@@ -102,12 +106,12 @@ public:
 		memset(_buffer, 0, 256);
 	}
 
-	int32 pos() const { return MemoryWriteStreamDynamic::pos(); }
-	int32 size() const { return MemoryWriteStreamDynamic::size(); }
-	bool seek(int32 offset, int whence = SEEK_SET) { return MemoryWriteStreamDynamic::seek(offset, whence); }
-	bool eos() const { return _eos; }
-	uint32 read(void *dataPtr, uint32 dataSize);
-	uint32 write(const void *dataPtr, uint32 dataSize);
+	int64 pos() const override { return MemoryWriteStreamDynamic::pos(); }
+	int64 size() const override { return MemoryWriteStreamDynamic::size(); }
+	bool seek(int64 offset, int whence = SEEK_SET) override { return MemoryWriteStreamDynamic::seek(offset, whence); }
+	bool eos() const override { return _eos; }
+	uint32 read(void *dataPtr, uint32 dataSize) override;
+	uint32 write(const void *dataPtr, uint32 dataSize) override;
 
 	uint32 process();
 
@@ -144,13 +148,15 @@ private:
 
 class SaveLoad {
 public:
+	static const int kMaximumSaveSlots = 6; // blue, red, green, purple, teal, gold
+
 	SaveLoad(LastExpressEngine *engine);
 	~SaveLoad();
 
 	// Init
-	void create(GameId id);
+	void create(const Common::String &target, GameId id);
 	void clear(bool clearStream = false);
-	uint32 init(GameId id, bool resetHeaders);
+	uint32 init(const Common::String &target, GameId id, bool resetHeaders);
 
 	// Save & Load
 	void loadLastGame();
@@ -160,9 +166,17 @@ public:
 	void loadVolumeBrightness();
 	void saveVolumeBrightness();
 
+	static SaveStateList list(const MetaEngine *metaEngine, const Common::String &target);
+	static bool remove(const Common::String &target, GameId slot);
+
+	// Opening save files
+	static Common::String getFilename(const Common::String &target, GameId slot);
+	static Common::InSaveFile *openForLoading(const Common::String &target, GameId slot);
+	static Common::OutSaveFile *openForSaving(const Common::String &target, GameId slot);
+
 	// Getting information
-	static bool isSavegamePresent(GameId id);
-	static bool isSavegameValid(GameId id);
+	static bool isSavegamePresent(const Common::String &target, GameId id);
+	static bool isSavegameValid(const Common::String &target, GameId id);
 
 	bool isGameFinished(uint32 menuIndex, uint32 savegameIndex);
 
@@ -193,10 +207,10 @@ private:
 			keepIndex = 0;
 			brightness = 3;
 			volume = 7;
-			field_1C = 9;
+			field_1C = 9; // Note: In demo's original save "BLUE.EGG" this value is 0x19
 		}
 
-		void saveLoadWithSerializer(Common::Serializer &s) {
+		void saveLoadWithSerializer(Common::Serializer &s) override {
 			s.syncAsUint32LE(signature);
 			s.syncAsUint32LE(count);
 			s.syncAsUint32LE(offset);
@@ -258,7 +272,7 @@ private:
 			field_1C = 0;
 		}
 
-		void saveLoadWithSerializer(Common::Serializer &s) {
+		void saveLoadWithSerializer(Common::Serializer &s) override {
 			s.syncAsUint32LE(signature);
 			s.syncAsUint32LE(type);
 			s.syncAsUint32LE(time);
@@ -279,7 +293,7 @@ private:
 			if (time < kTimeStartGame || time > kTimeCityConstantinople)
 				return false;
 
-			if (offset <= 0 || offset & 15)
+			if (offset <= 0 || offset & 0xF)
 				return false;
 
 			/* No check for < 0, as it cannot happen normaly */
@@ -306,15 +320,10 @@ private:
 
 	SavegameEntryHeader *getEntry(uint32 index);
 
-	// Opening save files
-	static Common::String getFilename(GameId id);
-	static Common::InSaveFile  *openForLoading(GameId id);
-	static Common::OutSaveFile *openForSaving(GameId id);
-
 	// Savegame stream
 	void initStream();
-	void loadStream(GameId id);
-	void flushStream(GameId id);
+	void loadStream(const Common::String &target, GameId id);
+	void flushStream(const Common::String &target, GameId id);
 
 	// Misc
 	EntityIndex _entity;

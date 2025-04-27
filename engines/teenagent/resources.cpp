@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,16 +15,16 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "teenagent/resources.h"
 #include "teenagent/teenagent.h"
+#include "common/debug.h"
 #include "common/textconsole.h"
 #include "common/translation.h"
-#include "common/zlib.h"
+#include "common/compression/deflate.h"
 
 namespace TeenAgent {
 
@@ -90,10 +90,13 @@ void Resources::precomputeDialogOffsets() {
 
 bool Resources::loadArchives(const ADGameDescription *gd) {
 	Common::File *dat_file = new Common::File();
-	if (!dat_file->open("teenagent.dat")) {
+	Common::String filename = "teenagent.dat";
+	if (!dat_file->open(filename.c_str())) {
 		delete dat_file;
-		Common::String errorMessage = _("You're missing the 'teenagent.dat' file. Get it from the ScummVM website");
-		warning("%s", errorMessage.c_str());
+
+		const char *msg = _s("Unable to locate the '%s' engine data file.");
+		Common::U32String errorMessage = Common::U32String::format(_(msg), filename.c_str());
+		warning(msg, filename.c_str());
 		GUIErrorMessage(errorMessage);
 		return false;
 	}
@@ -102,23 +105,6 @@ bool Resources::loadArchives(const ADGameDescription *gd) {
 	// zlib here is no longer needed, and it's maintained only for backwards
 	// compatibility.
 	Common::SeekableReadStream *dat = Common::wrapCompressedReadStream(dat_file);
-
-#if !defined(USE_ZLIB)
-	uint16 header = dat->readUint16BE();
-	bool isCompressed = (header == 0x1F8B ||
-				     ((header & 0x0F00) == 0x0800 &&
-				      header % 31 == 0));
-	dat->seek(-2, SEEK_CUR);
-
-	if (isCompressed) {
-		// teenagent.dat is compressed, but zlib hasn't been compiled in
-		delete dat;
-		Common::String errorMessage = _("The teenagent.dat file is compressed and zlib hasn't been included in this executable. Please decompress it");
-		warning("%s", errorMessage.c_str());
-		GUIErrorMessage(errorMessage);
-		return false;
-	}
-#endif
 
 	dat->skip(CSEG_SIZE);
 	dseg.read(dat, DSEG_SIZE);
@@ -174,7 +160,6 @@ Common::SeekableReadStream *Resources::loadLan(uint32 id) const {
 
 Common::SeekableReadStream *Resources::loadLan000(uint32 id) const {
 	switch (id) {
-
 	case 81:
 		if (dseg.get_byte(dsAddr_dogHasBoneFlag))
 			return lan500.getStream(160);
@@ -219,6 +204,9 @@ Common::SeekableReadStream *Resources::loadLan000(uint32 id) const {
 		if (dseg.get_byte(dsAddr_johnNotyOutsideMansionDoorFlag) == 1) {
 			return lan500.getStream(400);
 		}
+		break;
+
+	default:
 		break;
 	}
 	return lan000.getStream(id);

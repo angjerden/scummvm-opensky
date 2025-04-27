@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,14 +15,14 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "common/config-manager.h"
 #include "common/translation.h"
 #include "gui/saveload.h"
+#include "tsage/dialogs.h"
 #include "tsage/scenes.h"
 #include "tsage/globals.h"
 #include "tsage/ringworld/ringworld_logic.h"
@@ -139,7 +139,7 @@ void SceneManager::fadeInIfNecessary() {
 				percent = 100;
 
 			g_globals->_scenePalette.fade((const byte *)&adjustData, false, percent);
-			GLOBALS._screenSurface.updateScreen();
+			GLOBALS._screen.update();
 			g_system->delayMillis(10);
 		}
 
@@ -175,7 +175,7 @@ void SceneManager::changeScene(int newSceneNumber) {
 	}
 
 	// Blank out the screen
-	g_globals->_screenSurface.fillRect(g_globals->_screenSurface.getBounds(), 0);
+	g_globals->_screen.fillRect(g_globals->_screen.getBounds(), 0);
 
 	// If there are any fading sounds, wait until fading is complete
 	while (g_globals->_soundManager.isFading()) {
@@ -428,7 +428,7 @@ void Scene::loadBackground(int xAmount, int yAmount) {
 
 	if ((g_globals->_sceneOffset.x != g_globals->_prevSceneOffset.x) ||
 		(g_globals->_sceneOffset.y != g_globals->_prevSceneOffset.y)) {
-		// Change has happend, so refresh background
+		// Change has happened, so refresh background
 		g_globals->_prevSceneOffset = g_globals->_sceneOffset;
 		refreshBackground(xAmount, yAmount);
 	}
@@ -463,8 +463,8 @@ void Scene::refreshBackground(int xAmount, int yAmount) {
 				// Check if the section is already loaded
 				if ((_enabledSections[xp * 16 + yp] == 0xffff) || ((xAmount == 0) && (yAmount == 0))) {
 					// Chunk isn't loaded, so load it in
-					Graphics::Surface s = _backSurface.lockSurface();
-					GfxSurface::loadScreenSection(s, xp - xHalfOffset, yp - yHalfOffset, xp, yp);
+					Graphics::ManagedSurface *s = &_backSurface.lockSurface();
+					GfxSurface::loadScreenSection(*s, xp - xHalfOffset, yp - yHalfOffset, xp, yp);
 					_backSurface.unlockSurface();
 					changedFlag = true;
 				} else {
@@ -565,13 +565,32 @@ void Scene::setZoomPercents(int yStart, int minPercent, int yEnd, int maxPercent
 /*--------------------------------------------------------------------------*/
 
 void Game::restartGame() {
-	if (MessageDialog::show(RESTART_MSG, CANCEL_BTN_STRING, RESTART_BTN_STRING) == 1)
+	int rc;
+	if (g_vm->getLanguage() == Common::ES_ESP) {
+		if (g_vm->getGameID() == GType_Ringworld) {
+			rc = MessageDialog::show(Ringworld::ESP_RESTART_MSG, ESP_CANCEL_BTN_STRING, Ringworld::ESP_RESTART_BTN_2_STRING);
+		}
+		else {
+			rc = MessageDialog::show(BlueForce::ESP_RESTART_MSG, ESP_CANCEL_BTN_STRING, BlueForce::ESP_RESTART_BTN_2_STRING);
+		}
+	} else if (g_vm->getLanguage() == Common::RU_RUS) {
+		rc = MessageDialog::show(TsAGE::Ringworld::RUS_RESTART_MSG, RUS_CANCEL_BTN_STRING, TsAGE::Ringworld::RUS_RESTART_BTN_STRING);
+	} else {
+		rc = MessageDialog::show(RESTART_MSG, CANCEL_BTN_STRING, RESTART_BTN_STRING);
+	}
+	if (rc == 1)
 		g_globals->_game->restart();
 }
 
 void Game::saveGame() {
 	if (!g_vm->canSaveGameStateCurrently())
-		MessageDialog::show(SAVING_NOT_ALLOWED_MSG, OK_BTN_STRING);
+		if (g_vm->getLanguage() == Common::ES_ESP) {
+			MessageDialog::show(ESP_SAVING_NOT_ALLOWED_MSG, ESP_OK_BTN_STRING);
+		} else if (g_vm->getLanguage() == Common::RU_RUS) {
+			MessageDialog::show(RUS_SAVING_NOT_ALLOWED_MSG, RUS_OK_BTN_STRING);
+		} else {
+			MessageDialog::show(SAVING_NOT_ALLOWED_MSG, OK_BTN_STRING);
+		}
 	else {
 		// Show the save dialog
 		handleSaveLoad(true, g_globals->_sceneHandler->_saveGameSlot, g_globals->_sceneHandler->_saveName);
@@ -580,7 +599,13 @@ void Game::saveGame() {
 
 void Game::restoreGame() {
 	if (!g_vm->canLoadGameStateCurrently())
-		MessageDialog::show(RESTORING_NOT_ALLOWED_MSG, OK_BTN_STRING);
+		if (g_vm->getLanguage() == Common::ES_ESP) {
+			MessageDialog::show(ESP_RESTORING_NOT_ALLOWED_MSG, ESP_OK_BTN_STRING);
+		} else if (g_vm->getLanguage() == Common::RU_RUS) {
+			MessageDialog::show(RUS_RESTORING_NOT_ALLOWED_MSG, RUS_OK_BTN_STRING);
+		} else {
+			MessageDialog::show(RESTORING_NOT_ALLOWED_MSG, OK_BTN_STRING);
+		}
 	else {
 		// Show the load dialog
 		handleSaveLoad(false, g_globals->_sceneHandler->_loadGameSlot, g_globals->_sceneHandler->_saveName);
@@ -588,7 +613,20 @@ void Game::restoreGame() {
 }
 
 void Game::quitGame() {
-	if (MessageDialog::show(QUIT_CONFIRM_MSG, CANCEL_BTN_STRING, QUIT_BTN_STRING) == 1)
+	int rc;
+	if (g_vm->getLanguage() == Common::ES_ESP) {
+		if (g_vm->getGameID() == GType_Ringworld) {
+			rc = MessageDialog::show(Ringworld::ESP_QUIT_CONFIRM_2_MSG, ESP_CANCEL_BTN_STRING, Ringworld::ESP_QUIT_BTN_STRING);
+		}
+		else {
+			rc = MessageDialog::show(BlueForce::ESP_QUIT_CONFIRM_MSG, ESP_CANCEL_BTN_STRING, BlueForce::ESP_QUIT_BTN_STRING);
+		}
+	} else if (g_vm->getLanguage() == Common::RU_RUS) {
+		rc = MessageDialog::show(TsAGE::Ringworld::RUS_QUIT_CONFIRM_MSG, RUS_CANCEL_BTN_STRING, TsAGE::Ringworld::RUS_QUIT_BTN_STRING);
+	} else {
+		rc = MessageDialog::show(QUIT_CONFIRM_MSG, CANCEL_BTN_STRING, QUIT_BTN_STRING);
+	}
+	if (rc == 1)
 		g_vm->quitGame();
 }
 

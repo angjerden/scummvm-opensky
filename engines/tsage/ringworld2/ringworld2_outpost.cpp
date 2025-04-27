@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,12 +15,12 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "graphics/cursorman.h"
+#include "tsage/dialogs.h"
 #include "tsage/tsage.h"
 #include "tsage/staticres.h"
 #include "tsage/ringworld2/ringworld2_outpost.h"
@@ -936,7 +936,7 @@ void Scene1337::Action1::signal() {
 
 		scene->_stockPile.remove();
 		}
-	// No break on purpose
+		// fall through
 	case 0:
 		R2_GLOBALS._sceneObjects->draw();
 		signal();
@@ -1770,7 +1770,7 @@ void Scene1337::Action10::signal() {
 
 					// Wait for a mouse or keypress
 					Event event;
-					while (!g_globals->_events.getEvent(event, EVENT_BUTTON_DOWN | EVENT_KEYPRESS) && !g_vm->shouldQuit()) {
+					while (!g_globals->_events.getEvent(event, EVENT_CUSTOM_ACTIONSTART | EVENT_BUTTON_DOWN | EVENT_KEYPRESS) && !g_vm->shouldQuit()) {
 						g_globals->_scenePalette.signalListeners();
 						R2_GLOBALS._sceneObjects->draw();
 						g_globals->_events.delay(g_globals->_sceneHandler->_delayTicks);
@@ -1967,7 +1967,7 @@ void Scene1337::Action11::signal() {
 					}
 
 					Event event;
-					while (!g_globals->_events.getEvent(event, EVENT_BUTTON_DOWN | EVENT_KEYPRESS) && !g_vm->shouldQuit()) {
+					while (!g_globals->_events.getEvent(event, EVENT_CUSTOM_ACTIONSTART | EVENT_BUTTON_DOWN | EVENT_KEYPRESS) && !g_vm->shouldQuit()) {
 						g_globals->_scenePalette.signalListeners();
 						R2_GLOBALS._sceneObjects->draw();
 						g_globals->_events.delay(g_globals->_sceneHandler->_delayTicks);
@@ -2115,7 +2115,7 @@ void Scene1337::Action12::signal() {
 					}
 
 					Event event;
-					while (!g_globals->_events.getEvent(event, EVENT_BUTTON_DOWN | EVENT_KEYPRESS) && !g_vm->shouldQuit()) {
+					while (!g_globals->_events.getEvent(event,EVENT_CUSTOM_ACTIONSTART | EVENT_BUTTON_DOWN | EVENT_KEYPRESS) && !g_vm->shouldQuit()) {
 						g_globals->_scenePalette.signalListeners();
 						R2_GLOBALS._sceneObjects->draw();
 						g_globals->_events.delay(g_globals->_sceneHandler->_delayTicks);
@@ -2397,8 +2397,8 @@ void Scene1337::process(Event &event) {
 			(this->*tmpFctPtr)();
 			event.handled = true;
 		}
-	} else if (event.eventType == EVENT_KEYPRESS) {
-		if (event.kbd.keycode == Common::KEYCODE_SPACE) {
+	} else if (event.eventType == EVENT_CUSTOM_ACTIONSTART) {
+		if (event.customType == kActionDrawCards) {
 			if (_delayedFunction) {
 				FunctionPtrType tmpFctPtr = _delayedFunction;
 				_delayedFunction = nullptr;
@@ -2431,7 +2431,7 @@ void Scene1337::dispatch() {
 }
 
 void Scene1337::actionDisplay(int resNum, int lineNum, int x, int y, int keepOnScreen, int width, int textMode, int fontNum, int colFG, int colBGExt, int colFGExt) {
-	// TODO: Check if it's normal that arg5 is unused and replaced by an hardcoded 0 value
+	// TODO: Check if it's normal that arg5 is unused and replaced by a hardcoded 0 value
 	// May hide an original bug
 
 	SceneItem::display(resNum, lineNum, SET_X, x, SET_Y, y, SET_KEEP_ONSCREEN, 0,
@@ -2546,11 +2546,11 @@ void Scene1337::handlePlayerTurn() {
 		if (_displayHelpFl)
 			actionDisplay(1330, 114, 159, 10, 1, 200, 0, 7, 0, 154, 154);
 		_displayHelpFl = false;
-	// No break on purpose
+		// fall through
 	case 0:
-	// No break on purpose
+		// fall through
 	case 1:
-	// No break on purpose
+		// fall through
 	case 3:
 		_actionItem.setAction(&_action4);
 	default:
@@ -4191,7 +4191,7 @@ void Scene1337::handlePlayer2() {
 	bool found;
 	for (;;) {
 		if ( ((g_globals->_events.getEvent(event, EVENT_BUTTON_DOWN)) && (event.btnState == BTNSHIFT_RIGHT))
-			|| (g_globals->_events.getEvent(event, EVENT_KEYPRESS)) ){
+			|| (g_globals->_events.getEvent(event, EVENT_CUSTOM_ACTIONSTART | EVENT_KEYPRESS)) ){
 			_selectedCard._stationPos = g_globals->_events._mousePos;
 			found = false;
 
@@ -4680,7 +4680,7 @@ GfxButton *Scene1337::OptionsDialog::execute(GfxButton *defaultButton) {
 				breakFlag = true;
 				break;
 			} else if (!event.handled) {
-				if ((event.eventType == EVENT_KEYPRESS) && (event.kbd.keycode == Common::KEYCODE_ESCAPE)) {
+				if ((event.eventType == EVENT_CUSTOM_ACTIONSTART) && (event.customType == kActionEscape)) {
 					selectedButton = NULL;
 					breakFlag = true;
 					break;
@@ -4689,7 +4689,7 @@ GfxButton *Scene1337::OptionsDialog::execute(GfxButton *defaultButton) {
 		}
 
 		g_system->delayMillis(10);
-		GLOBALS._screenSurface.updateScreen();
+		GLOBALS._screen.update();
 	}
 
 	_gfxManager.deactivate();

@@ -7,24 +7,24 @@
  * Additional copyright for this file:
  * Copyright (C) 1995-1997 Presto Studios, Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
-
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "pegasus/gamestate.h"
 #include "pegasus/pegasus.h"
+#include "pegasus/items/biochips/arthurchip.h"
 #include "pegasus/neighborhood/neighborhood.h"
 #include "pegasus/neighborhood/caldoria/caldoria.h"
 #include "pegasus/neighborhood/caldoria/caldoriamirror.h"
@@ -32,6 +32,7 @@
 namespace Pegasus {
 
 CaldoriaMirror::CaldoriaMirror(Neighborhood *owner) : GameInteraction(kCaldoriaMirrorInteractionID, owner) {
+	_neighborhoodNotification = nullptr;
 }
 
 void CaldoriaMirror::openInteraction() {
@@ -42,6 +43,11 @@ void CaldoriaMirror::openInteraction() {
 void CaldoriaMirror::initInteraction() {
 	_owner->setCurrentActivation(kActivateMirrorReady);
 	_owner->startExtraSequence(kCaBathroomGreeting, kExtraCompletedFlag, kFilterNoInput);
+	// The original made the player click to start each of the following sequences,
+	// which was unnecessary, so it is automated here.
+	_owner->startExtraSequenceSync(kCaBathroomGreeting, kFilterNoInput);
+	_owner->startExtraSequenceSync(kCaBathroomBodyFat, kFilterNoInput);
+	_owner->startExtraSequence(kCaBathroomStylistIntro, kExtraCompletedFlag, kFilterNoInput);
 }
 
 void CaldoriaMirror::closeInteraction() {
@@ -74,35 +80,25 @@ void CaldoriaMirror::activateHotspots() {
 		g_allHotspots.activateOneHotspot(kCaHairStyle3SpotID);
 		g_allHotspots.deactivateOneHotspot(kCaBathroomMirrorSpotID);
 		break;
+	default:
+		break;
 	}
 }
 
 void CaldoriaMirror::clickInHotspot(const Input &input, const Hotspot *spot) {
 	switch (spot->getObjectID()) {
-	case kCaBathroomMirrorSpotID:
-		switch (_owner->getLastExtra()) {
-		case kCaBathroomGreeting:
-			_owner->startExtraSequence(kCaBathroomBodyFat, kExtraCompletedFlag, kFilterNoInput);
-			break;
-		case kCaBathroomBodyFat:
-			_owner->startExtraSequence(kCaBathroomStylistIntro, kExtraCompletedFlag, kFilterNoInput);
-			break;
-		case kCaBathroomRetrothrash:
-			_owner->startExtraSequence(kCaBathroomRetrothrashReturn, kExtraCompletedFlag, kFilterNoInput);
-			break;
-		case kCaBathroomGeoWave:
-			_owner->startExtraSequence(kCaBathroomGeoWaveReturn, kExtraCompletedFlag, kFilterNoInput);
-			break;
-		}
-		break;
+	// The original made the player click through several interstitial screens before
+	// reaching the hairstyle menu, which was unnecessary, so it's skipped here.
 	case kCaHairStyle1SpotID:
-		_owner->startExtraSequence(kCaBathroomRetrothrash, kExtraCompletedFlag, kFilterNoInput);
+		_owner->startExtraSequenceSync(kCaBathroomRetrothrash, kFilterNoInput);
+		_owner->startExtraSequence(kCaBathroomRetrothrashReturn, kExtraCompletedFlag, kFilterNoInput);
 		break;
 	case kCaHairStyle2SpotID:
 		_owner->startExtraSequence(kCaBathroomAgencyStandard, kExtraCompletedFlag, kFilterNoInput);
 		break;
 	case kCaHairStyle3SpotID:
-		_owner->startExtraSequence(kCaBathroomGeoWave, kExtraCompletedFlag, kFilterNoInput);
+		_owner->startExtraSequenceSync(kCaBathroomGeoWave, kFilterNoInput);
+		_owner->startExtraSequence(kCaBathroomGeoWaveReturn, kExtraCompletedFlag, kFilterNoInput);
 		break;
 	default:
 		GameInteraction::clickInHotspot(input, spot);
@@ -126,10 +122,12 @@ void CaldoriaMirror::receiveNotification(Notification *, const NotificationFlags
 		_owner->requestDeleteCurrentInteraction();
 		GameState.setScoringFixedHair(true);
 		GameState.setCaldoriaDoneHygiene(true);
+		if (g_arthurChip)
+			g_arthurChip->playArthurMovieForEvent("Images/AI/Globals/XGLOBA43", kArthurCaldoriaChoseAgencyHairStyle);
+		break;
+	default:
 		break;
 	}
-
-	allowInput(true);
 }
 
 } // End of namespace Pegasus

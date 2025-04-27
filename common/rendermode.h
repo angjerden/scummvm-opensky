@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -27,6 +26,15 @@
 
 namespace Common {
 
+/**
+ * @defgroup common_rendermode Render modes
+ * @ingroup common
+ *
+ * @brief API for render modes.
+ *
+ * @{
+ */
+
 class String;
 
 /**
@@ -34,6 +42,8 @@ class String;
  * to use. Some targets used postprocessing dithering routines for
  * reducing color depth of final image which let it to be rendered on
  * such low-level adapters as CGA or Hercules.
+ *
+ * If you are adding an option here, do not forget to create relevant GUIO
  */
 enum RenderMode {
 	kRenderDefault = 0,
@@ -44,8 +54,21 @@ enum RenderMode {
 	kRenderHercA = 5,
 	kRenderAmiga = 6,
 	kRenderFMTowns = 7,
-	kRenderPC9821 = 8,
-	kRenderPC9801 = 9
+	kRenderPC98_256c = 8,
+	kRenderPC98_16c = 9,
+	kRenderApple2GS = 10,
+	kRenderAtariST = 11,
+	kRenderMacintosh = 12,
+	kRenderMacintoshBW = 13,
+	kRenderCGAComp = 14,
+	kRenderCGA_BW = 15,
+	kRenderCPC = 16,
+	kRenderZX = 17,
+	kRenderC64 = 18,
+	kRenderVGAGrey = 19,
+	kRenderPC98_8c = 20,
+	kRenderWin256c = 21,
+	kRenderWin16c = 22
 };
 
 struct RenderModeDescription {
@@ -67,6 +90,7 @@ extern String renderMode2GUIO(RenderMode id);
 // TODO: Rename the following to something better; also, document it
 extern String allRenderModesGUIOs();
 
+/** @} */
 
 } // End of namespace Common
 

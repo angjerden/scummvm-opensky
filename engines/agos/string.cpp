@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -25,7 +24,6 @@
 #include "common/file.h"
 #include "common/textconsole.h"
 
-#include "gui/about.h"
 #include "gui/message.h"
 
 #include "agos/agos.h"
@@ -35,7 +33,7 @@ namespace AGOS {
 
 void AGOSEngine::uncompressText(byte *ptr) {
 	byte a;
-	while (1) {
+	while (true) {
 		if (_awaitTwoByteToken != 0)
 			a = _awaitTwoByteToken;
 		else
@@ -43,14 +41,14 @@ void AGOSEngine::uncompressText(byte *ptr) {
 		if (a == 0)
 			return;
 		ptr = uncompressToken(a, ptr);
-		if (ptr == 0)
+		if (ptr == nullptr)
 			return;
 	}
 }
 
 byte *AGOSEngine::uncompressToken(byte a, byte *ptr) {
-	byte *ptr1 = 0;
-	byte *ptr2 = 0;
+	byte *ptr1 = nullptr;
+	byte *ptr2 = nullptr;
 	byte b;
 	int count1 = 0;
 
@@ -65,7 +63,7 @@ byte *AGOSEngine::uncompressToken(byte a, byte *ptr) {
 		b = a;
 		a = *ptr++;
 		if (a == 0)		/* Need to return such that next byte   */
-			return 0;	/* is used as two byte token		*/
+			return nullptr;	/* is used as two byte token		*/
 
 		_awaitTwoByteToken = 0;
 		ptr1 = _twoByteTokens;
@@ -127,17 +125,17 @@ const byte *AGOSEngine::getStringPtrByID(uint16 stringId, bool upperCase) {
 		_awaitTwoByteToken = 0;
 		uncompressText(ptr);
 		_textBuffer[_textCount] = 0;
-		strcpy((char *)dst, (const char *)_textBuffer);
+		Common::strlcpy((char *)dst, (const char *)_textBuffer, 180);
 	} else {
 		if (stringId < 0x8000) {
 			stringPtr = _stringTabPtr[stringId];
 		} else {
 			stringPtr = getLocalStringByID(stringId);
 		}
-		strcpy((char *)dst, (const char *)stringPtr);
+		Common::strlcpy((char *)dst, (const char *)stringPtr, 180);
 	}
 
-	// WORKAROUND bug #1538873: The French version of Simon 1 and the
+	// WORKAROUND bug #2780: The French version of Simon 1 and the
 	// Polish version of Simon 2 used excess spaces, at the end of many
 	// messages, so we strip off those excess spaces.
 	if ((getGameType() == GType_SIMON1 && _language == Common::FR_FRA) ||
@@ -163,7 +161,22 @@ const byte *AGOSEngine::getLocalStringByID(uint16 stringId) {
 	if (stringId < _stringIdLocalMin || stringId >= _stringIdLocalMax) {
 		loadTextIntoMem(stringId);
 	}
-	return _localStringtable[stringId - _stringIdLocalMin];
+	byte *localString = _localStringtable[stringId - _stringIdLocalMin];
+	if (getGameType() == GType_SIMON1 && (getFeatures() & GF_TALKIE) && (strlen((char *)localString) == 0)) {
+		// WORKAROUND bug for Simon 1 (only in CD-ROM versions) missing subtitles text when using the map at the dungeon, strings taken from Floppy versions
+		if (stringId == 36034) {
+			if (_language == Common::HE_ISR)
+				return (const byte *)"@PI L@ IKEL LV@Z NK@O KXBR.";
+			if (_language == Common::ES_ESP)
+				return (const byte *)"Ahora no puedo salir de aqu<.";
+			if (_language == Common::IT_ITA)
+				return (const byte *)"Non posso uscire per il momento.";
+		}
+
+		if (stringId == 36035 && _language == Common::FR_FRA)
+			return (const byte *)"Je ne peux pas sortir de l; pour l'instant.";
+	}
+	return localString;
 }
 
 TextLocation *AGOSEngine::getTextLocation(uint a) {
@@ -179,7 +192,7 @@ TextLocation *AGOSEngine::getTextLocation(uint a) {
 	default:
 		error("getTextLocation: Invalid text location %d", a);
 	}
-	return NULL;	// for compilers that don't support NORETURN
+	return nullptr;	// for compilers that don't support NORETURN
 }
 
 void AGOSEngine::allocateStringTable(int num) {
@@ -310,10 +323,6 @@ void AGOSEngine::loadTextIntoMem(uint16 stringId) {
 			filename += *p++;
 		p++;
 
-		if (getPlatform() == Common::kPlatformAcorn) {
-			filename += ".DAT";
-		}
-
 		baseMax = (p[0] * 256) | p[1];
 		p += 2;
 
@@ -333,6 +342,7 @@ void AGOSEngine::loadTextIntoMem(uint16 stringId) {
 
 			_tablesHeapPtr += size;
 			_tablesHeapCurPos += size;
+			alignTableMem();
 
 			if (_tablesHeapCurPos > _tablesHeapSize) {
 				error("loadTextIntoMem: Out of table memory");
@@ -422,7 +432,7 @@ bool AGOSEngine::printTextOf(uint a, uint x, uint y) {
 			Subroutine *sub;
 			_variableArray[84] = a;
 			sub = getSubroutineByID(5003);
-			if (sub != NULL)
+			if (sub != nullptr)
 				startSubroutineEx(sub);
 			return true;
 		}
@@ -450,11 +460,11 @@ bool AGOSEngine::printNameOf(Item *item, uint x, uint y) {
 	const byte *stringPtr;
 	uint16 pixels, w;
 
-	if (item == 0 || item == _dummyItem2 || item == _dummyItem3)
+	if (item == nullptr || item == _dummyItem2 || item == _dummyItem3)
 		return false;
 
 	subObject = (SubObject *)findChildOfType(item, kObjectType);
-	if (subObject == NULL)
+	if (subObject == nullptr)
 		return false;
 
 	stringPtr = getStringPtrByID(subObject->objectName);
@@ -487,6 +497,9 @@ void AGOSEngine::printScreenText(uint vgaSpriteId, uint color, const char *strin
 		if (_variableArray[141] == 0)
 			_variableArray[141] = 9;
 		_variableArray[85] = _variableArray[141] * talkDelay;
+
+		if (_language == Common::HE_ISR)
+			_variableArray[85] += talkDelay * 2;
 	} else {
 		if (_variableArray[86] == 0)
 			talkDelay /= 2;
@@ -747,7 +760,7 @@ void AGOSEngine_Feeble::printScreenText(uint vgaSpriteId, uint color, const char
 					*convertedString2++ = ' ';
 					spaces--;
 			}
-			strcpy(convertedString2, string);
+			Common::strcpy_s(convertedString2, sizeof(convertedString) - (convertedString2 - convertedString), string);
 			break;
 		}
 		while (*string2 != ' ') {
@@ -797,7 +810,7 @@ void AGOSEngine_Feeble::printInteractText(uint16 num, const char *string) {
 		if (*string2 == 0x00) {
 			if (w == 0xFFFF)
 				w = pixels;
-			strcpy(convertedString2, string);
+			Common::strlcpy(convertedString2, string, 320);
 			break;
 		}
 		while (*string2 != ' ') {
@@ -994,7 +1007,7 @@ uint16 AGOSEngine_Waxworks::getBoxSize() {
 uint16 AGOSEngine_Waxworks::checkFit(char *ptr, int width, int lines) {
 	int countw = 0;
 	int countl = 0;
-	char *x = NULL;
+	char *x = nullptr;
 	while (*ptr) {
 		if (*ptr == '\n')
 			return 1;
@@ -1017,17 +1030,20 @@ uint16 AGOSEngine_Waxworks::checkFit(char *ptr, int width, int lines) {
 }
 
 void AGOSEngine_Waxworks::boxTextMessage(const char *x) {
-	sprintf(_boxBufferPtr, "%s\n", x);
-	_lineCounts[_boxLineCount] += strlen(x);
+	Common::sprintf_s(_boxBufferPtr, sizeof(_boxBuffer) - (_boxBufferPtr - _boxBuffer), "%s\n", x);
+	if (_boxLineCount < ARRAYSIZE(_lineCounts))
+		_lineCounts[_boxLineCount] += strlen(x);
 	_boxBufferPtr += strlen(x) + 1;
 	_boxLineCount++;
-	_linePtrs[_boxLineCount] = _boxBufferPtr;
+	if (_boxLineCount < ARRAYSIZE(_linePtrs))
+		_linePtrs[_boxLineCount] = _boxBufferPtr;
 	_boxCR = 1;
 }
 
 void AGOSEngine_Waxworks::boxTextMsg(const char *x) {
-	sprintf(_boxBufferPtr, "%s", x);
-	_lineCounts[_boxLineCount] += strlen(x);
+	Common::sprintf_s(_boxBufferPtr, sizeof(_boxBuffer) - (_boxBufferPtr - _boxBuffer), "%s", x);
+	if (_boxLineCount < ARRAYSIZE(_lineCounts))
+		_lineCounts[_boxLineCount] += strlen(x);
 	_boxBufferPtr += strlen(x);
 	_boxCR = 0;
 }

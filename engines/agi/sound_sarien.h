@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -27,24 +26,24 @@
 
 namespace Agi {
 
-#define BUFFER_SIZE	410
+#define BUFFER_SIZE 410
 
-#define WAVEFORM_SIZE   64
-#define ENV_ATTACK	10000		/**< envelope attack rate */
-#define ENV_DECAY       1000		/**< envelope decay rate */
-#define ENV_SUSTAIN     100		/**< envelope sustain level */
-#define ENV_RELEASE	7500		/**< envelope release rate */
-#define NUM_CHANNELS    7		/**< number of sound channels */
+#define WAVEFORM_SIZE 64
+#define ENV_ATTACK    10000 /**< envelope attack rate */
+#define ENV_DECAY     1000  /**< envelope decay rate */
+#define ENV_SUSTAIN   100   /**< envelope sustain level */
+#define ENV_RELEASE   7500  /**< envelope release rate */
+#define NUM_CHANNELS  7     /**< number of sound channels */
 
 enum AgiSoundFlags {
-	AGI_SOUND_LOOP		= 0x0001,
-	AGI_SOUND_ENVELOPE	= 0x0002
+	AGI_SOUND_LOOP      = 0x0001,
+	AGI_SOUND_ENVELOPE  = 0x0002
 };
 enum AgiSoundEnv {
-	AGI_SOUND_ENV_ATTACK	= 3,
-	AGI_SOUND_ENV_DECAY		= 2,
-	AGI_SOUND_ENV_SUSTAIN	= 1,
-	AGI_SOUND_ENV_RELEASE	= 0
+	AGI_SOUND_ENV_ATTACK    = 3,
+	AGI_SOUND_ENV_DECAY     = 2,
+	AGI_SOUND_ENV_SUSTAIN   = 1,
+	AGI_SOUND_ENV_RELEASE   = 0
 };
 
 
@@ -57,7 +56,7 @@ struct ChannelInfo {
 	const int16 *ins;
 	int32 size;
 	uint32 phase;
-	uint32 flags;	// ORs values from AgiSoundFlags
+	uint32 flags;   // ORs values from AgiSoundFlags
 	AgiSoundEnv adsr;
 	int32 timer;
 	uint32 end;
@@ -69,28 +68,30 @@ struct ChannelInfo {
 class SoundGenSarien : public SoundGen, public Audio::AudioStream {
 public:
 	SoundGenSarien(AgiBase *vm, Audio::Mixer *pMixer);
-	~SoundGenSarien();
+	~SoundGenSarien() override;
 
-	void play(int resnum);
-	void stop(void);
+	void play(int resnum) override;
+	void stop() override;
 
 	// AudioStream API
-	int readBuffer(int16 *buffer, const int numSamples);
+	int readBuffer(int16 *buffer, const int numSamples) override;
 
-	bool isStereo() const {
+	bool isStereo() const override {
 		return false;
 	}
 
-	bool endOfData() const {
+	bool endOfData() const override {
 		return false;
 	}
 
-	int getRate() const {
+	int getRate() const override {
 		// FIXME: Ideally, we should use _sampleRate.
 		return 22050;
 	}
 
 private:
+	Common::Mutex _mutex;
+
 	ChannelInfo _chn[NUM_CHANNELS];
 	uint8 _env;
 

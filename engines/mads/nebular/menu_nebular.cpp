@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -48,6 +47,7 @@ MainMenu::MainMenu(MADSEngine *vm): MenuView(vm) {
 	_highlightedIndex = -1;
 	_selectedIndex = -1;
 	_buttonDown = false;
+	_showEvolve = _showSets = false;
 
 	for (int i = 0; i < 7; ++i)
 		_menuItems[i] = nullptr;
@@ -75,7 +75,7 @@ void MainMenu::display() {
 
 	// Load each of the menu item assets and add to the scene sprites list
 	for (int i = 0; i < 7; ++i) {
-		Common::String spritesName = Resources::formatName(NEBULAR_MENUSCREEN,
+		Common::Path spritesName = Resources::formatName(NEBULAR_MENUSCREEN,
 			'A', i + 1, EXT_SS, "");
 		_menuItems[i] = new SpriteAsset(_vm, spritesName, 0);
 		_menuItemIndexes[i] = scene._sprites.add(_menuItems[i]);
@@ -137,12 +137,14 @@ void MainMenu::doFrame() {
 		}
 
 		_vm->_events->showCursor();
+		showBonusItems();
 	} else {
 		if ((_menuItemIndex == -1) || (_frameIndex == 0)) {
 			if (++_menuItemIndex == 6) {
 
 				// Reached end of display animation
 				_vm->_events->showCursor();
+				showBonusItems();
 				return;
 			} else if (_menuItemIndex == 4 && !shouldShowQuotes()) {
 				++_menuItemIndex;
@@ -180,40 +182,50 @@ void MainMenu::addSpriteSlot() {
 	_redrawFlag = true;
 }
 
+void MainMenu::showBonusItems() {
+	Scene &scene = _vm->_game->_scene;
+	_showEvolve = Common::File::exists("SECTION0.HAG") && Common::File::exists("evolve.res");
+	_showSets = Common::File::exists("SECTION0.HAG") && Common::File::exists("sets.res");
+
+	if (_showSets)
+		scene._kernelMessages.add(Common::Point(290, 143), 0x4140, 0, 0, 0, "S");
+	if (_showEvolve)
+		scene._kernelMessages.add(Common::Point(305, 143), 0x4140, 0, 0, 0, "E");
+}
+
 bool MainMenu::onEvent(Common::Event &event) {
 	Scene &scene = _vm->_game->_scene;
 	if (_selectedIndex != -1)
 		return false;
 
 	// Handle keypresses - these can be done at any time, even when the menu items are being drawn
-	if (event.type == Common::EVENT_KEYDOWN) {
-		switch (event.kbd.keycode) {
-		case Common::KEYCODE_ESCAPE:
-		case Common::KEYCODE_F6:
+	if (event.type == Common::EVENT_CUSTOM_ENGINE_ACTION_START) {
+		switch (event.customType) {
+		case kActionEscape:
 			handleAction(EXIT);
 			break;
 
-		case Common::KEYCODE_F1:
+		case kActionStartGame:
 			handleAction(START_GAME);
 			break;
 
-		case Common::KEYCODE_F2:
+		case kActionResumeGame:
 			handleAction(RESUME_GAME);
 			break;
 
-		case Common::KEYCODE_F3:
+		case kActionShowIntro:
 			handleAction(SHOW_INTRO);
 			break;
 
-		case Common::KEYCODE_F4:
+		case kActionCredits:
 			handleAction(CREDITS);
 			break;
 
-		case Common::KEYCODE_F5:
+		case kActionQuotes:
 			handleAction(QUOTES);
 			break;
 
-		case Common::KEYCODE_s: {
+		case kActionRestartAnimation: {
 			// Goodness knows why, but Rex has a key to restart the menuitem animations
 			// Restart the animation
 			_menuItemIndex = -1;
@@ -226,12 +238,15 @@ bool MainMenu::onEvent(Common::Event &event) {
 		}
 
 		default:
-			// Any other key skips the menu animation
 			_skipFlag = true;
 			return false;
 		}
 
 		return true;
+	} else if (event.type == Common::EVENT_KEYDOWN) {
+		// Any other key skips the menu animation
+		_skipFlag = true;
+		return false;
 	}
 
 	switch (event.type) {
@@ -280,6 +295,10 @@ bool MainMenu::onEvent(Common::Event &event) {
 			_selectedIndex = _highlightedIndex;
 			unhighlightItem();
 			_frameIndex = 0;
+		} else if (_showSets && Common::Rect(290, 165, 300, 185).contains(event.mouse)) {
+			handleAction(SETS);
+		} else if (_showEvolve && Common::Rect(305, 165, 315, 185).contains(event.mouse)) {
+			handleAction(EVOLVE);
 		}
 
 		return true;
@@ -334,6 +353,14 @@ void MainMenu::handleAction(MADSGameAction action) {
 		TextView::execute(_vm, "quotes");
 		return;
 
+	case SETS:
+		AnimationView::execute(_vm, "sets");
+		break;
+
+	case EVOLVE:
+		AnimationView::execute(_vm, "evolve");
+		break;
+
 	case EXIT:
 		_vm->_dialogs->_pendingDialog = DIALOG_ADVERT;
 		break;
@@ -358,8 +385,8 @@ void AdvertView::show() {
 	// Load the advert background onto the screen
 	SceneInfo *sceneInfo = SceneInfo::init(_vm);
 	sceneInfo->load(screenId, 0, Common::String(), 0, _vm->_game->_scene._depthSurface,
-		_vm->_screen);
-	_vm->_screen.copyRectToScreen(_vm->_screen.getBounds());
+		*_vm->_screen);
+	_vm->_screen->markAllDirty();
 	_vm->_palette->setFullPalette(_vm->_palette->_mainPalette);
 
 	delete sceneInfo;
@@ -381,7 +408,8 @@ void AdvertView::show() {
 }
 
 bool AdvertView::onEvent(Common::Event &event) {
-	if (event.type == Common::EVENT_KEYDOWN || event.type == Common::EVENT_LBUTTONDOWN) {
+	if (event.type == Common::EVENT_CUSTOM_ENGINE_ACTION_START || event.type == Common::EVENT_KEYDOWN
+			|| event.type == Common::EVENT_JOYBUTTON_DOWN || event.type == Common::EVENT_LBUTTONDOWN) {
 		_breakFlag = true;
 		return true;
 	}

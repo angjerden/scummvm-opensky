@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,18 +15,18 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
-#ifndef SWORD25_H
-#define SWORD25_H
+#ifndef SWORD25_SWORD25_H
+#define SWORD25_SWORD25_H
 
 #include "common/scummsys.h"
 #include "engines/engine.h"
 
 #include "sword25/console.h"
+#include "sword25/detection.h"
 
 namespace Common {
 class Error;
@@ -53,13 +53,10 @@ enum {
 };
 
 enum {
-	kDebugScript = 1 << 0,
-	kDebugSound = 1 << 1,
-	kDebugResource = 1 << 2
-};
-
-enum GameFlags {
-	GF_EXTRACTED = 1 << 0
+	kDebugScript = 1,
+	kDebugSound,
+	kDebugInternalDebugger,
+	kDebugResource,
 };
 
 #define MESSAGE_BASIC 1
@@ -74,25 +71,21 @@ private:
 
 	bool loadPackages();
 
-	Sword25Console *_console;
-
 protected:
-	virtual Common::Error run();
-	bool hasFeature(EngineFeature f) const;
+	Common::Error run() override;
+	bool hasFeature(EngineFeature f) const override;
 // 	void pauseEngineIntern(bool pause);	// TODO: Implement this!!!
 // 	void syncSoundSettings();	// TODO: Implement this!!!
 // 	Common::Error loadGameState(int slot);	// TODO: Implement this?
-// 	Common::Error saveGameState(int slot, const Common::String &desc);	// TODO: Implement this?
+// 	Common::Error saveGameState(int slot, const Common::String &desc, bool isAutosave = false);	// TODO: Implement this?
 // 	bool canLoadGameStateCurrently();	// TODO: Implement this?
 // 	bool canSaveGameStateCurrently();	// TODO: Implement this?
-
-	GUI::Debugger *getDebugger() { return _console; }
 
 	void shutdown();
 
 public:
 	Sword25Engine(OSystem *syst, const ADGameDescription *gameDesc);
-	virtual ~Sword25Engine();
+	~Sword25Engine() override;
 
 	uint32 getGameFlags() const;
 

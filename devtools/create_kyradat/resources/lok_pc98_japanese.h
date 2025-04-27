@@ -222,10 +222,11 @@ static const char *const k1PoisonGoneStringPC98Japanese[2] = {
 
 static const StringListProvider k1PoisonGoneStringPC98JapaneseProvider = { ARRAYSIZE(k1PoisonGoneStringPC98Japanese), k1PoisonGoneStringPC98Japanese };
 
-static const char *const k1ThePoisonStringsPC98Japanese[3] = {
+static const char *const k1ThePoisonStringsPC98Japanese[4] = {
 	"\x93\xC5\x82\xBE\x81""E""\x81""E""\x81""E",
 	"\x8C\xC4\x8B""z""\x82\xAA\x8F""o""\x97\x88\x82\xC8\x82\xA2\x81""E""\x81""E""\x81""E",
-	"\x8B""C""\x95\xAA\x82\xAA\x88\xAB\x82\xA2\x81""E""\x81""E""\x81""E"
+	"\x8B""C""\x95\xAA\x82\xAA\x88\xAB\x82\xA2\x81""E""\x81""E""\x81""E",
+	"\x82\xA0\x82\xCC\x8E\xD6\x82\xCD""\r""\x93\xC5\x8E\xD6\x82\xC9\x82\xBF\x82\xAA\x82\xA2\x82\xC8\x82\xA2\x81""I"
 };
 
 static const StringListProvider k1ThePoisonStringsPC98JapaneseProvider = { ARRAYSIZE(k1ThePoisonStringsPC98Japanese), k1ThePoisonStringsPC98Japanese };
@@ -350,7 +351,7 @@ static const char *const k1GUIStringsPC98Japanese[75] = {
 	"\x83""I""\x83""t",
 	"\x82\xCD\x82\xA2",
 	"\x82\xA2\x82\xA2\x82\xA6",
-	"\xD2""q""\x8A""$""\xDB""q""\x8A""$""\xE0""q""\x8A""$""\xE5""q""\x8A""$""\xEA""q""\x8A""$""\xF3""q""\x8A""$""\xFC""q""\x8A""$""\x01""r""\x8A""$""\x06""r""\x8A""$""\x95\xE0\x81""@""\x8D""s""\x81""@""\x91\xAC\x81""@""\x93""x",
+	"\x95\xE0\x81""@""\x8D""s""\x81""@""\x91\xAC\x81""@""\x93""x",
 	"\x83\x81\x83""b""\x83""Z""\x81""[""\x83""W""\x91\xAC\x93""x",
 	"\x89\xB9\x81""@""\x81""@""\x81""@""\x81""@""\x81""@""\x8A""y",
 	"\x8C\xF8\x81""@""\x81""@""\x89\xCA\x81""@""\x81""@""\x89\xB9"

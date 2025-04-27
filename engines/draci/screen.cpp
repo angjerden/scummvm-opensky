@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,15 +15,14 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "common/memstream.h"
 #include "common/system.h"
 
-#include "graphics/palette.h"
+#include "graphics/paletteman.h"
 
 #include "draci/draci.h"
 #include "draci/screen.h"
@@ -40,7 +39,7 @@ Screen::Screen(DraciEngine *vm) : _vm(vm) {
 	for (int i = 0; i < 3 * kNumColors; ++i) {
 		_blackPalette[i] = 0;
 	}
-	setPalette(NULL, 0, kNumColors);
+	setPalette(nullptr, 0, kNumColors);
 	this->clearScreen();
 }
 
@@ -106,7 +105,6 @@ int Screen::interpolate(int first, int second, int index, int number) {
  */
 void Screen::copyToScreen() {
 	const Common::List<Common::Rect> *dirtyRects = _surface->getDirtyRects();
-	Common::List<Common::Rect>::const_iterator it;
 
 	// If a full update is needed, update the whole screen
 	if (_surface->needsFullUpdate()) {
@@ -117,13 +115,12 @@ void Screen::copyToScreen() {
 	} else {
 		// Otherwise, update only the dirty rectangles
 
-		for (it = dirtyRects->begin(); it != dirtyRects->end(); ++it) {
-
+		for (const auto &r : *dirtyRects) {
 			// Pointer to the upper left corner of the rectangle
-			byte *ptr = (byte *)_surface->getBasePtr(it->left, it->top);
+			byte *ptr = (byte *)_surface->getBasePtr(r.left, r.top);
 
 			_vm->_system->copyRectToScreen(ptr, kScreenWidth,
-				it->left, it->top, it->width(), it->height());
+				r.left, r.top, r.width(), r.height());
 		}
 	}
 

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -28,82 +27,89 @@ namespace Agi {
  * Decode logic resource
  * This function decodes messages from the specified raw logic resource
  * into a message list.
- * @param n  The number of the logic resource to decode.
+ * @param logicNr  The number of the logic resource to decode.
  */
-int AgiEngine::decodeLogic(int n) {
-	int ec = errOK;
-	int mstart, mend, mc;
-	uint8 *m0;
+int AgiEngine::decodeLogic(int16 logicNr) {
+	AgiLogic &logic = _game.logics[logicNr];
+	AgiDir &dirLogic = _game.dirLogic[logicNr];
 
-	// decrypt messages at end of logic + build message list
+	// bytecode section:
+	// u16  bytecode size
+	// u8[] bytecode
+	uint16 bytecodeSize = READ_LE_UINT16(logic.data);
 
-	// report ("decoding logic #%d\n", n);
-	m0 = _game.logics[n].data;
+	// message section:
+	// u8       message count
+	// u16      messages size (2 + offsets + strings)
+	// u16[]    string offsets (relative to message section + 1)
+	// string[] strings (null terminated, possibly encrypted)
+	int messageSectionPos = 2 + bytecodeSize;
+	uint8 messageCount = logic.data[messageSectionPos];
+	uint16 messagesSize = READ_LE_UINT16(logic.data + messageSectionPos + 1);
+	int stringOffsetsPos = messageSectionPos + 3;
+	int stringsPos = stringOffsetsPos + (2 * messageCount);
+	int stringsSize = messagesSize - 2 - (2 * messageCount);
 
-	mstart = READ_LE_UINT16(m0) + 2;
-	mc = *(m0 + mstart);
-	mend = READ_LE_UINT16(m0 + mstart + 1);
-	m0 += mstart + 3;	// cover header info
-	mstart = mc << 1;
-
-	// if the logic was not compressed, decrypt the text messages
-	// only if there are more than 0 messages
-	if ((~_game.dirLogic[n].flags & RES_COMPRESSED) && mc > 0)
-		decrypt(m0 + mstart, mend - mstart);	// decrypt messages
-
-	// build message list
-	m0 = _game.logics[n].data;
-	mstart = READ_LE_UINT16(m0) + 2;	// +2 covers pointer
-	_game.logics[n].numTexts = *(m0 + mstart);
-
-	// resetp logic pointers
-	_game.logics[n].sIP = 2;
-	_game.logics[n].cIP = 2;
-	_game.logics[n].size = READ_LE_UINT16(m0) + 2;	// logic end pointer
-
-	// allocate list of pointers to point into our data
-
-	_game.logics[n].texts = (const char **)calloc(1 + _game.logics[n].numTexts, sizeof(char *));
-
-	// cover header info
-	m0 += mstart + 3;
-
-	if (_game.logics[n].texts != NULL) {
-		// move list of strings into list to make real pointers
-		for (mc = 0; mc < _game.logics[n].numTexts; mc++) {
-			mend = READ_LE_UINT16(m0 + mc * 2);
-			_game.logics[n].texts[mc] = mend ? (const char *)m0 + mend - 2 : (const char *)"";
-		}
-		// set loaded flag now its all completly loaded
-		_game.dirLogic[n].flags |= RES_LOADED;
-	} else {
-		// unload data
-		// Note that not every logic has text
-		free(_game.logics[n].data);
-		ec = errNotEnoughMemory;
+	// decrypt the message strings if the logic was not compressed
+	// and the logic has messages.
+	if ((~dirLogic.flags & RES_COMPRESSED) && messageCount > 0) {
+		decrypt(logic.data + stringsPos, stringsSize);
 	}
 
-	return ec;
+	// reset logic pointers
+	logic.sIP = 2;
+	logic.cIP = 2;
+	logic.size = messageSectionPos; // exclude messages from logic size
+
+	// allocate list of pointers to message texts. last entry is null.
+	logic.numTexts = messageCount;
+	logic.texts = (const char **)calloc(1 + logic.numTexts, sizeof(char *));
+	if (logic.texts == nullptr) {
+		free(logic.data);
+		logic.data = nullptr;
+		logic.numTexts = 0;
+		return errNotEnoughMemory;
+	}
+
+	// populate list of pointers to message texts
+	for (int i = 0; i < messageCount; i++) {
+		int stringOffset = READ_LE_UINT16(logic.data + stringOffsetsPos + (i * 2));
+		if (stringOffset != 0) {
+			// offset is relative to the message section + 1
+			stringOffset += messageSectionPos + 1;
+			logic.texts[i] = (const char *)(logic.data + stringOffset);
+		} else {
+			// TODO: does this happen? when is a string offset zero?
+			logic.texts[i] = "";
+		}
+	}
+
+	// set loaded flag
+	dirLogic.flags |= RES_LOADED;
+	return errOK;
 }
 
 /**
  * Unload logic resource
  * This function unloads the specified logic resource, freeing any
  * memory chunks allocated for this resource.
- * @param n  The number of the logic resource to unload
+ * @param logicNr  The number of the logic resource to unload
  */
-void AgiEngine::unloadLogic(int n) {
-	if (_game.dirLogic[n].flags & RES_LOADED) {
-		free(_game.logics[n].data);
-		if (_game.logics[n].numTexts)
-			free(_game.logics[n].texts);
-		_game.logics[n].numTexts = 0;
-		_game.dirLogic[n].flags &= ~RES_LOADED;
+void AgiEngine::unloadLogic(int16 logicNr) {
+	AgiLogic &logic = _game.logics[logicNr];
+	AgiDir &dirLogic = _game.dirLogic[logicNr];
+
+	if (dirLogic.flags & RES_LOADED) {
+		free(logic.data);
+		logic.data = nullptr;
+		free(logic.texts);
+		logic.texts = nullptr;
+		logic.numTexts = 0;
+		dirLogic.flags &= ~RES_LOADED;
 	}
 
-	// if cached, we end up here
-	_game.logics[n].sIP = 2;
-	_game.logics[n].cIP = 2;
+	logic.sIP = 2;
+	logic.cIP = 2;
 }
 
 } // End of namespace Agi

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -112,7 +111,7 @@ void UISlots::draw(bool updateFlag, bool delFlag) {
 					Common::Point(dirtyArea._bounds.left, dirtyArea._bounds.top));
 			} else {
 				// Copy area
-				userInterface._surface.copyTo(&userInterface, dirtyArea._bounds,
+				userInterface.blitFrom(userInterface._surface, dirtyArea._bounds,
 					Common::Point(dirtyArea._bounds.left, dirtyArea._bounds.top));
 			}
 		}
@@ -155,13 +154,13 @@ void UISlots::draw(bool updateFlag, bool delFlag) {
 
 				if (slot._segmentId == IMG_SPINNING_OBJECT) {
 					MSprite *sprite = asset->getFrame(frameNumber - 1);
-					sprite->copyTo(&userInterface, slot._position,
+					userInterface.transBlitFrom(*sprite, slot._position,
 						sprite->getTransparencyIndex());
 				} else {
 					MSprite *sprite = asset->getFrame(frameNumber - 1);
 
 					if (flipped) {
-						MSurface *spr = sprite->flipHorizontal();
+						BaseSurface *spr = sprite->flipHorizontal();
 						userInterface.mergeFrom(spr, spr->getBounds(), slot._position,
 							sprite->getTransparencyIndex());
 						spr->free();
@@ -185,7 +184,7 @@ void UISlots::draw(bool updateFlag, bool delFlag) {
 				// Flag area of screen as needing update
 				Common::Rect r = dirtyArea._bounds;
 				r.translate(0, scene._interfaceY);
-				_vm->_screen.copyRectToScreen(r);
+				//_vm->_screen->copyRectToScreen(r);
 			}
 		}
 	}
@@ -339,13 +338,13 @@ UserInterface::UserInterface(MADSEngine *vm) : _vm(vm), _dirtyAreas(vm),
 	Common::fill(&_categoryIndexes[0], &_categoryIndexes[7], 0);
 
 	// Map the user interface to the bottom of the game's screen surface
-	byte *pData = _vm->_screen.getBasePtr(0, MADS_SCENE_HEIGHT);
-	setPixels(pData, MADS_SCREEN_WIDTH, MADS_INTERFACE_HEIGHT);
+	create(*_vm->_screen, Common::Rect(0, MADS_SCENE_HEIGHT,  MADS_SCREEN_WIDTH,
+		MADS_SCREEN_HEIGHT));
 
-	_surface.setSize(MADS_SCREEN_WIDTH, MADS_INTERFACE_HEIGHT);
+	_surface.create(MADS_SCREEN_WIDTH, MADS_INTERFACE_HEIGHT);
 }
 
-void UserInterface::load(const Common::String &resName) {
+void UserInterface::load(const Common::Path &resName) {
 	File f(resName);
 	MadsPack madsPack(&f);
 
@@ -367,7 +366,7 @@ void UserInterface::load(const Common::String &resName) {
 
 	// Read in the surface data
 	Common::SeekableReadStream *pixelsStream = madsPack.getItemStream(1);
-	pixelsStream->read(_surface.getData(), MADS_SCREEN_WIDTH * MADS_INTERFACE_HEIGHT);
+	pixelsStream->read(_surface.getPixels(), MADS_SCREEN_WIDTH * MADS_INTERFACE_HEIGHT);
 	delete pixelsStream;
 }
 
@@ -375,22 +374,24 @@ void UserInterface::setup(InputMode inputMode) {
 	Scene &scene = _vm->_game->_scene;
 
 	if (_vm->_game->_screenObjects._inputMode != inputMode) {
-		Common::String resName = _vm->_game->_aaName;
+		Common::Path resName = _vm->_game->_aaName;
 
 		// Strip off any extension
-		const char *p = strchr(resName.c_str(), '.');
+		Common::String baseName(resName.baseName());
+		const char *p = strchr(baseName.c_str(), '.');
 		if (p) {
-			resName = Common::String(resName.c_str(), p);
+			baseName = Common::String(baseName.c_str(), p);
+			resName = resName.getParent().appendComponent(baseName);
 		}
 
 		// Add on suffix if necessary
 		if (inputMode != kInputBuildingSentences)
-			resName += "A";
+			resName.appendInPlace("A");
 
-		resName += ".INT";
+		resName.appendInPlace(".INT");
 
 		load(resName);
-		_surface.copyTo(this);
+		blitFrom(_surface);
 	}
 	_vm->_game->_screenObjects._inputMode = inputMode;
 
@@ -429,7 +430,7 @@ void UserInterface::drawTextElements() {
 	}
 }
 
-void UserInterface::mergeFrom(MSurface *src, const Common::Rect &srcBounds,
+void UserInterface::mergeFrom(BaseSurface *src, const Common::Rect &srcBounds,
 	const Common::Point &destPos, int transparencyIndex) {
 	// Validation of the rectangle and position
 	int destX = destPos.x, destY = destPos.y;
@@ -455,9 +456,9 @@ void UserInterface::mergeFrom(MSurface *src, const Common::Rect &srcBounds,
 
 	// Copy the specified area
 
-	byte *data = src->getData();
-	byte *srcPtr = data + (src->getWidth() * copyRect.top + copyRect.left);
-	byte *destPtr = (byte *)this->pixels + (destY * getWidth()) + destX;
+	byte *data = src->getPixels();
+	byte *srcPtr = data + (src->w * copyRect.top + copyRect.left);
+	byte *destPtr = (byte *)getPixels() + (destY * this->w) + destX;
 
 	for (int rowCtr = 0; rowCtr < copyRect.height(); ++rowCtr) {
 		// Process each line of the area
@@ -468,8 +469,8 @@ void UserInterface::mergeFrom(MSurface *src, const Common::Rect &srcBounds,
 				destPtr[xCtr] = srcPtr[xCtr];
 		}
 
-		srcPtr += src->getWidth();
-		destPtr += getWidth();
+		srcPtr += src->w;
+		destPtr += this->w;
 	}
 }
 
@@ -593,7 +594,7 @@ void UserInterface::scrollbarChanged() {
 	_uiSlots.add(r);
 	_uiSlots.draw(false, false);
 	drawScroller();
-	updateRect(r);
+//	updateRect(r);
 }
 
 void UserInterface::writeVocab(ScrCategory category, int id) {
@@ -733,7 +734,7 @@ void UserInterface::loadElements() {
 		_categoryIndexes[CAT_HOTSPOT - 1] = _vm->_game->_screenObjects.size() + 1;
 		for (int hotspotIdx = scene._hotspots.size() - 1; hotspotIdx >= 0; --hotspotIdx) {
 			Hotspot &hs = scene._hotspots[hotspotIdx];
-			ScreenObject *so = _vm->_game->_screenObjects.add(hs._bounds, SCREENMODE_VGA, 
+			ScreenObject *so = _vm->_game->_screenObjects.add(hs._bounds, SCREENMODE_VGA,
 				CAT_HOTSPOT, hotspotIdx);
 			so->_active = hs._active;
 		}
@@ -867,7 +868,7 @@ void UserInterface::loadInventoryAnim(int objectId) {
 
 	// WORKAROUND: Even in still mode, we now load the animation frames for the
 	// object, so we can show the first frame as a 'still'
-	Common::String resName = Common::String::format("*OB%.3dI", objectId);
+	Common::Path resName(Common::String::format("*OB%.3dI", objectId));
 	SpriteAsset *asset = new SpriteAsset(_vm, resName, ASSET_SPINNING_OBJECT);
 	_invSpritesIndex = scene._sprites.add(asset, 1);
 	if (_invSpritesIndex >= 0) {
@@ -1012,7 +1013,7 @@ void UserInterface::selectObject(int invIndex) {
 			_uiSlots.add(bounds);
 			_uiSlots.draw(false, false);
 			drawItemVocabList();
-			updateRect(bounds);
+			//updateRect(bounds);
 		}
 	}
 
@@ -1036,7 +1037,7 @@ void UserInterface::updateSelection(ScrCategory category, int newIndex, int *idx
 		_uiSlots.add(bounds);
 		_uiSlots.draw(false, false);
 		drawInventoryList();
-		updateRect(bounds);
+		//updateRect(bounds);
 		_inventoryChanged = false;
 
 		if (invList.size() < 2) {
@@ -1052,23 +1053,17 @@ void UserInterface::updateSelection(ScrCategory category, int newIndex, int *idx
 		if (oldIndex >= 0) {
 			writeVocab(category, oldIndex);
 
-			if (getBounds(category, oldIndex, bounds))
-				updateRect(bounds);
+/*			if (getBounds(category, oldIndex, bounds))
+				updateRect(bounds); */
 		}
 
 		if (newIndex >= 0) {
 			writeVocab(category, newIndex);
 
-			if (getBounds(category, newIndex, bounds))
-				updateRect(bounds);
+/*			if (getBounds(category, newIndex, bounds))
+				updateRect(bounds); */
 		}
 	}
-}
-
-void UserInterface::updateRect(const Common::Rect &bounds) {
-	Common::Rect r = bounds;
-	r.translate(0, MADS_SCENE_HEIGHT);
-	_vm->_screen.copyRectToScreen(r);
 }
 
 void UserInterface::scrollerChanged() {

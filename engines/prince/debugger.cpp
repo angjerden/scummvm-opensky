@@ -4,19 +4,18 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
-
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -37,6 +36,8 @@ Debugger::Debugger(PrinceEngine *vm, InterpreterFlags *flags) : GUI::Debugger(),
 	registerCmd("initroom",		WRAP_METHOD(Debugger, Cmd_InitRoom));
 	registerCmd("changecursor",	WRAP_METHOD(Debugger, Cmd_ChangeCursor));
 	registerCmd("additem",		WRAP_METHOD(Debugger, Cmd_AddItem));
+
+	_cursorNr = 0;
 }
 
 static int strToInt(const char *s) {
@@ -91,7 +92,7 @@ bool Debugger::Cmd_SetFlag(int argc, const char **argv) {
  * This command gets the value of a flag
  */
 bool Debugger::Cmd_GetFlag(int argc, const char **argv) {
-	// Check for an flag to display
+	// Check for a flag to display
 	if (argc != 2) {
 		debugPrintf("Usage: %s <flag number>\n", argv[0]);
 		return true;

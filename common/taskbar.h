@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -24,17 +23,29 @@
 #define COMMON_TASKBAR_MANAGER_H
 
 #include "common/scummsys.h"
-#include "common/str.h"
 
 #if defined(USE_TASKBAR)
 
+#include "common/str.h"
+#include "common/config-manager.h"
+#include "common/file.h"
+
 namespace Common {
+
+/**
+ * @defgroup common_taskbar Taskbar Manager
+ * @ingroup common
+ *
+ * @brief The TaskbarManager module allows for interaction with the ScummVM application icon.
+ *
+ * @{
+ */
 
 /**
  * The TaskbarManager allows interaction with the ScummVM application icon:
  *  - in the taskbar on Windows 7 and later
  *  - in the launcher for Unity
- *  - in the dock on Mac OS X
+ *  - in the dock on macOS
  *  - ...
  *
  * This allows GUI code and engines to display a progress bar, an overlay icon and/or count
@@ -123,7 +134,7 @@ public:
 	virtual void addRecent(const String &name, const String &description) {}
 
 	/**
-	 * Notifies the user an error occured through the taskbar icon
+	 * Notifies the user an error occurred through the taskbar icon
 	 *
 	 * This will for example show the taskbar icon as red (using progress of 100% and an error state)
 	 * on Windows, and set the launcher icon in the urgent state on Unity
@@ -134,7 +145,62 @@ public:
 	 * Clears the error notification
 	 */
 	virtual void clearError() {}
+
+protected:
+	/**
+	 * 	Get the path to an icon for the game
+	 *
+	 * @param   target     The game target
+	 * @param   extension  The icon extension
+	 * @return  The icon path (or "" if no icon was found)
+	 */
+	Common::Path getIconPath(const Common::String &target, const Common::String &extension) {
+		// We first try to look for a iconspath configuration variable then
+		// fallback to the extra path
+		//
+		// Icons can be either in a subfolder named "icons" or directly in the path
+
+		Common::Path iconsPath = ConfMan.getPath("iconspath");
+		Common::Path extraPath = ConfMan.getPath("extrapath");
+
+		Common::String targetIcon = target + extension;
+		Common::String qualifiedIcon = ConfMan.get("engineid") + "-" + ConfMan.get("gameid") + extension;
+		Common::String gameIcon = ConfMan.get("gameid") + extension;
+		Common::String engineIcon = ConfMan.get("engineid") + extension;
+
+#define TRY_ICON_PATH(path) { \
+Common::FSNode node((path)); \
+if (node.exists()) \
+return (path); \
+}
+		if (!iconsPath.empty()) {
+			TRY_ICON_PATH(iconsPath.join(targetIcon));
+			TRY_ICON_PATH(iconsPath.join(qualifiedIcon));
+			TRY_ICON_PATH(iconsPath.join(gameIcon));
+			TRY_ICON_PATH(iconsPath.join(engineIcon));
+			TRY_ICON_PATH(iconsPath.join("icons/" + targetIcon));
+			TRY_ICON_PATH(iconsPath.join("icons/" + qualifiedIcon));
+			TRY_ICON_PATH(iconsPath.join("icons/" + gameIcon));
+			TRY_ICON_PATH(iconsPath.join("icons/" + engineIcon));
+		}
+
+		if (!extraPath.empty()) {
+			TRY_ICON_PATH(extraPath.join(targetIcon));
+			TRY_ICON_PATH(extraPath.join(qualifiedIcon));
+			TRY_ICON_PATH(extraPath.join(gameIcon));
+			TRY_ICON_PATH(extraPath.join(engineIcon));
+			TRY_ICON_PATH(extraPath.join("icons/" + targetIcon));
+			TRY_ICON_PATH(extraPath.join("icons/" + qualifiedIcon));
+			TRY_ICON_PATH(extraPath.join("icons/" + gameIcon));
+			TRY_ICON_PATH(extraPath.join("icons/" + engineIcon));
+		}
+#undef TRY_ICON_PATH
+
+		return Common::Path();
+	}
 };
+
+/** @} */
 
 } // End of namespace Common
 

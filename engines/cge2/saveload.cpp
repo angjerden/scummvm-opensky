@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,41 +15,38 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 /*
  * This code is based on original Sfinx source code
- * Copyright (c) 1994-1997 Janus B. Wisniewski and L.K. Avalon
+ * Copyright (c) 1994-1997 Janusz B. Wisniewski and L.K. Avalon
  */
 
-#include "common/config-manager.h"
+#include "common/memstream.h"
 #include "common/savefile.h"
 #include "common/system.h"
 #include "graphics/thumbnail.h"
 #include "graphics/surface.h"
-#include "graphics/palette.h"
+#include "graphics/paletteman.h"
 #include "graphics/scaler.h"
 #include "cge2/events.h"
 #include "cge2/snail.h"
 #include "cge2/hero.h"
 #include "cge2/text.h"
-#include "cge2/sound.h"
-#include "cge2/cge2_main.h"
 
 namespace CGE2 {
 
 #define kSavegameCheckSum (1997 + _now + _sex + kWorldHeight)
 #define kBadSVG           99
 
-bool CGE2Engine::canSaveGameStateCurrently() {
+bool CGE2Engine::canSaveGameStateCurrently(Common::U32String *msg) {
 	return (_gamePhase == kPhaseInGame) && _mouse->_active &&
 		_commandHandler->idle() && (_soundStat._wait == nullptr);
 }
 
-Common::Error CGE2Engine::saveGameState(int slot, const Common::String &desc) {
+Common::Error CGE2Engine::saveGameState(int slot, const Common::String &desc, bool isAutosave) {
 	storeHeroPos();
 	saveGame(slot, desc);
 	sceneUp(_now);
@@ -58,7 +55,7 @@ Common::Error CGE2Engine::saveGameState(int slot, const Common::String &desc) {
 
 void CGE2Engine::saveGame(int slotNumber, const Common::String &desc) {
 	// Set up the serializer
-	Common::String slotName = generateSaveName(slotNumber);
+	Common::String slotName = getSaveStateName(slotNumber);
 	Common::OutSaveFile *saveFile = g_system->getSavefileManager()->openForSaving(slotName);
 
 	// Write out the ScummVM savegame header
@@ -76,7 +73,7 @@ void CGE2Engine::saveGame(int slotNumber, const Common::String &desc) {
 	delete saveFile;
 }
 
-bool CGE2Engine::canLoadGameStateCurrently() {
+bool CGE2Engine::canLoadGameStateCurrently(Common::U32String *msg) {
 	return (_gamePhase == kPhaseInGame) && _mouse->_active;
 }
 
@@ -95,7 +92,7 @@ bool CGE2Engine::loadGame(int slotNumber) {
 	Common::MemoryReadStream *readStream;
 
 	// Open up the savegame file
-	Common::String slotName = generateSaveName(slotNumber);
+	Common::String slotName = getSaveStateName(slotNumber);
 	Common::InSaveFile *saveFile = g_system->getSavefileManager()->openForLoading(slotName);
 
 	// Read the data into a data buffer
@@ -120,9 +117,7 @@ bool CGE2Engine::loadGame(int slotNumber) {
 			return false;
 		}
 
-		// Delete the thumbnail
-		saveHeader.thumbnail->free();
-		delete saveHeader.thumbnail;
+		g_engine->setTotalPlayTime(saveHeader.playTime * 1000);
 	}
 
 	resetGame();
@@ -180,10 +175,20 @@ void CGE2Engine::writeSavegameHeader(Common::OutSaveFile *out, SavegameHeader &h
 	out->writeSint16LE(td.tm_mday);
 	out->writeSint16LE(td.tm_hour);
 	out->writeSint16LE(td.tm_min);
+
+	out->writeUint32LE(g_engine->getTotalPlayTime() / 1000);
 }
 
-bool CGE2Engine::readSavegameHeader(Common::InSaveFile *in, SavegameHeader &header) {
-	header.thumbnail = nullptr;
+WARN_UNUSED_RESULT bool CGE2Engine::readSavegameHeader(Common::InSaveFile *in, SavegameHeader &header, bool skipThumbnail) {
+	header.version     = 0;
+	header.saveName.clear();
+	header.thumbnail   = nullptr;
+	header.saveYear    = 0;
+	header.saveMonth   = 0;
+	header.saveDay     = 0;
+	header.saveHour    = 0;
+	header.saveMinutes = 0;
+	header.playTime    = 0;
 
 	// Get the savegame version
 	header.version = in->readByte();
@@ -191,22 +196,26 @@ bool CGE2Engine::readSavegameHeader(Common::InSaveFile *in, SavegameHeader &head
 		return false;
 
 	// Read in the string
-	header.saveName.clear();
 	char ch;
 	while ((ch = (char)in->readByte()) != '\0')
 		header.saveName += ch;
 
 	// Get the thumbnail
-	header.thumbnail = Graphics::loadThumbnail(*in);
-	if (!header.thumbnail)
+	if (!Graphics::loadThumbnail(*in, header.thumbnail, skipThumbnail)) {
 		return false;
+	}
 
 	// Read in save date/time
-	header.saveYear = in->readSint16LE();
-	header.saveMonth = in->readSint16LE();
-	header.saveDay = in->readSint16LE();
-	header.saveHour = in->readSint16LE();
+	header.saveYear    = in->readSint16LE();
+	header.saveMonth   = in->readSint16LE();
+	header.saveDay     = in->readSint16LE();
+	header.saveHour    = in->readSint16LE();
 	header.saveMinutes = in->readSint16LE();
+
+	if (header.version >= 2) {
+		header.playTime = in->readUint32LE();
+	}
+
 
 	return true;
 }
@@ -266,14 +275,6 @@ void CGE2Engine::syncHeader(Common::Serializer &s) {
 		if (checksum != kSavegameCheckSum)
 			error("%s", _text->getText(kBadSVG));
 	}
-}
-
-/**
-* Support method that generates a savegame name
-* @param slot		Slot number
-*/
-Common::String CGE2Engine::generateSaveName(int slot) {
-	return Common::String::format("%s.%03d", _targetName.c_str(), slot);
 }
 
 } // End of namespace CGE2

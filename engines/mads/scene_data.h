@@ -4,19 +4,18 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
-
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -189,36 +188,36 @@ public:
 	 * loads the data
 	 */
 	void load(int sceneId, int variant, const Common::String &resName, int flags,
-		DepthSurface &depthSurface, MSurface &bgSurface);
+		DepthSurface &depthSurface, BaseSurface &bgSurface);
 
 	/**
 	 * Loads the palette for a scene
 	 */
-	void loadPalette(int sceneId, int artFileNum, const Common::String &resName, int flags, MSurface &bgSurface);
+	void loadPalette(int sceneId, int artFileNum, const Common::String &resName, int flags, BaseSurface &bgSurface);
 
 	/**
 	 * Loads a V1 game background
 	 */
-	void loadMadsV1Background(int sceneId, const Common::String &resName, int flags, MSurface &bgSurface);
+	void loadMadsV1Background(int sceneId, const Common::String &resName, int flags, BaseSurface &bgSurface);
 
 	/**
 	 * Loads a V2 game background
 	 */
-	void loadMadsV2Background(int sceneId, const Common::String &resName, int flags, MSurface &bgSurface);
+	void loadMadsV2Background(int sceneId, const Common::String &resName, int flags, BaseSurface &bgSurface);
 
 	/**
 	 * Loads the given surface with depth information of a given scene
 	 * @param depthSurface	Depth/walk surface
 	 * @param variant		Variant number to load
 	 */
-	virtual void loadCodes(MSurface &depthSurface, int variant) = 0;
+	virtual void loadCodes(BaseSurface &depthSurface, int variant) = 0;
 
 	/**
 	 * Loads the given surface with depth information of a given scene
 	 * @param depthSurface	Depth/walk surface
 	 * @param stream		Stream to load the data from
 	 */
-	virtual void loadCodes(MSurface &depthSurface, Common::SeekableReadStream *stream) = 0;
+	virtual void loadCodes(BaseSurface &depthSurface, Common::SeekableReadStream *stream) = 0;
 };
 
 } // End of namespace MADS

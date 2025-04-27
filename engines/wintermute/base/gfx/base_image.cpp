@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -28,12 +27,15 @@
 
 #include "engines/wintermute/base/gfx/base_image.h"
 #include "engines/wintermute/base/base_file_manager.h"
-#include "graphics/transparent_surface.h"
+#include "engines/wintermute/base/file/base_savefile_manager_file.h"
+
 #include "graphics/surface.h"
+
 #include "image/png.h"
 #include "image/jpeg.h"
 #include "image/bmp.h"
 #include "image/tga.h"
+
 #include "common/textconsole.h"
 #include "common/stream.h"
 #include "common/system.h"
@@ -44,6 +46,7 @@ namespace Wintermute {
 BaseImage::BaseImage() {
 	_fileManager = BaseFileManager::getEngineInstance();
 	_palette = nullptr;
+	_paletteCount = 0;
 	_surface = nullptr;
 	_decoder = nullptr;
 	_deletableSurface = nullptr;
@@ -81,7 +84,8 @@ bool BaseImage::loadFile(const Common::String &filename) {
 
 	_decoder->loadStream(*file);
 	_surface = _decoder->getSurface();
-	_palette = _decoder->getPalette();
+	_palette = _decoder->getPalette().data();
+	_paletteCount = _decoder->getPalette().size();
 	_fileManager->closeFile(file);
 
 	return true;
@@ -104,22 +108,25 @@ void BaseImage::copyFrom(const Graphics::Surface *surface) {
 
 //////////////////////////////////////////////////////////////////////////
 bool BaseImage::saveBMPFile(const Common::String &filename) const {
-	warning("BaseImage::saveBMPFile - stubbed"); // TODO
+	Common::WriteStream *stream = openSfmFileForWrite(filename);
+	if (stream) {
+		bool ret = writeBMPToStream(stream);
+		delete stream;
+		return ret;
+	}
 	return false;
 }
 
 
 //////////////////////////////////////////////////////////////////////////
 bool BaseImage::resize(int newWidth, int newHeight) {
-	// WME Lite used FILTER_BILINEAR with FreeImage_Rescale here.
-	Graphics::TransparentSurface temp(*_surface, true);
+	Graphics::Surface *temp = _surface->scale((uint16)newWidth, (uint16)newHeight, true);
 	if (_deletableSurface) {
 		_deletableSurface->free();
 		delete _deletableSurface;
 		_deletableSurface = nullptr;
 	}
-	_surface = _deletableSurface = temp.scale((uint16)newWidth, (uint16)newHeight);
-	temp.free();
+	_surface = _deletableSurface = temp;
 	return true;
 }
 
@@ -214,15 +221,13 @@ bool BaseImage::writeBMPToStream(Common::WriteStream *stream) const {
 
 //////////////////////////////////////////////////////////////////////////
 bool BaseImage::copyFrom(BaseImage *origImage, int newWidth, int newHeight) {
-	// WME Lite used FILTER_BILINEAR with FreeImage_Rescale here.
-
-	Graphics::TransparentSurface temp(*origImage->_surface, false);
+	Graphics::Surface *temp = origImage->_surface->scale((uint16)newWidth, (uint16)newHeight, true);
 	if (_deletableSurface) {
 		_deletableSurface->free();
 		delete _deletableSurface;
 		_deletableSurface = nullptr;
 	}
-	_surface = _deletableSurface = temp.scale((uint16)newWidth, (uint16)newHeight);
+	_surface = _deletableSurface = temp;
 	return true;
 }
 

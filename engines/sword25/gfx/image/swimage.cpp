@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -35,10 +34,7 @@
 
 namespace Sword25 {
 
-SWImage::SWImage(const Common::String &filename, bool &result) :
-	_imageDataPtr(0),
-	_width(0),
-	_height(0) {
+SWImage::SWImage(const Common::String &filename, bool &result) : _image() {
 	result = false;
 
 	PackageManager *pPackage = Kernel::getInstance()->getPackage();
@@ -54,9 +50,7 @@ SWImage::SWImage(const Common::String &filename, bool &result) :
 	}
 
 	// Uncompress the image
-	int pitch;
-	byte *pUncompressedData;
-	if (!ImgLoader::decodePNGImage(pFileData, fileSize, pUncompressedData, _width, _height, pitch)) {
+	if (!ImgLoader::decodePNGImage(pFileData, fileSize, &_image)) {
 		error("Could not decode image.");
 		return;
 	}
@@ -64,22 +58,20 @@ SWImage::SWImage(const Common::String &filename, bool &result) :
 	// Cleanup FileData
 	delete[] pFileData;
 
-	_imageDataPtr = (uint *)pUncompressedData;
-
 	result = true;
 	return;
 }
 
 SWImage::~SWImage() {
-	delete[] _imageDataPtr;
+	_image.free();
 }
 
 
 bool SWImage::blit(int posX, int posY,
-                      int flipping,
-                      Common::Rect *pPartRect,
-                      uint color,
-                      int width, int height,
+					  int flipping,
+					  Common::Rect *pPartRect,
+					  uint color,
+					  int width, int height,
 					  RectangleList *updateRects) {
 	error("Blit() is not supported.");
 	return false;
@@ -96,10 +88,13 @@ bool SWImage::setContent(const byte *pixeldata, uint size, uint offset, uint str
 }
 
 uint SWImage::getPixel(int x, int y) {
-	assert(x >= 0 && x < _width);
-	assert(y >= 0 && y < _height);
+	assert(x >= 0 && x < _image.w);
+	assert(y >= 0 && y < _image.h);
 
-	return _imageDataPtr[_width * y + x];
+	byte a, r, g, b;
+	_image.format.colorToARGB(_image.getPixel(x, y), a, r, g, b);
+
+	return BS_ARGB(a, r, g, b);
 }
 
 } // End of namespace Sword25

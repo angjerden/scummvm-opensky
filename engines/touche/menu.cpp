@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -24,6 +23,8 @@
 #include "common/events.h"
 #include "common/system.h"
 #include "common/savefile.h"
+
+#include "backends/keymapper/keymapper.h"
 
 #include "touche/graphics.h"
 #include "touche/midi.h"
@@ -76,6 +77,8 @@ void ToucheEngine::drawButton(Button *button) {
 			dx = -1;
 			dy = -2;
 			break;
+		default:
+			break;
 		}
 		const int x = button->x + button->w / 2;
 		const int y = button->y + button->h / 2;
@@ -98,14 +101,13 @@ static void drawSaveGameStateDescriptions(uint8 *dst, int dstPitch, MenuData *me
 	for (int i = 0, slot = currentPage * 10; i < 10; ++i, ++slot) {
 		const Button *b = &menuData->buttonsTable[i];
 		const uint8 color = (slot == currentSlot) ? 0xCB : 0xD9;
-		char buf[64];
-		sprintf(buf, "%d.", slot);
-		Graphics::drawString16(dst, dstPitch, color, b->x, b->y, buf);
-		strcpy(buf, menuData->saveLoadDescriptionsTable[slot]);
+		Common::String savegameNameStr = Common::String::format("%d.", slot);
+		Graphics::drawString16(dst, dstPitch, color, b->x, b->y, savegameNameStr.c_str());
+		savegameNameStr = menuData->saveLoadDescriptionsTable[slot];
 		if (slot == currentSlot && menuData->mode == kMenuSaveStateMode) {
-			strcat(buf, "_");
+			savegameNameStr += "_";
 		}
-		Graphics::drawString16(dst, dstPitch, color, b->x + 30, b->y, buf);
+		Graphics::drawString16(dst, dstPitch, color, b->x + 30, b->y, savegameNameStr.c_str());
 	}
 }
 
@@ -159,6 +161,8 @@ static void setupMenu(MenuMode mode, MenuData *menuData) {
 		menuData->buttonsTable = saveLoadButtonsTable;
 		menuData->buttonsCount = ARRAYSIZE(saveLoadButtonsTable);
 		break;
+	default:
+		break;
 	}
 }
 
@@ -177,6 +181,8 @@ void ToucheEngine::redrawMenu(MenuData *menu) {
 	case kMenuLoadStateMode:
 	case kMenuSaveStateMode:
 		drawSaveGameStateDescriptions(_offscreenBuffer, kScreenWidth, menu, _saveLoadCurrentPage, _saveLoadCurrentSlot);
+		break;
+	default:
 		break;
 	}
 	for (uint i = 0; i < menu->buttonsCount; ++i) {
@@ -299,11 +305,15 @@ void ToucheEngine::handleOptions(int forceDisplay) {
 				updateScreenArea(90, 102, 460, 196);
 				doRedraw = false;
 			}
+
+			Common::Keymapper *keymapper = _eventMan->getKeymapper();
+			keymapper->getKeymap("game-shortcuts")->setEnabled(false);
+
 			Common::Event event;
 			while (_eventMan->pollEvent(event)) {
 				const Button *button = 0;
 				switch (event.type) {
-				case Common::EVENT_RTL:
+				case Common::EVENT_RETURN_TO_LAUNCHER:
 				case Common::EVENT_QUIT:
 					menuData.quit = true;
 					menuData.exit = true;
@@ -337,6 +347,9 @@ void ToucheEngine::handleOptions(int forceDisplay) {
 					break;
 				}
 			}
+
+			keymapper->getKeymap("game-shortcuts")->setEnabled(true);
+
 			_system->updateScreen();
 			_system->delayMillis(10);
 		}
@@ -467,43 +480,20 @@ int ToucheEngine::displayQuitDialog() {
 		Common::Event event;
 		while (_eventMan->pollEvent(event)) {
 			switch (event.type) {
-			case Common::EVENT_RTL:
+			case Common::EVENT_RETURN_TO_LAUNCHER:
 			case Common::EVENT_QUIT:
 				quitLoop = true;
 				ret = 1;
 				break;
-			case Common::EVENT_KEYDOWN:
+			case Common::EVENT_CUSTOM_ENGINE_ACTION_START:
 				quitLoop = true;
-				switch (_language) {
-				case Common::FR_FRA:
-					if (event.kbd.keycode == Common::KEYCODE_o) {
-						ret = 1;
-					}
-					break;
-				case Common::DE_DEU:
-					if (event.kbd.keycode == Common::KEYCODE_j) {
-						ret = 1;
-					}
-					break;
-				case Common::ES_ESP:
-					if (event.kbd.keycode == Common::KEYCODE_s) {
-						ret = 1;
-					}
-					break;
-				case Common::PL_POL:
-					if (event.kbd.keycode == Common::KEYCODE_s || event.kbd.keycode == Common::KEYCODE_t) {
-						ret = 1;
-					}
-					break;
-				default:
-					// According to cyx, the Italian version uses the same
-					// keys as the English one.
-					if (event.kbd.keycode == Common::KEYCODE_y) {
-						ret = 1;
-					}
-					break;
+				if (event.customType == kToucheActionYes) {
+					ret = 1;
 				}
 				break;
+			case Common::EVENT_JOYBUTTON_DOWN:
+			case Common::EVENT_KEYDOWN:
+				quitLoop = true;
 			default:
 				break;
 			}

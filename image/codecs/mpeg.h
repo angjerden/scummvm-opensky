@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,12 +15,9 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
-
-#ifdef USE_MPEG2
 
 #ifndef IMAGE_CODECS_MPEG_H
 #define IMAGE_CODECS_MPEG_H
@@ -28,31 +25,10 @@
 #include "image/codecs/codec.h"
 #include "graphics/pixelformat.h"
 
-#if defined(__PLAYSTATION2__)
-	typedef uint8 uint8_t;
-	typedef uint16 uint16_t;
-	typedef uint32 uint32_t;
-#elif defined(_WIN32_WCE)
-	typedef signed char int8_t;
-	typedef signed short int16_t;
-	typedef unsigned char uint8_t;
-	typedef unsigned short uint16_t;
-#elif defined(_MSC_VER) || defined (__SYMBIAN32__)
-	typedef signed char int8_t;
-	typedef signed short int16_t;
-	typedef unsigned char uint8_t;
-	typedef unsigned short uint16_t;
-	#if !defined(SDL_COMPILEDVERSION) || (SDL_COMPILEDVERSION < 1210)
-	typedef signed long int32_t;
-	typedef unsigned long uint32_t;
-	#endif
-#else
-#	include <inttypes.h>
-#endif
+#ifdef USE_MPEG2
 
-extern "C" {
-	#include <mpeg2dec/mpeg2.h>
-}
+typedef struct mpeg2dec_s mpeg2dec_t;
+typedef struct mpeg2_info_s mpeg2_info_t;
 
 namespace Common {
 class SeekableReadStream;
@@ -72,11 +48,17 @@ namespace Image {
 class MPEGDecoder : public Codec {
 public:
 	MPEGDecoder();
-	~MPEGDecoder();
+	~MPEGDecoder() override;
 
 	// Codec interface
-	const Graphics::Surface *decodeFrame(Common::SeekableReadStream &stream);
-	Graphics::PixelFormat getPixelFormat() const { return _pixelFormat; }
+	const Graphics::Surface *decodeFrame(Common::SeekableReadStream &stream) override;
+	Graphics::PixelFormat getPixelFormat() const override { return _pixelFormat; }
+	bool setOutputPixelFormat(const Graphics::PixelFormat &format) override {
+		if (format.bytesPerPixel != 2 && format.bytesPerPixel != 4)
+			return false;
+		_pixelFormat = format;
+		return true;
+	}
 
 	// MPEGPSDecoder call
 	bool decodePacket(Common::SeekableReadStream &packet, uint32 &framePeriod, Graphics::Surface *dst = 0);

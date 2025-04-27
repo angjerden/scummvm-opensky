@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -117,13 +116,11 @@ void InputEngine::update() {
 			break;
 
 		case Common::EVENT_KEYDOWN:
+			if (event.kbd.ascii != 0) {
+				reportCharacter(event.kbd.ascii);
+			}
+			// fall through
 		case Common::EVENT_KEYUP:
-			// FIXME - Need to work out how to expose getDebugger() to this module
-			//if (event.kbd.hasFlags(Common::KBD_CTRL) && event.kbd.keycode == Common::KEYCODE_d && event.type == Common::EVENT_KEYDOWN) {
-			//	_vm->getDebugger()->attach();
-			//	_vm->getDebugger()->onFrame();
-			//}
-
 			alterKeyboardState(event.kbd.keycode, (event.type == Common::EVENT_KEYDOWN) ? 0x80 : 0);
 			break;
 
@@ -211,6 +208,16 @@ bool InputEngine::wasKeyDown(uint keyCode) {
 	assert(keyCode < ARRAYSIZE(_keyboardState[_currentState]));
 	return ((_keyboardState[_currentState][keyCode] & 0x80) == 0) &&
 	       ((_keyboardState[_currentState ^ 1][keyCode] & 0x80) != 0);
+}
+
+void InputEngine::setMouseX(int posX) {
+	_mouseX = posX;
+	g_system->warpMouse(_mouseX, _mouseY);
+}
+
+void InputEngine::setMouseY(int posY) {
+	_mouseY = posY;
+	g_system->warpMouse(_mouseX, _mouseY);
 }
 
 void InputEngine::setCharacterCallback(CharacterCallback callback) {

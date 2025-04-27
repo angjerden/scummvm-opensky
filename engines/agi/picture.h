@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -25,102 +24,87 @@
 
 namespace Agi {
 
-#define _DEFAULT_WIDTH		160
-#define _DEFAULT_HEIGHT		168
+#define _DEFAULT_WIDTH      160
+#define _DEFAULT_HEIGHT     168
 
 /**
  * AGI picture resource.
  */
 struct AgiPicture {
-	uint32 flen;			/**< size of raw data */
-	uint8 *rdata;			/**< raw vector image data */
-};
+	uint32 flen;            /**< size of raw data */
+	uint8 *rdata;           /**< raw vector image data */
 
-// AGI picture version
-enum AgiPictureVersion {
-	AGIPIC_C64,
-	AGIPIC_V1,
-	AGIPIC_V15,
-	AGIPIC_V2
-};
+	void reset() {
+		flen = 0;
+		rdata = nullptr;
+	}
 
-enum AgiPictureFlags {
-	kPicFNone      = (1 << 0),
-	kPicFCircle    = (1 << 1),
-	kPicFStep      = (1 << 2),
-	kPicFf3Stop    = (1 << 3),
-	kPicFf3Cont    = (1 << 4),
-	kPicFTrollMode = (1 << 5)
+	AgiPicture() { reset(); }
 };
 
 class AgiBase;
 class GfxMgr;
 
 class PictureMgr {
+public:
+	PictureMgr(AgiBase *agi, GfxMgr *gfx);
+	virtual ~PictureMgr() { }
+
+	int16 getResourceNr() const { return _resourceNr; };
+
+protected:
+	virtual byte getInitialPriorityColor() const { return 4; }
+
+	void putVirtPixel(int16 x, int16 y);
+	void xCorner(bool skipOtherCoords = false);
+	void yCorner(bool skipOtherCoords = false);
+	virtual void plotPattern(byte x, byte y);
+	virtual void plotBrush();
+
+	byte getNextByte();
+	bool getNextParamByte(byte &b);
+	byte getNextNibble();
+
+	virtual bool getNextXCoordinate(byte &x);
+	virtual bool getNextYCoordinate(byte &y);
+	bool getNextCoordinates(byte &x, byte &y);
+
+	virtual bool getGraphicsCoordinates(int16 &x, int16 &y);
+
+public:
+	void decodePicture(int16 resourceNr, bool clearScreen, bool agi256 = false, int16 width = _DEFAULT_WIDTH, int16 height = _DEFAULT_HEIGHT);
+	void decodePictureFromBuffer(byte *data, uint32 length, bool clearScreen, int16 width = _DEFAULT_WIDTH, int16 height = _DEFAULT_HEIGHT);
+
+protected:
+	virtual void drawPicture();
+	void drawPicture_AGI256();
+
+	void draw_SetColor();
+	void draw_SetPriority();
+	void draw_SetNibbleColor();
+	void draw_SetNibblePriority();
+
+	virtual void draw_Line(int16 x1, int16 y1, int16 x2, int16 y2);
+	void draw_LineShort();
+	void draw_LineAbsolute();
+
+	virtual bool draw_FillCheck(int16 x, int16 y, bool horizontalCheck);
+	virtual void draw_Fill(int16 x, int16 y);
+	virtual void draw_Fill();
+
+public:
+	void showPicture(int16 x = 0, int16 y = 0, int16 width = _DEFAULT_WIDTH, int16 height = _DEFAULT_HEIGHT);
+	void showPictureWithTransition();
+
+protected:
 	AgiBase *_vm;
 	GfxMgr *_gfx;
 
-private:
-
-	void drawLine(int x1, int y1, int x2, int y2);
-	void dynamicDrawLine();
-	void absoluteDrawLine();
-	int isOkFillHere(int x, int y);
-	void agiFill(unsigned int x, unsigned int y);
-	void xCorner(bool skipOtherCoords = false);
-	void yCorner(bool skipOtherCoords = false);
-	void fill();
-	int plotPatternPoint(int x, int y, int bitpos);
-	void plotBrush();
-
-	uint8 nextByte() { return _data[_foffs++]; }
-
-public:
-	PictureMgr(AgiBase *agi, GfxMgr *gfx);
-
-	void putVirtPixel(int x, int y);
-
-	int decodePicture(int n, int clear, bool agi256 = false, int pic_width = _DEFAULT_WIDTH, int pic_height = _DEFAULT_HEIGHT);
-	int decodePicture(byte* data, uint32 length, int clear, int pic_width = _DEFAULT_WIDTH, int pic_height = _DEFAULT_HEIGHT);
-	int unloadPicture(int);
-	void drawPicture();
-	void showPic(int x = 0, int y = 0, int pic_width = _DEFAULT_WIDTH, int pic_height = _DEFAULT_HEIGHT);
-	uint8 *convertV3Pic(uint8 *src, uint32 len);
-
-	void plotPattern(int x, int y);		// public because it's used directly by preagi
-
-	void setPattern(uint8 code, uint8 num);
-
-	void setPictureVersion(AgiPictureVersion version);
-	void setPictureData(uint8 *data, int len = 4096);
-
-	void setPictureFlags(int flags) { _flags = flags; }
-
-	void clear();
-
-	void setOffset(int offX, int offY) {
-		_xOffset = offX;
-		_yOffset = offY;
-	}
-
-	void setDimensions(int w, int h) {
-		_width = w;
-		_height = h;
-	}
-
-	void putPixel(int x, int y, uint8 color) {
-		_scrColor = color;
-		_priOn = false;
-		_scrOn = true;
-		putVirtPixel(x, y);
-	}
-
-	bool isPictureLoaded() { return _data != NULL; }
-
-private:
+	int16  _resourceNr;
 	uint8 *_data;
-	uint32 _flen;
-	uint32 _foffs;
+	uint32 _dataSize;
+	uint32 _dataOffset;
+	bool   _dataOffsetNibble;
 
 	uint8 _patCode;
 	uint8 _patNum;
@@ -131,12 +115,8 @@ private:
 
 	uint8 _minCommand;
 
-	AgiPictureVersion _pictureVersion;
-	int _width, _height;
-	int _xOffset, _yOffset;
-
-	int _flags;
-	int _currentStep;
+	int16 _width;
+	int16 _height;
 };
 
 } // End of namespace Agi

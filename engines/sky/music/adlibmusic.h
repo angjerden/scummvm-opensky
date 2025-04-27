@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -24,33 +23,36 @@
 #define SKY_MUSIC_ADLIBMUSIC_H
 
 #include "sky/music/musicbase.h"
-#include "audio/audiostream.h"
-#include "audio/fmopl.h"
+
+namespace Audio {
+class Mixer;
+}
+
+namespace OPL {
+class OPL;
+}
 
 namespace Sky {
 
-class AdLibMusic : public Audio::AudioStream, public MusicBase {
+class AdLibMusic : public MusicBase {
 public:
 	AdLibMusic(Audio::Mixer *pMixer, Disk *pDisk);
-	~AdLibMusic();
+	~AdLibMusic() override;
 
 	// AudioStream API
-	int readBuffer(int16 *buffer, const int numSamples);
-	bool isStereo() const;
-	bool endOfData() const;
-	int getRate() const;
-	virtual void setVolume(uint16 param);
+	void setVolume(uint16 param) override;
 
 private:
-	FM_OPL *_opl;
-	Audio::SoundHandle _soundHandle;
+	OPL::OPL *_opl;
 	uint8 *_initSequence;
-	uint32 _sampleRate, _nextMusicPoll;
-	virtual void setupPointers();
-	virtual void setupChannels(uint8 *channelData);
-	virtual void startDriver();
+	uint32 _sampleRate;
+	void setupPointers() override;
+	void setupChannels(uint8 *channelData) override;
+	void startDriver() override;
 
 	void premixerCall(int16 *buf, uint len);
+
+	void onTimer();
 };
 
 } // End of namespace Sky

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -68,6 +67,8 @@ namespace Mohawk {
 #define ID_VARS MKTAG('V','A','R','S') // Variable Values
 #define ID_VERS MKTAG('V','E','R','S') // Version Info
 #define ID_ZIPS MKTAG('Z','I','P','S') // Zip Mode Status
+#define ID_META MKTAG('M','E','T','A') // ScummVM save metadata
+#define ID_THMB MKTAG('T','H','M','B') // ScummVM save thumbnail
 
 // Zoombini Resource FourCC's
 #define ID_SND  MKTAG( 0 ,'S','N','D') // Standard Mohawk Sound
@@ -135,7 +136,7 @@ public:
 	Archive();
 	virtual ~Archive();
 
-	bool openFile(const Common::String &fileName);
+	bool openFile(const Common::Path &fileName);
 	virtual bool openStream(Common::SeekableReadStream *stream) = 0;
 	void close();
 
@@ -151,6 +152,8 @@ public:
 	Common::Array<uint32> getResourceTypeList() const;
 	Common::Array<uint16> getResourceIDList(uint32 type) const;
 
+	/** Offset the resource ids for a resource type by the specified amount */
+	void offsetResourceIDs(uint32 type, uint16 startId, int16 increment);
 protected:
 	Common::SeekableReadStream *_stream;
 
@@ -168,25 +171,25 @@ protected:
 class MohawkArchive : public Archive {
 public:
 	MohawkArchive() : Archive() {}
-	~MohawkArchive() {}
+	~MohawkArchive() override {}
 
-	bool openStream(Common::SeekableReadStream *stream);
+	bool openStream(Common::SeekableReadStream *stream) override;
 };
 
 class LivingBooksArchive_v1 : public Archive {
 public:
 	LivingBooksArchive_v1() : Archive() {}
-	~LivingBooksArchive_v1() {}
+	~LivingBooksArchive_v1() override {}
 
-	bool openStream(Common::SeekableReadStream *stream);
+	bool openStream(Common::SeekableReadStream *stream) override;
 };
 
 class DOSArchive_v2 : public Archive {
 public:
 	DOSArchive_v2() : Archive() {}
-	~DOSArchive_v2() {}
+	~DOSArchive_v2() override {}
 
-	bool openStream(Common::SeekableReadStream *stream);
+	bool openStream(Common::SeekableReadStream *stream) override;
 };
 
 } // End of namespace Mohawk

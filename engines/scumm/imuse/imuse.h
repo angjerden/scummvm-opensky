@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,15 +15,16 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #ifndef SCUMM_IMUSE_H
 #define SCUMM_IMUSE_H
 
+#include "audio/mididrv.h"
 #include "common/scummsys.h"
+#include "common/serializer.h"
 #include "common/mutex.h"
 #include "scumm/music.h"
 
@@ -35,7 +36,6 @@ namespace Scumm {
 class IMuseInternal;
 class Player;
 class ScummEngine;
-class Serializer;
 
 typedef void (*sysexfunc)(Player *, const byte *, uint16);
 
@@ -51,18 +51,17 @@ class IMuse : public MusicEngine {
 public:
 	enum {
 		PROP_TEMPO_BASE,
-		PROP_NATIVE_MT32,
-		PROP_GS,
 		PROP_LIMIT_PLAYERS,
 		PROP_RECYCLE_PLAYERS,
-		PROP_GAME_ID,
-		PROP_PC_SPEAKER
+		PROP_QUALITY,
+		PROP_MUSICVOLUME,
+		PROP_SFXVOLUME
 	};
 
 public:
 	virtual void on_timer(MidiDriver *midi) = 0;
 	virtual void pause(bool paused) = 0;
-	virtual int save_or_load(Serializer *ser, ScummEngine *scumm, bool fixAfterLoad = true) = 0;
+	virtual void saveLoadIMuse(Common::Serializer &ser, ScummEngine *scumm, bool fixAfterLoad = true) = 0;
 	virtual bool get_sound_active(int sound) const = 0;
 	virtual int32 doCommand(int numargs, int args[]) = 0;
 	virtual int clear_queue() = 0;
@@ -72,12 +71,12 @@ public:
 public:
 	virtual void startSoundWithNoteOffset(int sound, int offset) = 0;
 
-	// MusicEngine base class methods.
-	// Not actually redefined here because none are implemented.
+	// MusicEngine base class methods. Only this one is implemented:
+	void setQuality(int qual) override { property(PROP_QUALITY, qual); }
 
 public:
 	// Factory methods
-	static IMuse *create(OSystem *syst, MidiDriver *nativeMidiDriver, MidiDriver *adlibMidiDriver);
+	static IMuse *create(ScummEngine *vm, MidiDriver *nativeMidiDriver, MidiDriver *adlibMidiDriver, MidiDriverFlags sndType, bool nativeMT32);
 };
 
 } // End of namespace Scumm

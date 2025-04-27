@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,32 +15,29 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 /*
  * This code is based on original Sfinx source code
- * Copyright (c) 1994-1997 Janus B. Wisniewski and L.K. Avalon
+ * Copyright (c) 1994-1997 Janusz B. Wisniewski and L.K. Avalon
  */
 
 #ifndef CGE2_SOUND_H
 #define CGE2_SOUND_H
 
-#include "cge2/fileio.h"
-#include "audio/audiostream.h"
-#include "audio/decoders/wave.h"
-#include "audio/fmopl.h"
-#include "audio/mididrv.h"
-#include "audio/midiparser.h"
 #include "audio/midiplayer.h"
 #include "audio/mixer.h"
-#include "common/memstream.h"
+
+namespace Audio {
+class RewindableAudioStream;
+}
 
 namespace CGE2 {
 
 class CGE2Engine;
+class EncryptedStream;
 
 // sample info
 struct SmpInfo {
@@ -68,11 +65,11 @@ class Sound {
 public:
 	SmpInfo _smpinf;
 
-	Sound(CGE2Engine *vm);
+	explicit Sound(CGE2Engine *vm);
 	~Sound();
 	void open();
 	void close();
-	void play(Audio::Mixer::SoundType soundType, DataCk *wav, int pan = 8);
+	void play(Audio::Mixer::SoundType soundType, int ref, int sub, int pan = 8);
 	int16 getRepeat();
 	void setRepeat(int16 count);
 	void stop();
@@ -116,14 +113,14 @@ private:
 	// Stop MIDI File
 	void sndMidiStop();
 public:
-	MusicPlayer(CGE2Engine *vm);
-	~MusicPlayer();
+	explicit MusicPlayer(CGE2Engine *vm);
+	~MusicPlayer() override;
 
 	void loadMidi(int ref);
 	void killMidi();
 
-	virtual void send(uint32 b);
-	virtual void sendToChannel(byte channel, uint32 b);
+	void send(uint32 b) override;
+	void sendToChannel(byte channel, uint32 b) override;
 };
 
 } // End of namespace CGE2

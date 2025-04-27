@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -36,8 +35,6 @@
 #include "sword25/gfx/image/art.h"
 #include "sword25/gfx/image/vectorimage.h"
 #include "sword25/gfx/image/renderedimage.h"
-
-#include "graphics/colormasks.h"
 
 namespace Sword25 {
 
@@ -217,6 +214,7 @@ Common::Rect CalculateBoundingBox(const VectorImageElement &vectorImageElement) 
 
 VectorImage::VectorImage(const byte *pFileData, uint fileSize, bool &success, const Common::String &fname) : _pixelData(0), _fname(fname) {
 	success = false;
+	_bgColor = 0;
 
 	// Create bitstream object
 	// In the following the file data will be readout of the bitstream object.
@@ -283,7 +281,18 @@ VectorImage::VectorImage(const byte *pFileData, uint fileSize, bool &success, co
 		case 32:
 			success = parseDefineShape(3, bs);
 			return;
+		case 9:
+			// SetBackgroundColor
+			{
+				byte r, g, b;
+				r = bs.getByte();
+				g = bs.getByte();
+				b = bs.getByte();
+				_bgColor = BS_RGB(r, g, b);
+			}
+			break;
 		default:
+			warning("Ignoring tag: %d, %d bytes", tagType, tagLength);
 			// Ignore unknown tags
 			bs.skipBytes(tagLength);
 		}
@@ -300,8 +309,7 @@ VectorImage::~VectorImage() {
 			if (_elements[j].getPathInfo(i).getVec())
 				free(_elements[j].getPathInfo(i).getVec());
 
-	if (_pixelData)
-		free(_pixelData);
+	free(_pixelData);
 }
 
 
@@ -535,7 +543,7 @@ bool VectorImage::parseStyles(uint shapeType, SWFBitStream &bs, uint &numFillBit
 		if (shapeType == 3)
 			a = bs.getByte();
 
-		color = Graphics::ARGBToColor<Graphics::ColorMasks<8888> >(a, r, g, b);
+		color = BS_ARGB(a, r, g, b);
 
 		if (type != 0)
 			return false;
@@ -564,7 +572,7 @@ bool VectorImage::parseStyles(uint shapeType, SWFBitStream &bs, uint &numFillBit
 		if (shapeType == 3)
 			a = bs.getByte();
 
-		color = Graphics::ARGBToColor<Graphics::ColorMasks<8888> >(a, r, g, b);
+		color = BS_ARGB(a, r, g, b);
 
 		_elements.back()._lineStyles.push_back(VectorImageElement::LineStyleType(width, color));
 	}
@@ -600,10 +608,10 @@ bool VectorImage::setContent(const byte *pixeldata, uint size, uint offset, uint
 }
 
 bool VectorImage::blit(int posX, int posY,
-                       int flipping,
-                       Common::Rect *pPartRect,
-                       uint color,
-                       int width, int height,
+					   int flipping,
+					   Common::Rect *pPartRect,
+					   uint color,
+					   int width, int height,
 					   RectangleList *updateRects) {
 	static VectorImage *oldThis = 0;
 	static int              oldWidth = -2;

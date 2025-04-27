@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,13 +15,12 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
-#ifndef CGE_H
-#define CGE_H
+#ifndef CGE_CGE_H
+#define CGE_CGE_H
 
 #include "common/random.h"
 #include "common/savefile.h"
@@ -56,7 +55,7 @@ class Walk;
 class Text;
 class Talk;
 
-#define kSavegameVersion 2
+#define kSavegameVersion 3
 #define kSavegameStrSize 11
 #define kPocketX    174
 #define kPocketY    176
@@ -80,11 +79,34 @@ class Talk;
 
 #define kSayTheEnd  41
 
+enum CGEAction {
+	kActionNone,
+	kActionInfo,
+	kActionEscape,
+	kActionSave,
+	kActionLoad,
+	kActionQuit,
+	kActionInv1,
+	kActionInv2,
+	kActionInv3,
+	kActionInv4,
+	kActionInv5,
+	kActionInv6,
+	kActionInv7,
+	kActionInv8,
+	kActionAltDice,
+	kActionLevel0,
+	kActionLevel1,
+	kActionLevel2,
+	kActionLevel3,
+	kActionLevel4
+};
+
 // our engine debug channels
 enum {
-	kCGEDebugBitmap = 1 << 0,
-	kCGEDebugFile = 1 << 1,
-	kCGEDebugEngine = 1 << 2
+	kCGEDebugBitmap = 1,
+	kCGEDebugFile,
+	kCGEDebugEngine,
 };
 
 enum SnList {
@@ -99,8 +121,9 @@ struct SavegameHeader {
 	uint8 version;
 	Common::String saveName;
 	Graphics::Surface *thumbnail;
-	int saveYear, saveMonth, saveDay;
-	int saveHour, saveMinutes;
+	int16 saveYear, saveMonth, saveDay;
+	int16 saveHour, saveMinutes;
+	uint32 playTime;
 };
 
 extern const char *savegameStr;
@@ -132,15 +155,14 @@ private:
 	void writeSavegameHeader(Common::OutSaveFile *out, SavegameHeader &header);
 	void syncGame(Common::SeekableReadStream *readStream, Common::WriteStream *writeStream, bool tiny);
 	bool savegameExists(int slotNumber);
-	Common::String generateSaveName(int slot);
 public:
 	CGEEngine(OSystem *syst, const ADGameDescription *gameDescription);
-	~CGEEngine();
-	virtual bool hasFeature(EngineFeature f) const;
-	virtual bool canLoadGameStateCurrently();
-	virtual bool canSaveGameStateCurrently();
-	virtual Common::Error loadGameState(int slot);
-	virtual Common::Error saveGameState(int slot, const Common::String &desc);
+	~CGEEngine() override;
+	bool hasFeature(EngineFeature f) const override;
+	bool canLoadGameStateCurrently(Common::U32String *msg = nullptr) override;
+	bool canSaveGameStateCurrently(Common::U32String *msg = nullptr) override;
+	Common::Error loadGameState(int slot) override;
+	Common::Error saveGameState(int slot, const Common::String &desc, bool isAutosave = false) override;
 
 	static const int _maxSceneArr[5];
 	bool _quitFlag;
@@ -204,10 +226,7 @@ public:
 	BitmapPtr *_miniShpList;
 	int        _startGameSlot;
 
-	virtual Common::Error run();
-	GUI::Debugger *getDebugger() {
-		return _console;
-	}
+	Common::Error run() override;
 
 	void cge_main();
 	void switchScene(int newScene);
@@ -246,7 +265,7 @@ public:
 	void mainLoop();
 	void handleFrame();
 	void saveGame(int slotNumber, const Common::String &desc);
-	static bool readSavegameHeader(Common::InSaveFile *in, SavegameHeader &header);
+	WARN_UNUSED_RESULT static bool readSavegameHeader(Common::InSaveFile *in, SavegameHeader &header, bool skipThumbnail = true);
 	void switchMusic();
 	void selectPocket(int n);
 	void expandSprite(Sprite *spr);
@@ -325,16 +344,8 @@ protected:
 	int _recentStep;
 
 private:
-	CGEConsole *_console;
 	void init();
 	void deinit();
-};
-
-// Example console class
-class Console : public GUI::Debugger {
-public:
-	Console(CGEEngine *vm) {}
-	virtual ~Console() {}
 };
 
 } // End of namespace CGE

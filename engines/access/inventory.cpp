@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -31,10 +30,17 @@ namespace Access {
 void InventoryEntry::load(const Common::String &name, const int *data) {
 	_value = ITEM_NOT_FOUND;
 	_name = name;
-	_otherItem1 = *data++;
-	_newItem1 = *data++;
-	_otherItem2 = *data++;
-	_newItem2 = *data;
+	if (data) {
+		_otherItem1 = *data++;
+		_newItem1 = *data++;
+		_otherItem2 = *data++;
+		_newItem2 = *data;
+	} else {
+		_otherItem1 = -1;
+		_newItem1 = -1;
+		_otherItem2 = -1;
+		_newItem2 = -1;
+	}
 }
 
 int InventoryEntry::checkItem(int itemId) {
@@ -44,6 +50,18 @@ int InventoryEntry::checkItem(int itemId) {
 		return _newItem2;
 	else
 		return -1;
+}
+
+/*------------------------------------------------------------------------*/
+
+InventoryManager::SavedFields::SavedFields() {
+	_vWindowHeight = _vWindowLinesTall = _vWindowWidth = _vWindowBytesWide = 0;
+	_playFieldHeight = _playFieldWidth = 0;
+	_windowXAdd = _windowYAdd = 0;
+	_screenYOff = 0;
+	_scrollX = _scrollY = 0;
+	_clipWidth = _clipHeight = 0;
+	_scrollCol = _scrollRow = 0;
 }
 
 /*------------------------------------------------------------------------*/
@@ -59,27 +77,9 @@ InventoryManager::InventoryManager(AccessEngine *vm) : Manager(vm) {
 	_iconDisplayFlag = true;
 	_boxNum = 0;
 
-	const char *const *names;
-	const int *combineP;
-
-	switch (vm->getGameID()) {
-	case GType_Amazon:
-		names = Amazon::INVENTORY_NAMES;
-		combineP = &Amazon::COMBO_TABLE[0][0];
-		_inv.resize(85);
-		break;
-	case GType_MartianMemorandum:
-		names = Martian::INVENTORY_NAMES;
-		combineP = &Martian::COMBO_TABLE[0][0];
-		_inv.resize(54);
-		break;
-	default:
-		error("Unknown game");
-	}
-
-	for (uint i = 0; i < _inv.size(); ++i, combineP += 4) {
-		_inv[i].load(names[i], combineP);
-	}
+	_inv.resize(_vm->_res->INVENTORY.size());
+	for (uint idx = 0; idx < _inv.size(); ++idx)
+		_inv[idx].load(_vm->_res->INVENTORY[idx]._desc, _vm->_res->INVENTORY[idx]._combo);
 
 	for (uint i = 0; i < 26; ++i) {
 		const int *r = INVCOORDS[i];
@@ -131,6 +131,7 @@ int InventoryManager::newDisplayInv() {
 	getList();
 	initFields();
 
+	files._setPaletteFlag = false;
 	files.loadScreen(&_vm->_buffer1, 99, 0);
 	_vm->_buffer1.copyTo(&_vm->_buffer2);
 	_vm->copyBF2Vid();
@@ -207,6 +208,35 @@ int InventoryManager::newDisplayInv() {
 	_invRefreshFlag = false;
 	_invChangeFlag = false;
 	return result;
+}
+
+int InventoryManager::displayInv() {
+	int *inv = (int *) malloc(_vm->_res->INVENTORY.size() * sizeof(int));
+	const char **names = (const char **)malloc(_vm->_res->INVENTORY.size() * sizeof(const char *));
+
+	for (uint i = 0; i < _vm->_res->INVENTORY.size(); i++) {
+		inv[i] = _inv[i]._value;
+		names[i] = _inv[i]._name.c_str();
+	}
+	_vm->_events->forceSetCursor(CURSOR_CROSSHAIRS);
+	_vm->_invBox->getList(names, inv);
+
+	int btnSelected = 0;
+	int boxX = _vm->_invBox->doBox_v1(_startInvItem, _startInvBox, btnSelected);
+	_startInvItem = _vm->_boxDataStart;
+	_startInvBox = _vm->_boxSelectY;
+
+	if (boxX == -1)
+		btnSelected = 2;
+
+	if (btnSelected != 2)
+		_vm->_useItem = _vm->_invBox->_tempListIdx[boxX];
+	else
+		_vm->_useItem = -1;
+
+	free(names);
+	free(inv);
+	return 0;
 }
 
 void InventoryManager::savedFields() {
@@ -378,7 +408,7 @@ void InventoryManager::outlineIcon(int itemIndex) {
 	screen.frameRect(_invCoords[itemIndex], 7);
 
 	Common::String s = _tempLOff[itemIndex];
-	Font &font = _vm->_fonts._font2;
+	Font &font = *_vm->_fonts._font2;
 	int strWidth = font.stringWidth(s);
 
 	font._fontColors[0] = 0;
@@ -394,6 +424,10 @@ void InventoryManager::combineItems() {
 	screen._leftSkip = screen._rightSkip = 0;
 	screen._topSkip = screen._bottomSkip = 0;
 	screen._screenYOff = 0;
+
+	const Common::Rect screenBounds = screen.getBounds();
+	const int screenW = screenBounds.width();
+	const int screenH = screenBounds.height();
 
 	Common::Point tempMouse = events._mousePos;
 	Common::Point lastMouse = events._mousePos;
@@ -418,7 +452,7 @@ void InventoryManager::combineItems() {
 			continue;
 
 		lastMouse = events._mousePos;
-		Common::Rect lastRect(lastBox.x, lastBox.y, lastBox.x + 46, lastBox.y + 35);
+		Common::Rect lastRect(lastBox.x, lastBox.y, MIN(lastBox.x + 46, screenW), MIN(lastBox.y + 35, screenH));
 		screen.copyBlock(&_vm->_buffer2, lastRect);
 
 		Common::Point newPt;

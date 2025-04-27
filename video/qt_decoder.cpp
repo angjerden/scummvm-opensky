@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -29,14 +28,21 @@
 //
 
 #include "video/qt_decoder.h"
+#include "video/qt_data.h"
 
 #include "audio/audiostream.h"
 
+#include "common/archive.h"
 #include "common/debug.h"
 #include "common/memstream.h"
 #include "common/system.h"
 #include "common/textconsole.h"
 #include "common/util.h"
+
+#include "common/compression/unzip.h"
+
+#include "graphics/cursorman.h"
+#include "image/icocur.h"
 
 // Video codecs
 #include "image/codecs/codec.h"
@@ -48,15 +54,18 @@ namespace Video {
 ////////////////////////////////////////////
 
 QuickTimeDecoder::QuickTimeDecoder() {
-	_scaledSurface = 0;
+	_scaledSurface = nullptr;
 	_width = _height = 0;
+	_enableEditListBoundsCheckQuirk = false;
 }
 
 QuickTimeDecoder::~QuickTimeDecoder() {
 	close();
 }
 
-bool QuickTimeDecoder::loadFile(const Common::String &filename) {
+bool QuickTimeDecoder::loadFile(const Common::Path &filename) {
+	debugC(1, kDebugLevelGVideo, "QuickTimeDecoder::loadFile(\"%s\")", filename.toString().c_str());
+
 	if (!Common::QuickTimeParser::parseFile(filename))
 		return false;
 
@@ -81,10 +90,15 @@ void QuickTimeDecoder::close() {
 		delete _scaledSurface;
 		_scaledSurface = 0;
 	}
+
+	closeQTVR();
 }
 
 const Graphics::Surface *QuickTimeDecoder::decodeNextFrame() {
 	const Graphics::Surface *frame = VideoDecoder::decodeNextFrame();
+
+	if (isVR())
+		updateAngles();
 
 	// Update audio buffers too
 	// (needs to be done after we find the next track)
@@ -106,7 +120,7 @@ const Graphics::Surface *QuickTimeDecoder::decodeNextFrame() {
 
 Common::QuickTimeParser::SampleDesc *QuickTimeDecoder::readSampleDesc(Common::QuickTimeParser::Track *track, uint32 format, uint32 descSize) {
 	if (track->codecType == CODEC_TYPE_VIDEO) {
-		debug(0, "Video Codec FourCC: \'%s\'", tag2str(format));
+		debugC(0, kDebugLevelGVideo, "Video Codec FourCC: \'%s\'", tag2str(format));
 
 		VideoSampleDesc *entry = new VideoSampleDesc(track, format);
 
@@ -146,23 +160,22 @@ Common::QuickTimeParser::SampleDesc *QuickTimeDecoder::readSampleDesc(Common::Qu
 		byte colorDepth = entry->_bitsPerSample & 0x1F;
 		bool colorGreyscale = (entry->_bitsPerSample & 0x20) != 0;
 
-		debug(0, "color depth: %d", colorDepth);
+		debugC(0, kDebugLevelGVideo, "color depth: %d", colorDepth);
 
 		// if the depth is 2, 4, or 8 bpp, file is palettized
 		if (colorDepth == 2 || colorDepth == 4 || colorDepth == 8) {
 			// Initialize the palette
-			entry->_palette = new byte[256 * 3];
-			memset(entry->_palette, 0, 256 * 3);
+			entry->_palette.resize(256, false);
 
 			if (colorGreyscale) {
-				debug(0, "Greyscale palette");
+				debugC(0, kDebugLevelGVideo, "Greyscale palette");
 
 				// compute the greyscale palette
 				uint16 colorCount = 1 << colorDepth;
 				int16 colorIndex = 255;
 				byte colorDec = 256 / (colorCount - 1);
-				for (byte j = 0; j < colorCount; j++) {
-					entry->_palette[j * 3] = entry->_palette[j * 3 + 1] = entry->_palette[j * 3 + 2] = colorIndex;
+				for (uint16 j = 0; j < colorCount; j++) {
+					entry->_palette.set(j, colorIndex, colorIndex, colorIndex);
 					colorIndex -= colorDec;
 					if (colorIndex < 0)
 						colorIndex = 0;
@@ -171,9 +184,15 @@ Common::QuickTimeParser::SampleDesc *QuickTimeDecoder::readSampleDesc(Common::Qu
 				// if flag bit 3 is set, use the default palette
 				//uint16 colorCount = 1 << colorDepth;
 
-				warning("Predefined palette! %dbpp", colorDepth);
+				debugC(0, kDebugLevelGVideo, "Predefined palette! %dbpp", colorDepth);
+				if (colorDepth == 2)
+					entry->_palette.set(quickTimeDefaultPalette4, 0, 4);
+				else if (colorDepth == 4)
+					entry->_palette.set(quickTimeDefaultPalette16, 0, 16);
+				else if (colorDepth == 8)
+					entry->_palette.set(quickTimeDefaultPalette256, 0, 256);
 			} else {
-				debug(0, "Palette from file");
+				debugC(0, kDebugLevelGVideo, "Palette from file");
 
 				// load the palette from the file
 				uint32 colorStart = _fd->readUint32BE();
@@ -185,17 +204,22 @@ Common::QuickTimeParser::SampleDesc *QuickTimeDecoder::readSampleDesc(Common::Qu
 					// up front
 					_fd->readByte();
 					_fd->readByte();
-					entry->_palette[j * 3] = _fd->readByte();
+					byte r = _fd->readByte();
 					_fd->readByte();
-					entry->_palette[j * 3 + 1] = _fd->readByte();
+					byte g = _fd->readByte();
 					_fd->readByte();
-					entry->_palette[j * 3 + 2] = _fd->readByte();
+					byte b = _fd->readByte();
 					_fd->readByte();
+					entry->_palette.set(j, r, g, b);
 				}
 			}
+
+			entry->_bitsPerSample &= 0x1f; // clear grayscale bit
 		}
 
 		return entry;
+	} else if (track->codecType == CODEC_TYPE_PANO) {
+		return readPanoSampleDesc(track, format, descSize);
 	}
 
 	// Pass it on up
@@ -203,6 +227,9 @@ Common::QuickTimeParser::SampleDesc *QuickTimeDecoder::readSampleDesc(Common::Qu
 }
 
 void QuickTimeDecoder::init() {
+	if (_qtvrType == QTVRType::OBJECT || _qtvrType == QTVRType::PANORAMA)
+		_isVR = true;
+
 	Audio::QuickTimeAudioDecoder::init();
 
 	// Initialize all the audio tracks
@@ -217,6 +244,22 @@ void QuickTimeDecoder::init() {
 				((VideoSampleDesc *)tracks[i]->sampleDescs[j])->initCodec();
 
 			addTrack(new VideoTrackHandler(this, tracks[i]));
+
+			tracks[i]->targetTrack = getNumTracks() - 1;
+		}
+
+		if (tracks[i]->codecType == CODEC_TYPE_PANO) {
+			addTrack(new PanoTrackHandler(this, tracks[i]));
+
+			tracks[i]->targetTrack = getNumTracks() - 1;
+		}
+	}
+
+	if (_qtvrType == QTVRType::PANORAMA) {
+		for (uint32 i = 0; i < Common::QuickTimeParser::_tracks.size(); i++) {
+			if (Common::QuickTimeParser::_tracks[i]->codecType == CODEC_TYPE_PANO) {
+				((PanoTrackHandler *)getTrack(Common::QuickTimeParser::_tracks[i]->targetTrack))->initPanorama();
+			}
 		}
 	}
 
@@ -250,25 +293,25 @@ void QuickTimeDecoder::scaleSurface(const Graphics::Surface *src, Graphics::Surf
 			memcpy(dst->getBasePtr(k, j), src->getBasePtr((k * scaleFactorX).toInt() , (j * scaleFactorY).toInt()), src->format.bytesPerPixel);
 }
 
-QuickTimeDecoder::VideoSampleDesc::VideoSampleDesc(Common::QuickTimeParser::Track *parentTrack, uint32 codecTag) : Common::QuickTimeParser::SampleDesc(parentTrack, codecTag) {
+QuickTimeDecoder::VideoSampleDesc::VideoSampleDesc(Common::QuickTimeParser::Track *parentTrack, uint32 codecTag) : Common::QuickTimeParser::SampleDesc(parentTrack, codecTag), _palette(0) {
 	memset(_codecName, 0, 32);
 	_colorTableId = 0;
-	_palette = 0;
 	_videoCodec = 0;
 	_bitsPerSample = 0;
 }
 
 QuickTimeDecoder::VideoSampleDesc::~VideoSampleDesc() {
-	delete[] _palette;
 	delete _videoCodec;
 }
 
 void QuickTimeDecoder::VideoSampleDesc::initCodec() {
-	_videoCodec = Image::createQuickTimeCodec(_codecTag, _parentTrack->width, _parentTrack->height, _bitsPerSample & 0x1f);
+	_videoCodec = Image::createQuickTimeCodec(_codecTag, _parentTrack->width, _parentTrack->height, _bitsPerSample);
 }
 
-QuickTimeDecoder::AudioTrackHandler::AudioTrackHandler(QuickTimeDecoder *decoder, QuickTimeAudioTrack *audioTrack)
-		: _decoder(decoder), _audioTrack(audioTrack) {
+QuickTimeDecoder::AudioTrackHandler::AudioTrackHandler(QuickTimeDecoder *decoder, QuickTimeAudioTrack *audioTrack) :
+		SeekableAudioTrack(decoder->getSoundType()),
+		_decoder(decoder),
+		_audioTrack(audioTrack) {
 }
 
 void QuickTimeDecoder::AudioTrackHandler::updateBuffer() {
@@ -282,19 +325,63 @@ Audio::SeekableAudioStream *QuickTimeDecoder::AudioTrackHandler::getSeekableAudi
 	return _audioTrack;
 }
 
-QuickTimeDecoder::VideoTrackHandler::VideoTrackHandler(QuickTimeDecoder *decoder, Common::QuickTimeParser::Track *parent) : _decoder(decoder), _parent(parent) {
-	_curEdit = 0;
-	enterNewEditList(false);
+QuickTimeDecoder::VideoTrackHandler::VideoTrackHandler(QuickTimeDecoder *decoder, Common::QuickTimeParser::Track *parent) : _decoder(decoder), _parent(parent), _forcedDitherPalette(0) {
+	if (decoder->_enableEditListBoundsCheckQuirk) {
+		checkEditListBounds();
+	}
 
+	_curEdit = 0;
 	_curFrame = -1;
+	_delayedFrameToBufferTo = -1;
+	enterNewEditListEntry(true, true); // might set _curFrame
+
+	if (decoder->_qtvrType == QTVRType::OBJECT)
+		_curFrame = getFrameCount() / 2;
+
 	_durationOverride = -1;
 	_scaledSurface = 0;
 	_curPalette = 0;
 	_dirtyPalette = false;
 	_reversed = false;
-	_forcedDitherPalette = 0;
 	_ditherTable = 0;
 	_ditherFrame = 0;
+}
+
+// FIXME: This check breaks valid QuickTime movies, such as the KQ6 Mac opening.
+// It doesn't take media rate into account and mixes up units that are in movie
+// time scale and media time scale, which is easy to do since they're often the
+// same value. Other decoder bugs have been fixed since this was written, so it
+// would be good to re-evaluate what the problem was with the Riven Spanish video.
+// It's now disabled for everything except Riven.
+void QuickTimeDecoder::VideoTrackHandler::checkEditListBounds() {
+	// Check all the edit list entries are within the bounds of the media
+	// In the Spanish version of Riven, the last edit of the video ogk.mov
+	// ends one frame after the end of the media.
+
+	uint32 offset = 0;
+	uint32 mediaDuration = _parent->mediaDuration * _decoder->_timeScale / _parent->timeScale;
+
+	for (uint i = 0; i < _parent->editList.size(); i++) {
+		EditListEntry &edit = _parent->editList[i];
+
+		if (edit.mediaTime < 0) {
+			offset += edit.trackDuration;
+			continue; // Ignore empty edits
+		}
+
+		if ((uint32) edit.mediaTime > mediaDuration) {
+			// Check if the edit starts after the end of the media
+			// If so, mark it as empty so it is ignored
+			edit.mediaTime = -1;
+		} else if (edit.mediaTime + edit.trackDuration > mediaDuration) {
+			// Check if the edit ends after the end of the media
+			// If so, clip it so it fits in the media
+			edit.trackDuration = mediaDuration - edit.mediaTime;
+		}
+
+		edit.timeOffset = offset;
+		offset += edit.trackDuration;
+	}
 }
 
 QuickTimeDecoder::VideoTrackHandler::~VideoTrackHandler() {
@@ -303,7 +390,6 @@ QuickTimeDecoder::VideoTrackHandler::~VideoTrackHandler() {
 		delete _scaledSurface;
 	}
 
-	delete[] _forcedDitherPalette;
 	delete[] _ditherTable;
 
 	if (_ditherFrame) {
@@ -314,18 +400,27 @@ QuickTimeDecoder::VideoTrackHandler::~VideoTrackHandler() {
 
 bool QuickTimeDecoder::VideoTrackHandler::endOfTrack() const {
 	// A track is over when we've finished going through all edits
-	return _reversed ? (_curEdit == 0 && _curFrame < 0) : atLastEdit();
+	if (_decoder->_qtvrType != QTVRType::PANORAMA)
+		return _reversed ? (_curEdit == 0 && _curFrame < 0) : atLastEdit();
+	else
+		return true;
 }
 
 bool QuickTimeDecoder::VideoTrackHandler::seek(const Audio::Timestamp &requestedTime) {
+	_delayedFrameToBufferTo = -1; // abort any delayed buffering
+
 	uint32 convertedFrames = requestedTime.convertToFramerate(_decoder->_timeScale).totalNumberOfFrames();
 	for (_curEdit = 0; !atLastEdit(); _curEdit++)
 		if (convertedFrames >= _parent->editList[_curEdit].timeOffset && convertedFrames < _parent->editList[_curEdit].timeOffset + _parent->editList[_curEdit].trackDuration)
 			break;
 
 	// If we did reach the end of the track, break out
-	if (atLastEdit())
+	if (atLastEdit()) {
+		// Call setReverse to set the position to the last frame of the last edit
+		if (_reversed)
+			setReverse(true);
 		return true;
+	}
 
 	// If this track is in an empty edit, position us at the next non-empty
 	// edit. There's nothing else to do after this.
@@ -334,16 +429,20 @@ bool QuickTimeDecoder::VideoTrackHandler::seek(const Audio::Timestamp &requested
 			_curEdit++;
 
 		if (!atLastEdit())
-			enterNewEditList(true);
+			enterNewEditListEntry(true);
 
 		return true;
 	}
 
-	enterNewEditList(false);
+	enterNewEditListEntry(false);
 
 	// One extra check for the end of a track
-	if (atLastEdit())
+	if (atLastEdit()) {
+		// Call setReverse to set the position to the last frame of the last edit
+		if (_reversed)
+			setReverse(true);
 		return true;
+	}
 
 	// Now we're in the edit and need to figure out what frame we need
 	Audio::Timestamp time = requestedTime.convertToFramerate(_parent->timeScale);
@@ -353,7 +452,7 @@ bool QuickTimeDecoder::VideoTrackHandler::seek(const Audio::Timestamp &requested
 			_nextFrameStartTime += _durationOverride;
 			_durationOverride = -1;
 		} else {
-			_nextFrameStartTime += getFrameDuration();
+			_nextFrameStartTime += getCurFrameDuration();
 		}
 	}
 
@@ -393,10 +492,26 @@ uint16 QuickTimeDecoder::VideoTrackHandler::getHeight() const {
 }
 
 Graphics::PixelFormat QuickTimeDecoder::VideoTrackHandler::getPixelFormat() const {
-	if (_forcedDitherPalette)
+	if (_forcedDitherPalette.size() > 0)
 		return Graphics::PixelFormat::createFormatCLUT8();
 
+	// TODO: What should happen if there are multiple codecs with different formats?
 	return ((VideoSampleDesc *)_parent->sampleDescs[0])->_videoCodec->getPixelFormat();
+}
+
+bool QuickTimeDecoder::VideoTrackHandler::setOutputPixelFormat(const Graphics::PixelFormat &format) {
+	if (_forcedDitherPalette.size() > 0)
+		return false;
+
+	bool success = true;
+
+	for (uint i = 0; i < _parent->sampleDescs.size(); i++) {
+		VideoSampleDesc *desc = (VideoSampleDesc *)_parent->sampleDescs[i];
+
+		success = success && desc->_videoCodec->setOutputPixelFormat(format);
+	}
+
+	return success;
 }
 
 int QuickTimeDecoder::VideoTrackHandler::getFrameCount() const {
@@ -404,7 +519,7 @@ int QuickTimeDecoder::VideoTrackHandler::getFrameCount() const {
 }
 
 uint32 QuickTimeDecoder::VideoTrackHandler::getNextFrameStartTime() const {
-	if (endOfTrack())
+	if (endOfTrack() || _decoder->_isVR)
 		return 0;
 
 	Audio::Timestamp frameTime(0, getRateAdjustedFrameTime(), _parent->timeScale);
@@ -447,13 +562,18 @@ const Graphics::Surface *QuickTimeDecoder::VideoTrackHandler::decodeNextFrame() 
 	}
 
 	// Update the edit list, if applicable
-	if (endOfCurEdit()) {
+	// FIXME: Add support for playing backwards videos with more than one edit
+	// For now, stay on the first edit for reversed playback
+	if (endOfCurEdit() && !_reversed) {
 		_curEdit++;
 
 		if (atLastEdit())
 			return 0;
 
-		enterNewEditList(true);
+		enterNewEditListEntry(true);
+
+		if (isEmptyEdit())
+			return 0;
 	}
 
 	const Graphics::Surface *frame = bufferNextFrame();
@@ -465,7 +585,7 @@ const Graphics::Surface *QuickTimeDecoder::VideoTrackHandler::decodeNextFrame() 
 			_durationOverride = -1;
 		} else {
 			// Just need to subtract the time
-			_nextFrameStartTime -= getFrameDuration();
+			_nextFrameStartTime -= getCurFrameDuration();
 		}
 	} else {
 		if (_durationOverride >= 0) {
@@ -473,12 +593,12 @@ const Graphics::Surface *QuickTimeDecoder::VideoTrackHandler::decodeNextFrame() 
  			_nextFrameStartTime += _durationOverride;
 			_durationOverride = -1;
 		} else {
-			_nextFrameStartTime += getFrameDuration();
+			_nextFrameStartTime += getCurFrameDuration();
 		}
 	}
 
 	// Handle forced dithering
-	if (frame && _forcedDitherPalette)
+	if (frame && _forcedDitherPalette.size() > 0)
 		frame = forceDither(*frame);
 
 	if (frame && (_parent->scaleFactorX != 1 || _parent->scaleFactorY != 1)) {
@@ -494,16 +614,43 @@ const Graphics::Surface *QuickTimeDecoder::VideoTrackHandler::decodeNextFrame() 
 	return frame;
 }
 
+Common::String QuickTimeDecoder::getAliasPath() {
+	const Common::Array<Common::QuickTimeParser::Track *> &tracks = Common::QuickTimeParser::_tracks;
+	for (uint32 i = 0; i < tracks.size(); i++) {
+		if (!tracks[i]->path.empty())
+			return tracks[i]->path;
+	}
+	return Common::String();
+}
+
+Audio::Timestamp QuickTimeDecoder::VideoTrackHandler::getFrameTime(uint frame) const {
+	// TODO: This probably doesn't work right with edit lists
+	int cumulativeDuration = 0;
+	for (int ttsIndex = 0; ttsIndex < _parent->timeToSampleCount; ttsIndex++) {
+		const TimeToSampleEntry &tts = _parent->timeToSample[ttsIndex];
+		if ((int)frame < tts.count)
+			return Audio::Timestamp(0, _parent->timeScale).addFrames(cumulativeDuration + frame * tts.duration);
+		else {
+			frame -= tts.count;
+			cumulativeDuration += tts.duration * tts.count;
+		}
+	}
+
+	return Audio::Timestamp().addFrames(-1);
+}
+
 const byte *QuickTimeDecoder::VideoTrackHandler::getPalette() const {
 	_dirtyPalette = false;
-	return _forcedDitherPalette ? _forcedDitherPalette : _curPalette;
+	return _forcedDitherPalette.size() > 0 ? _forcedDitherPalette.data() : _curPalette;
 }
 
 bool QuickTimeDecoder::VideoTrackHandler::setReverse(bool reverse) {
+	_delayedFrameToBufferTo = -1; // abort any delayed buffering
+
 	_reversed = reverse;
 
 	if (_reversed) {
-		if (_parent->editCount != 1) {
+		if (_parent->editList.size() != 1) {
 			// TODO: Myst's holo.mov needs this :(
 			warning("Can only set reverse without edits");
 			return false;
@@ -513,7 +660,7 @@ bool QuickTimeDecoder::VideoTrackHandler::setReverse(bool reverse) {
 			// If we're at the end of the video, go to the penultimate edit.
 			// The current frame is set to one beyond the last frame here;
 			// one "past" the currently displayed frame.
-			_curEdit = _parent->editCount - 1;
+			_curEdit = _parent->editList.size() - 1;
 			_curFrame = _parent->frameCount;
 			_nextFrameStartTime = _parent->editList[_curEdit].trackDuration + _parent->editList[_curEdit].timeOffset;
 		} else if (_durationOverride >= 0) {
@@ -613,7 +760,7 @@ Common::SeekableReadStream *QuickTimeDecoder::VideoTrackHandler::getNextFramePac
 	return stream->readStream(_parent->sampleSizes[_curFrame]);
 }
 
-uint32 QuickTimeDecoder::VideoTrackHandler::getFrameDuration() {
+uint32 QuickTimeDecoder::VideoTrackHandler::getCurFrameDuration() {
 	uint32 curFrameIndex = 0;
 	for (int32 i = 0; i < _parent->timeToSampleCount; i++) {
 		curFrameIndex += _parent->timeToSample[i].count;
@@ -637,13 +784,21 @@ uint32 QuickTimeDecoder::VideoTrackHandler::findKeyFrame(uint32 frame) const {
 	return frame;
 }
 
-void QuickTimeDecoder::VideoTrackHandler::enterNewEditList(bool bufferFrames) {
-	// Bypass all empty edit lists first
-	while (!atLastEdit() && _parent->editList[_curEdit].mediaTime == -1)
-		_curEdit++;
+bool QuickTimeDecoder::VideoTrackHandler::isEmptyEdit() const {
+	return (_parent->editList[_curEdit].mediaTime == -1);
+}
 
+void QuickTimeDecoder::VideoTrackHandler::enterNewEditListEntry(bool bufferFrames, bool initializingTrack) {
 	if (atLastEdit())
 		return;
+
+	// if this is an empty edit then the only thing to do is set the
+	// time for the next frame, which is the duration of this edit.
+	if (isEmptyEdit()) {
+		_curFrame = -1;
+		_nextFrameStartTime = getCurEditTimeOffset() + getCurEditTrackDuration();
+		return;
+	}
 
 	uint32 mediaTime = _parent->editList[_curEdit].mediaTime;
 	uint32 frameNum = 0;
@@ -677,8 +832,15 @@ void QuickTimeDecoder::VideoTrackHandler::enterNewEditList(bool bufferFrames) {
 		// Track down the keyframe
 		// Then decode until the frame before target
 		_curFrame = findKeyFrame(frameNum) - 1;
-		while (_curFrame < (int32)frameNum - 1)
-			bufferNextFrame();
+		if (initializingTrack) {
+			// We can't decode frames during track initialization,
+			// so delay buffering until the first decode.
+			_delayedFrameToBufferTo = (int32)frameNum - 1;
+		} else {
+			while (_curFrame < (int32)frameNum - 1) {
+				bufferNextFrame();
+			}
+		}
 	} else {
 		// Since frameNum is the frame that needs to be displayed
 		// we'll set _curFrame to be the "last frame displayed"
@@ -689,7 +851,18 @@ void QuickTimeDecoder::VideoTrackHandler::enterNewEditList(bool bufferFrames) {
 }
 
 const Graphics::Surface *QuickTimeDecoder::VideoTrackHandler::bufferNextFrame() {
-	_curFrame++;
+	// Buffer any frames that were identified during track initialization
+	// and delayed until decoding.
+	if (_delayedFrameToBufferTo != -1) {
+		int32 frameNum = _delayedFrameToBufferTo;
+		_delayedFrameToBufferTo = -1;
+		while (_curFrame < frameNum) {
+			bufferNextFrame();
+		}
+	}
+
+	if (_decoder->_qtvrType != QTVRType::OBJECT)
+		_curFrame++;
 
 	// Get the next packet
 	uint32 descId;
@@ -720,7 +893,7 @@ const Graphics::Surface *QuickTimeDecoder::VideoTrackHandler::bufferNextFrame() 
 		}
 	} else {
 		// Check if the video description has been updated
-		byte *palette = entry->_palette;
+		const byte *palette = entry->_palette.data();
 
 		if (palette != _curPalette) {
 			_curPalette = palette;
@@ -732,8 +905,12 @@ const Graphics::Surface *QuickTimeDecoder::VideoTrackHandler::bufferNextFrame() 
 }
 
 uint32 QuickTimeDecoder::VideoTrackHandler::getRateAdjustedFrameTime() const {
-	// Figure out what time the next frame is at taking the edit list rate into account
-	Common::Rational offsetFromEdit = Common::Rational(_nextFrameStartTime - getCurEditTimeOffset()) / _parent->editList[_curEdit].mediaRate;
+	// Figure out what time the next frame is at taking the edit list rate into account,
+	// unless this is an empty edit, in which case the rate isn't applicable.
+	Common::Rational offsetFromEdit = Common::Rational(_nextFrameStartTime - getCurEditTimeOffset());
+	if (!isEmptyEdit()) {
+		offsetFromEdit /= _parent->editList[_curEdit].mediaRate;
+	}
 	uint32 convertedTime = offsetFromEdit.toInt();
 
 	if ((offsetFromEdit.getNumerator() % offsetFromEdit.getDenominator()) > (offsetFromEdit.getDenominator() / 2))
@@ -760,18 +937,21 @@ uint32 QuickTimeDecoder::VideoTrackHandler::getCurEditTimeOffset() const {
 }
 
 uint32 QuickTimeDecoder::VideoTrackHandler::getCurEditTrackDuration() const {
-	// Need to convert to the track scale
+	// convert from movie time scale to the track's media time scale
 	return _parent->editList[_curEdit].trackDuration * _parent->timeScale / _decoder->_timeScale;
 }
 
 bool QuickTimeDecoder::VideoTrackHandler::atLastEdit() const {
-	return _curEdit == _parent->editCount;
+	return _curEdit == _parent->editList.size();
 }
 
 bool QuickTimeDecoder::VideoTrackHandler::endOfCurEdit() const {
 	// We're at the end of the edit once the next frame's time would
 	// bring us past the end of the edit.
-	return getRateAdjustedFrameTime() >= getCurEditTimeOffset() + getCurEditTrackDuration();
+	if (!_decoder->_isVR)
+		return getRateAdjustedFrameTime() >= getCurEditTimeOffset() + getCurEditTrackDuration();
+	else
+		return false;
 }
 
 bool QuickTimeDecoder::VideoTrackHandler::canDither() const {
@@ -796,9 +976,9 @@ void QuickTimeDecoder::VideoTrackHandler::setDither(const byte *palette) {
 			desc->_videoCodec->setDither(Image::Codec::kDitherTypeQT, palette);
 		} else {
 			// Forced dither
-			_forcedDitherPalette = new byte[256 * 3];
-			memcpy(_forcedDitherPalette, palette, 256 * 3);
-			_ditherTable = Image::Codec::createQuickTimeDitherTable(_forcedDitherPalette, 256);
+			_forcedDitherPalette.resize(256, false);
+			_forcedDitherPalette.set(palette, 0, 256);
+			_ditherTable = Image::Codec::createQuickTimeDitherTable(_forcedDitherPalette.data(), 256);
 			_dirtyPalette = true;
 		}
 	}
@@ -851,7 +1031,7 @@ const Graphics::Surface *QuickTimeDecoder::VideoTrackHandler::forceDither(const 
 			return &frame;
 
 		// If the palettes match, bail out
-		if (memcmp(_forcedDitherPalette, _curPalette, 256 * 3) == 0)
+		if (memcmp(_forcedDitherPalette.data(), _curPalette, 256 * 3) == 0)
 			return &frame;
 	}
 

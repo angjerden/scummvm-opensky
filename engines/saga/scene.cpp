@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -139,16 +138,9 @@ Scene::Scene(SagaEngine *vm) : _vm(vm) {
 	uint32 resourceId;
 	uint i;
 
-	// Do nothing for SAGA2 games for now
-	if (_vm->isSaga2()) {
-		_inGame = false;
-		_sceneLoaded = false;
-		return;
-	}
-
 	// Load scene module resource context
 	_sceneContext = _vm->_resource->getContext(GAME_RESOURCEFILE);
-	if (_sceneContext == NULL) {
+	if (_sceneContext == nullptr) {
 		error("Scene::Scene() scene context not found");
 	}
 
@@ -188,7 +180,7 @@ Scene::Scene(SagaEngine *vm) : _vm(vm) {
 			gDebugLevel = backUpDebugLevel;
 			debug(DUMP_SCENES_LEVEL, "Dump Scene: number %i, descriptor resourceId %i, resourceList resourceId %i", i, _sceneLUT[i], _sceneDescription.resourceListResourceId);
 			debug(DUMP_SCENES_LEVEL, "\tresourceListCount %i", (int)resourceList.size());
-			for (SceneResourceDataArray::iterator j = resourceList.begin(); j != resourceList.end(); ++j) {
+			for (auto &j : resourceList) {
 				if (j->resourceType >= typesCount) {
 					error("wrong resource type %i", j->resourceType);
 				}
@@ -208,17 +200,12 @@ Scene::Scene(SagaEngine *vm) : _vm(vm) {
 	_sceneResourceId = 0;
 	_inGame = false;
 	_sceneDescription.reset();
-	_sceneProc = NULL;
+	_sceneProc = nullptr;
 	_objectMap = new ObjectMap(_vm);
 	_actionMap = new ObjectMap(_vm);
 }
 
 Scene::~Scene() {
-	// Do nothing for SAGA2 games for now
-	if (_vm->isSaga2()) {
-		return;
-	}
-
 	delete _actionMap;
 	delete _objectMap;
 }
@@ -236,14 +223,14 @@ void Scene::getResourceTypes(SAGAResourceTypes *&types, int &typesCount) {
 }
 
 void Scene::drawTextList() {
-	for (TextList::iterator entry = _textList.begin(); entry != _textList.end(); ++entry) {
+	for (auto &entry : _textList) {
 
-		if (entry->display) {
+		if (entry.display) {
 
-			if (entry->useRect) {
-				_vm->_font->textDrawRect(entry->font, entry->text, entry->rect, _vm->KnownColor2ColorId(entry->knownColor), _vm->KnownColor2ColorId(entry->effectKnownColor), entry->flags);
+			if (entry.useRect) {
+				_vm->_font->textDrawRect(entry.font, entry.text, entry.rect, _vm->KnownColor2ColorId(entry.knownColor), _vm->KnownColor2ColorId(entry.effectKnownColor), entry.flags);
 			} else {
-				_vm->_font->textDraw(entry->font, entry->text, entry->point, _vm->KnownColor2ColorId(entry->knownColor), _vm->KnownColor2ColorId(entry->effectKnownColor), entry->flags);
+				_vm->_font->textDraw(entry.font, entry.text, entry.point, _vm->KnownColor2ColorId(entry.knownColor), _vm->KnownColor2ColorId(entry.effectKnownColor), entry.flags);
 			}
 		}
 	}
@@ -274,14 +261,6 @@ void Scene::startScene() {
 #ifdef ENABLE_IHNM
 	case GID_IHNM:
 		IHNMStartProc();
-		break;
-#endif
-#ifdef ENABLE_SAGA2
-	case GID_DINO:
-		DinoStartProc();
-		break;
-	case GID_FTA2:
-		FTA2StartProc();
 		break;
 #endif
 	default:
@@ -455,7 +434,6 @@ void Scene::changeScene(int16 sceneNumber, int actorsEntrance, SceneTransitionTy
 	if (_vm->_hasITESceneSubstitutes) {
 		for (int i = 0; i < ARRAYSIZE(sceneSubstitutes); i++) {
 			if (sceneSubstitutes[i].sceneId == sceneNumber) {
-				const byte *pal;
 				Common::File file;
 				Rect rect;
 				PalEntry cPal[PAL_ENTRIES];
@@ -465,14 +443,12 @@ void Scene::changeScene(int16 sceneNumber, int actorsEntrance, SceneTransitionTy
 				if (file.open(sceneSubstitutes[i].image)) {
 					Image::IFFDecoder decoder;
 					decoder.loadStream(file);
-					pal = decoder.getPalette();
+					const Graphics::Palette &pal = decoder.getPalette();
 					rect.setWidth(decoder.getSurface()->w);
 					rect.setHeight(decoder.getSurface()->h);
 					_vm->_gfx->drawRegion(rect, (const byte *)decoder.getSurface()->getPixels());
 					for (int j = 0; j < PAL_ENTRIES; j++) {
-						cPal[j].red = *pal++;
-						cPal[j].green = *pal++;
-						cPal[j].blue = *pal++;
+						pal.get(j, cPal[j].red, cPal[j].green, cPal[j].blue);
 					}
 					_vm->_gfx->setPalette(cPal);
 
@@ -495,7 +471,7 @@ void Scene::changeScene(int16 sceneNumber, int actorsEntrance, SceneTransitionTy
 	sceneParams.loadFlag = kLoadBySceneNumber;
 	sceneParams.sceneDescriptor = sceneNumber;
 	sceneParams.transitionType = transitionType;
-	sceneParams.sceneProc = NULL;
+	sceneParams.sceneProc = nullptr;
 	sceneParams.sceneSkipTarget = false;
 	sceneParams.chapter = chapter;
 
@@ -549,14 +525,19 @@ bool Scene::offscreenPath(Point &testPoint) {
 		return false;
 	}
 
+	int h = _bgMask.h;
+
+	if (h == 0)
+		h = _vm->getDisplayInfo().height;
+
 	point.x = CLIP<int>(testPoint.x, 0, _vm->getDisplayInfo().width - 1);
-	point.y = CLIP<int>(testPoint.y, 0, _bgMask.h - 1);
+	point.y = CLIP<int>(testPoint.y, 0, h - 1);
 	if (point == testPoint) {
 		return false;
 	}
 
-	if (point.y >= _bgMask.h - 1) {
-		point.y = _bgMask.h - 2;
+	if (point.y >= h - 1) {
+		point.y = h - 2;
 	}
 	testPoint = point;
 
@@ -597,7 +578,7 @@ void Scene::loadScene(LoadSceneParams &loadSceneParams) {
 
 #ifdef ENABLE_IHNM
 	if ((_vm->getGameId() == GID_IHNM) && (loadSceneParams.chapter != NO_CHAPTER_CHANGE)) {
-		if (loadSceneParams.loadFlag != kLoadBySceneNumber) {
+		if ((loadSceneParams.loadFlag & kLoadIdTypeMask) != kLoadBySceneNumber) {
 			error("loadScene wrong usage");
 		}
 
@@ -642,13 +623,13 @@ void Scene::loadScene(LoadSceneParams &loadSceneParams) {
 
 #ifdef ENABLE_IHNM
 	if (_vm->getGameId() == GID_IHNM) {
-		if (loadSceneParams.loadFlag == kLoadBySceneNumber) // When will we get rid of it?
+		if ((loadSceneParams.loadFlag & kLoadIdTypeMask) == kLoadBySceneNumber) // When will we get rid of it?
 			if (loadSceneParams.sceneDescriptor <= 0)
 				loadSceneParams.sceneDescriptor = _vm->_resource->getMetaResource()->sceneIndex;
 	}
 #endif
 
-	switch (loadSceneParams.loadFlag) {
+	switch (loadSceneParams.loadFlag & kLoadIdTypeMask) {
 	case kLoadByResourceId:
 		_sceneNumber = 0;		// original assign zero for loaded by resource id
 		_sceneResourceId = loadSceneParams.sceneDescriptor;
@@ -656,6 +637,8 @@ void Scene::loadScene(LoadSceneParams &loadSceneParams) {
 	case kLoadBySceneNumber:
 		_sceneNumber = loadSceneParams.sceneDescriptor;
 		_sceneResourceId = getSceneResourceId(_sceneNumber);
+		break;
+	default:
 		break;
 	}
 
@@ -679,7 +662,7 @@ void Scene::loadScene(LoadSceneParams &loadSceneParams) {
 	loadSceneResourceList(_sceneDescription.resourceListResourceId, resourceList);
 
 	// Process resources from scene resource list
-	processSceneResources(resourceList);
+	processSceneResources(resourceList, loadSceneParams.loadFlag);
 
 	if (_sceneDescription.flags & kSceneFlagISO) {
 		_outsetSceneNumber = _sceneNumber;
@@ -698,7 +681,7 @@ void Scene::loadScene(LoadSceneParams &loadSceneParams) {
 
 	_sceneLoaded = true;
 
-	eventColumns = NULL;
+	eventColumns = nullptr;
 
 	if (loadSceneParams.transitionType == kTransitionFade) {
 
@@ -779,7 +762,7 @@ void Scene::loadScene(LoadSceneParams &loadSceneParams) {
 		_vm->_events->chain(eventColumns, event);
 	}
 
-	if (loadSceneParams.sceneProc == NULL) {
+	if (loadSceneParams.sceneProc == nullptr) {
 		if (!_inGame && _vm->getGameId() == GID_ITE) {
 			_inGame = true;
 			_vm->_interface->setMode(kPanelMain);
@@ -866,15 +849,13 @@ void Scene::loadSceneDescriptor(uint32 resourceId) {
 
 	_sceneDescription.reset();
 
-	if (resourceId == 0) {
+	if (resourceId == 0)
 		return;
-	}
 
 	_vm->_resource->loadResource(_sceneContext, resourceId, sceneDescriptorData);
+	ByteArrayReadStreamEndian readS(sceneDescriptorData, _sceneContext->isBigEndian());
 
-	if (sceneDescriptorData.size() == 16) {
-		ByteArrayReadStreamEndian readS(sceneDescriptorData, _sceneContext->isBigEndian());
-
+	if (sceneDescriptorData.size() == 14 || sceneDescriptorData.size() == 16) {
 		_sceneDescription.flags = readS.readSint16();
 		_sceneDescription.resourceListResourceId = readS.readSint16();
 		_sceneDescription.endSlope = readS.readSint16();
@@ -882,7 +863,10 @@ void Scene::loadSceneDescriptor(uint32 resourceId) {
 		_sceneDescription.scriptModuleNumber = readS.readUint16();
 		_sceneDescription.sceneScriptEntrypointNumber = readS.readUint16();
 		_sceneDescription.startScriptEntrypointNumber = readS.readUint16();
-		_sceneDescription.musicResourceId = readS.readSint16();
+		if (sceneDescriptorData.size() == 16)
+			_sceneDescription.musicResourceId = readS.readSint16();
+	} else {
+		error("Scene::loadSceneDescriptor: Unknown scene descriptor data size (%d)", sceneDescriptorData.size());
 	}
 }
 
@@ -909,53 +893,59 @@ void Scene::loadSceneResourceList(uint32 resourceId, SceneResourceDataArray &res
 		// resource table
 		debug(3, "Loading scene resource list");
 
-		for (SceneResourceDataArray::iterator resource = resourceList.begin(); resource != resourceList.end(); ++resource) {
-			resource->resourceId = readS.readUint16();
-			resource->resourceType = readS.readUint16();
+		for (auto &resource : resourceList) {
+			resource.resourceId = readS.readUint16();
+			resource.resourceType = readS.readUint16();
 			// demo version may contain invalid resourceId
-			resource->invalid = !_sceneContext->validResourceId(resource->resourceId);
+			resource.invalid = !_sceneContext->validResourceId(resource.resourceId);
 		}
 
 	}
 }
 
-void Scene::processSceneResources(SceneResourceDataArray &resourceList) {
+void Scene::processSceneResources(SceneResourceDataArray &resourceList, SceneLoadFlags flags) {
 	ByteArray resourceData;
 	const byte *palPointer;
-	SAGAResourceTypes *types = 0;
+	SAGAResourceTypes *types = nullptr;
 	int typesCount = 0;
 	SAGAResourceTypes resType;
 
 	getResourceTypes(types, typesCount);
 
 	// Process the scene resource list
-	for (SceneResourceDataArray::iterator resource = resourceList.begin(); resource != resourceList.end(); ++resource) {
-		if (resource->invalid) {
+	for (auto &resource : resourceList) {
+		if (resource.invalid) {
 			continue;
 		}
-		_vm->_resource->loadResource(_sceneContext, resource->resourceId, resourceData);
+		_vm->_resource->loadResource(_sceneContext, resource.resourceId, resourceData);
 
 
 		if (resourceData.size() >= 6) {
 			if (!memcmp(resourceData.getBuffer(), "DUMMY!", 6)) {
-				resource->invalid = true;
-				warning("DUMMY resource %i", resource->resourceId);
+				resource.invalid = true;
+				warning("DUMMY resource %i", resource.resourceId);
 			}
 		}
 
-		if (resource->invalid) {
+		// Thos resources are bogus. Skip them
+		if (_vm->isITEAmiga() && resourceData.size() == 12 && memcmp(resourceData.getBuffer(), "ECHO is on\r\n", 12) == 0) {
+			resource.invalid = true;
+			warning("DUMMY resource %i", resource.resourceId);
+		}
+
+		if (resource.invalid) {
 			continue;
 		}
 
-		if (resource->resourceType >= typesCount) {
-			error("Scene::processSceneResources() wrong resource type %i", resource->resourceType);
+		if (resource.resourceType >= typesCount) {
+			error("Scene::processSceneResources() wrong resource type %i", resource.resourceType);
 		}
 
-		resType = types[resource->resourceType];
+		resType = types[resource.resourceType];
 
 		switch (resType) {
 		case SAGA_UNKNOWN:
-			warning("UNKNOWN resourceType %i", resource->resourceType);
+			warning("UNKNOWN resourceType %i", resource.resourceType);
 			break;
 		case SAGA_ACTOR:
 			//for (a = actorsInScene; a; a = a->nextInScene)
@@ -968,9 +958,8 @@ void Scene::processSceneResources(SceneResourceDataArray &resourceList) {
 		case SAGA_OBJECT:
 			break;
 		case SAGA_BG_IMAGE: // Scene background resource
-			if (_bg.loaded) {
+			if (_bg.loaded)
 				error("Scene::processSceneResources() Multiple background resources encountered");
-			}
 
 			debug(3, "Loading background resource.");
 
@@ -978,7 +967,7 @@ void Scene::processSceneResources(SceneResourceDataArray &resourceList) {
 				_bg.buffer,
 				&_bg.w,
 				&_bg.h)) {
-				error("Scene::processSceneResources() Error loading background resource %i", resource->resourceId);
+				error("Scene::processSceneResources() Error loading background resource %i", resource.resourceId);
 			}
 			_bg.loaded = true;
 
@@ -986,11 +975,14 @@ void Scene::processSceneResources(SceneResourceDataArray &resourceList) {
 			memcpy(_bg.pal, palPointer, sizeof(_bg.pal));
 			break;
 		case SAGA_BG_MASK: // Scene background mask resource
-			if (_bgMask.loaded) {
+			if (_bgMask.loaded)
 				error("Scene::ProcessSceneResources(): Duplicate background mask resource encountered");
-			}
+
 			debug(3, "Loading BACKGROUND MASK resource.");
-			_vm->decodeBGImage(resourceData, _bgMask.buffer, &_bgMask.w, &_bgMask.h, true);
+			if (flags & kLoadBgMaskIsImage)
+				_vm->decodeBGImage(resourceData, _bgMask.buffer, &_bgMask.w, &_bgMask.h, true);
+			else
+				_vm->decodeBGImageMask(resourceData, _bgMask.buffer, &_bgMask.w, &_bgMask.h, true);
 			_bgMask.loaded = true;
 
 			// At least in ITE the mask needs to be clipped.
@@ -1002,7 +994,7 @@ void Scene::processSceneResources(SceneResourceDataArray &resourceList) {
 			break;
 		case SAGA_STRINGS:
 			debug(3, "Loading scene strings resource...");
-			_vm->loadStrings(_sceneStrings, resourceData);
+			_vm->loadStrings(_sceneStrings, resourceData, _vm->isBigEndian());
 			break;
 		case SAGA_OBJECT_MAP:
 			debug(3, "Loading object map resource...");
@@ -1013,47 +1005,38 @@ void Scene::processSceneResources(SceneResourceDataArray &resourceList) {
 			_actionMap->load(resourceData);
 			break;
 		case SAGA_ISO_IMAGES:
-			if (!(_sceneDescription.flags & kSceneFlagISO)) {
+			if (!(_sceneDescription.flags & kSceneFlagISO))
 				error("Scene::ProcessSceneResources(): not Iso mode");
-			}
 
 			debug(3, "Loading isometric images resource.");
 
 			_vm->_isoMap->loadImages(resourceData);
 			break;
 		case SAGA_ISO_MAP:
-			if (!(_sceneDescription.flags & kSceneFlagISO)) {
+			if (!(_sceneDescription.flags & kSceneFlagISO))
 				error("Scene::ProcessSceneResources(): not Iso mode");
-			}
 
 			debug(3, "Loading isometric map resource.");
-
 			_vm->_isoMap->loadMap(resourceData);
 			break;
 		case SAGA_ISO_PLATFORMS:
-			if (!(_sceneDescription.flags & kSceneFlagISO)) {
+			if (!(_sceneDescription.flags & kSceneFlagISO))
 				error("Scene::ProcessSceneResources(): not Iso mode");
-			}
 
 			debug(3, "Loading isometric platforms resource.");
-
 			_vm->_isoMap->loadPlatforms(resourceData);
 			break;
 		case SAGA_ISO_METATILES:
-			if (!(_sceneDescription.flags & kSceneFlagISO)) {
+			if (!(_sceneDescription.flags & kSceneFlagISO))
 				error("Scene::ProcessSceneResources(): not Iso mode");
-			}
 
 			debug(3, "Loading isometric metatiles resource.");
-
 			_vm->_isoMap->loadMetaTiles(resourceData);
 			break;
 		case SAGA_ANIM:
 			{
-				uint16 animId = resource->resourceType - 14;
-
+				uint16 animId = resource.resourceType - 14;
 				debug(3, "Loading animation resource animId=%i", animId);
-
 				_vm->_anim->load(animId, resourceData);
 			}
 			break;
@@ -1062,9 +1045,8 @@ void Scene::processSceneResources(SceneResourceDataArray &resourceList) {
 			loadSceneEntryList(resourceData);
 			break;
 		case SAGA_ISO_MULTI:
-			if (!(_sceneDescription.flags & kSceneFlagISO)) {
+			if (!(_sceneDescription.flags & kSceneFlagISO))
 				error("Scene::ProcessSceneResources(): not Iso mode");
-			}
 
 			debug(3, "Loading isometric multi resource.");
 
@@ -1076,37 +1058,38 @@ void Scene::processSceneResources(SceneResourceDataArray &resourceList) {
 			break;
 		case SAGA_FACES:
 			if (_vm->getGameId() == GID_ITE)
-				_vm->_interface->loadScenePortraits(resource->resourceId);
+				_vm->_interface->loadScenePortraits(resource.resourceId);
 			break;
 		case SAGA_PALETTE:
 			{
 				PalEntry pal[PAL_ENTRIES];
 				byte *palPtr = resourceData.getBuffer();
+				uint16 c;
 
-				if (resourceData.size() < 3 * PAL_ENTRIES)
+				if (resourceData.size() < 3 * _vm->getPalNumEntries())
 					error("Too small scene palette %i", (int)resourceData.size());
 
-				for (uint16 c = 0; c < PAL_ENTRIES; c++) {
+				for (c = 0; c < _vm->getPalNumEntries(); c++) {
 					pal[c].red = *palPtr++;
 					pal[c].green = *palPtr++;
 					pal[c].blue = *palPtr++;
+				}
+				for (; c < PAL_ENTRIES; c++) {
+					pal[c].red = 0;
+					pal[c].green = 0;
+					pal[c].blue = 0;
 				}
 				_vm->_gfx->setPalette(pal);
 			}
 			break;
 		default:
-			error("Scene::ProcessSceneResources() Encountered unknown resource type %i", resource->resourceType);
+			error("Scene::ProcessSceneResources() Encountered unknown resource type %i", resource.resourceType);
 			break;
 		}
 	}
 }
 
 void Scene::draw() {
-	// Do nothing for SAGA2 games for now
-	if (_vm->isSaga2()) {
-		return;
-	}
-
 	if (_sceneDescription.flags & kSceneFlagISO) {
 		_vm->_isoMap->adjustScroll(false);
 		_vm->_isoMap->draw();
@@ -1129,7 +1112,7 @@ void Scene::endScene() {
 
 	debug(3, "Ending scene...");
 
-	if (_sceneProc != NULL) {
+	if (_sceneProc != nullptr) {
 		_sceneProc(SCENE_END, this);
 	}
 
@@ -1139,7 +1122,7 @@ void Scene::endScene() {
 	_vm->_script->abortAllThreads();
 	_vm->_script->_skipSpeeches = false;
 
-	// WORKAROUND: Bug #2886151: "ITE: Mouse stops responding at Boar Castle"
+	// WORKAROUND: Bug #4689: "ITE: Mouse stops responding at Boar Castle"
 	// This is bug in original engine
 	if (_sceneNumber == 50) {
 		_vm->_interface->activate();

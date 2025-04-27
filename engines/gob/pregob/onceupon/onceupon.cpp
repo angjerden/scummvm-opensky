@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,13 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ *
+ * This file is dual-licensed.
+ * In addition to the GPLv3 license mentioned above, this code is also
+ * licensed under LGPL 2.1. See LICENSES/COPYING.LGPL file for the
+ * full text of the license.
  *
  */
 
@@ -29,8 +34,6 @@
 #include "gob/video.h"
 #include "gob/anifile.h"
 #include "gob/aniobject.h"
-
-#include "gob/sound/sound.h"
 
 #include "gob/pregob/txtfile.h"
 #include "gob/pregob/gctfile.h"
@@ -171,7 +174,7 @@ OnceUpon::ScreenBackup::~ScreenBackup() {
 
 
 OnceUpon::OnceUpon(GobEngine *vm) : PreGob(vm), _openedArchives(false),
-	_jeudak(0), _lettre(0), _plettre(0), _glettre(0) {
+	_jeudak(nullptr), _lettre(nullptr), _plettre(nullptr), _glettre(nullptr) {
 
 }
 
@@ -202,7 +205,7 @@ void OnceUpon::init() {
 
 	if (!_jeudak || !_lettre || !_plettre || !_glettre)
 		error("OnceUpon::OnceUpon(): Failed to fonts (%d, %d, %d, %d)",
-		      _jeudak != 0, _lettre != 0, _plettre != 0, _glettre != 0);
+		      _jeudak != nullptr, _lettre != nullptr, _plettre != nullptr, _glettre != nullptr);
 
 	// Verify the language
 
@@ -252,10 +255,10 @@ void OnceUpon::deinit() {
 	delete _plettre;
 	delete _glettre;
 
-	_jeudak  = 0;
-	_lettre  = 0;
-	_plettre = 0;
-	_glettre = 0;
+	_jeudak  = nullptr;
+	_lettre  = nullptr;
+	_plettre = nullptr;
+	_glettre = nullptr;
 
 	// Close archives
 
@@ -286,7 +289,7 @@ void OnceUpon::setGameCursor() {
 }
 
 void OnceUpon::drawLineByLine(const Surface &src, int16 left, int16 top, int16 right, int16 bottom,
-                              int16 x, int16 y) const {
+							  int16 x, int16 y) const {
 
 	// A special way of drawing something:
 	// Draw every other line "downwards", wait a bit after each line
@@ -490,7 +493,7 @@ bool OnceUpon::doCopyProtection(const uint8 colors[7], const uint8 shapes[7 * 20
 }
 
 int8 OnceUpon::cpSetup(const uint8 colors[7], const uint8 shapes[7 * 20], const uint8 obfuscate[4],
-                       const Surface sprites[2]) {
+					   const Surface sprites[2]) {
 
 	fadeOut();
 	hideCursor();
@@ -710,7 +713,7 @@ void OnceUpon::showByeBye() {
 }
 
 void OnceUpon::doStartMenu(const MenuButton *animalsButton, uint animalCount,
-                           const MenuButton *animalButtons, const char * const *animalNames) {
+						   const MenuButton *animalButtons, const char * const *animalNames) {
 	clearScreen();
 
 	// Wait until we clicked on of the difficulty buttons and are ready to start playing
@@ -986,7 +989,7 @@ OnceUpon::MenuAction OnceUpon::doIngameMenu() {
 		// User pressed the return to game button
 		action = kMenuActionPlay;
 
-	} else if (kMenuActionMainMenu) {
+	} else if (action == kMenuActionMainMenu) {
 
 		// User pressed the return to main menu button
 		action = handleMainMenu();

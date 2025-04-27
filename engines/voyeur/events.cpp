@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -27,19 +26,19 @@
 #include "graphics/cursorman.h"
 #include "graphics/font.h"
 #include "graphics/fontman.h"
-#include "graphics/palette.h"
+#include "graphics/paletteman.h"
 
 namespace Voyeur {
 
 IntNode::IntNode() {
-	_intFunc = NULL;
+	_intFunc = nullptr;
 	_curTime = 0;
 	_timeReset = 0;
 	_flags = 0;
 }
 
 IntNode::IntNode(uint16 curTime, uint16 timeReset, uint16 flags) {
-	_intFunc = NULL;
+	_intFunc = nullptr;
 	_curTime = curTime;
 	_timeReset = timeReset;
 	_flags = flags;
@@ -55,7 +54,7 @@ IntData::IntData() {
 	_skipFading = false;
 	_palStartIndex = 0;
 	_palEndIndex = 0;
-	_palette = NULL;
+	_palette = nullptr;
 }
 
 /*------------------------------------------------------------------------*/
@@ -72,11 +71,11 @@ EventsManager::EventsManager(VoyeurEngine *vm) : _intPtr(_gameData),
 
 	Common::fill(&_cycleTime[0], &_cycleTime[4], 0);
 	Common::fill(&_cycleNext[0], &_cycleNext[4], (byte *)nullptr);
-	_cyclePtr = NULL;
+	_cyclePtr = nullptr;
 
 	_leftClick = _rightClick = false;
 	_mouseClicked = _newMouseClicked = false;
-	_newLeftClick = _newRightClick = false;;
+	_newLeftClick = _newRightClick = false;
 
 	_videoDead = 0;
 
@@ -111,18 +110,18 @@ void EventsManager::mainVoyeurIntFunc() {
 }
 
 void EventsManager::sWaitFlip() {
-	Common::Array<ViewPortResource *> &viewPorts = _vm->_graphicsManager->_viewPortListPtr->_entries;
+	Common::Array<ViewPortResource *> &viewPorts = _vm->_screen->_viewPortListPtr->_entries;
 	for (uint idx = 0; idx < viewPorts.size(); ++idx) {
 		ViewPortResource &viewPort = *viewPorts[idx];
 
-		if (_vm->_graphicsManager->_saveBack && (viewPort._flags & DISPFLAG_40)) {
-			Common::Rect *clipPtr = _vm->_graphicsManager->_clipPtr;
-			_vm->_graphicsManager->_clipPtr = &viewPort._clipRect;
+		if (_vm->_screen->_saveBack && (viewPort._flags & DISPFLAG_40)) {
+			Common::Rect *clipPtr = _vm->_screen->_clipPtr;
+			_vm->_screen->_clipPtr = &viewPort._clipRect;
 
 			if (viewPort._restoreFn)
-				(_vm->_graphicsManager->*viewPort._restoreFn)(&viewPort);
+				(_vm->_screen->*viewPort._restoreFn)(&viewPort);
 
-			_vm->_graphicsManager->_clipPtr = clipPtr;
+			_vm->_screen->_clipPtr = clipPtr;
 			viewPort._rectListCount[viewPort._pageIndex] = 0;
 			viewPort._rectListPtr[viewPort._pageIndex]->clear();
 			viewPort._flags &= ~DISPFLAG_40;
@@ -150,20 +149,12 @@ void EventsManager::checkForNextFrameCounter() {
 		if ((_gameCounter % GAME_FRAME_RATE) == 0)
 			mainVoyeurIntFunc();
 
-		// Give time to the debugger
-		_vm->_debugger->onFrame();
-
 		// If mouse position display is on, display the position
 		if (_vm->_debugger->_showMousePosition)
 			showMousePosition();
 
 		// Display the frame
-		g_system->copyRectToScreen((byte *)_vm->_graphicsManager->_screenSurface.getPixels(),
-			SCREEN_WIDTH, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
-		g_system->updateScreen();
-
-		// Signal the ScummVM debugger
-		_vm->_debugger->onFrame();
+		_vm->_screen->update();
 	}
 }
 
@@ -178,10 +169,8 @@ void EventsManager::showMousePosition() {
 		mousePos += Common::String::format(" - (%d,%d)", pt.x, pt.y);
 	}
 
-	_vm->_graphicsManager->_screenSurface.fillRect(
-		Common::Rect(0, 0, 110, font.getFontHeight()), 0);
-	font.drawString(&_vm->_graphicsManager->_screenSurface, mousePos,
-		0, 0, 110, 63);
+	_vm->_screen->fillRect(Common::Rect(0, 0, 110, font.getFontHeight()), 0);
+	font.drawString(_vm->_screen, mousePos, 0, 0, 110, 63);
 }
 
 void EventsManager::voyeurTimer() {
@@ -195,20 +184,17 @@ void EventsManager::voyeurTimer() {
 	videoTimer();
 
 	// Iterate through the list of registered nodes
-	Common::List<IntNode *>::iterator i;
-	for (i = _intNodes.begin(); i != _intNodes.end(); ++i) {
-		IntNode &node = **i;
-
-		if (node._flags & 1)
+	for (auto &node : _intNodes) {
+		if (node->_flags & 1)
 			continue;
-		if (!(node._flags & 2)) {
-			if (--node._curTime != 0)
+		if (!(node->_flags & 2)) {
+			if (--node->_curTime != 0)
 				continue;
 
-			node._curTime = node._timeReset;
+			node->_curTime = node->_timeReset;
 		}
 
-		(this->*node._intFunc)();
+		(this->*node->_intFunc)();
 	}
 
 }
@@ -249,21 +235,15 @@ void EventsManager::pollEvents() {
 	checkForNextFrameCounter();
 
 	Common::Event event;
-	while (g_system->getEventManager()->pollEvent(event)) {
+	while (g_system->getEventManager()->pollEvent(event) && !_vm->shouldQuit()) {
 		// Handle keypress
 		switch (event.type) {
 		case Common::EVENT_QUIT:
-		case Common::EVENT_RTL:
+		case Common::EVENT_RETURN_TO_LAUNCHER:
 		case Common::EVENT_KEYUP:
 			return;
 
 		case Common::EVENT_KEYDOWN:
-			// Check for debugger
-			if (event.kbd.keycode == Common::KEYCODE_d && (event.kbd.flags & Common::KBD_CTRL)) {
-				// Attach to the debugger
-				_vm->_debugger->attach();
-				_vm->_debugger->onFrame();
-			}
 			return;
 		case Common::EVENT_LBUTTONDOWN:
 			_newLeftClick = true;
@@ -299,11 +279,11 @@ void EventsManager::startFade(CMapResource *cMap) {
 
 	if (cMap->_steps > 0) {
 		_fadeStatus = cMap->_fadeStatus | 1;
-		byte *vgaP = &_vm->_graphicsManager->_VGAColors[_fadeFirstCol * 3];
+		byte *vgaP = &_vm->_screen->_VGAColors[_fadeFirstCol * 3];
 		int mapIndex = 0;
 
 		for (int idx = _fadeFirstCol; idx <= _fadeLastCol; ++idx, vgaP += 3) {
-			ViewPortPalEntry &palEntry = _vm->_graphicsManager->_viewPortListPtr->_palette[idx];
+			ViewPortPalEntry &palEntry = _vm->_screen->_viewPortListPtr->_palette[idx];
 			palEntry._rEntry = vgaP[0] << 8;
 			int rDiff = (cMap->_entries[mapIndex * 3] << 8) - palEntry._rEntry;
 			palEntry._rChange = rDiff / cMap->_steps;
@@ -325,7 +305,7 @@ void EventsManager::startFade(CMapResource *cMap) {
 			_intPtr._skipFading = true;
 		_fadeIntNode._flags &= ~1;
 	} else {
-		byte *vgaP = &_vm->_graphicsManager->_VGAColors[_fadeFirstCol * 3];
+		byte *vgaP = &_vm->_screen->_VGAColors[_fadeFirstCol * 3];
 		int mapIndex = 0;
 
 		for (int idx = _fadeFirstCol; idx <= _fadeLastCol; ++idx, vgaP += 3) {
@@ -371,8 +351,8 @@ void EventsManager::vDoFadeInt() {
 	}
 
 	for (int i = _fadeFirstCol; i <= _fadeLastCol; ++i) {
-		ViewPortPalEntry &palEntry = _vm->_graphicsManager->_viewPortListPtr->_palette[i];
-		byte *vgaP = &_vm->_graphicsManager->_VGAColors[palEntry._palIndex * 3];
+		ViewPortPalEntry &palEntry = _vm->_screen->_viewPortListPtr->_palette[i];
+		byte *vgaP = &_vm->_screen->_VGAColors[palEntry._palIndex * 3];
 
 		palEntry._rEntry += palEntry._rChange;
 		palEntry._gEntry += palEntry._gChange;
@@ -395,7 +375,7 @@ void EventsManager::vDoCycleInt() {
 	for (int idx = 3; idx >= 0; --idx) {
 		if (_cyclePtr->_type[idx] && --_cycleTime[idx] <= 0) {
 			byte *pSrc = _cycleNext[idx];
-			byte *pPal = _vm->_graphicsManager->_VGAColors;
+			byte *pPal = _vm->_screen->_VGAColors;
 
 			if (_cyclePtr->_type[idx] != 1) {
 				// New palette data being specified - loop to set entries
@@ -521,7 +501,7 @@ void EventsManager::setCursor(PictureResource *pic) {
 	cursor._bounds = pic->_bounds;
 	cursor._flags = DISPFLAG_CURSOR;
 
-	_vm->_graphicsManager->sDrawPic(pic, &cursor, Common::Point());
+	_vm->_screen->sDrawPic(pic, &cursor, Common::Point());
 }
 
 void EventsManager::setCursor(byte *cursorData, int width, int height, int keyColor) {
@@ -531,16 +511,16 @@ void EventsManager::setCursor(byte *cursorData, int width, int height, int keyCo
 void EventsManager::setCursorColor(int idx, int mode) {
 	switch (mode) {
 	case 0:
-		_vm->_graphicsManager->setColor(idx, 90, 90, 232);
+		_vm->_screen->setColor(idx, 90, 90, 232);
 		break;
 	case 1:
-		_vm->_graphicsManager->setColor(idx, 232, 90, 90);
+		_vm->_screen->setColor(idx, 232, 90, 90);
 		break;
 	case 2:
-		_vm->_graphicsManager->setColor(idx, 90, 232, 90);
+		_vm->_screen->setColor(idx, 90, 232, 90);
 		break;
 	case 3:
-		_vm->_graphicsManager->setColor(idx, 90, 232, 232);
+		_vm->_screen->setColor(idx, 90, 232, 232);
 		break;
 	default:
 		break;
@@ -564,12 +544,12 @@ void EventsManager::getMouseInfo() {
 
 			if (_cursorBlinked) {
 				_cursorBlinked = false;
-				_vm->_graphicsManager->setOneColor(128, 220, 20, 20);
-				_vm->_graphicsManager->setColor(128, 220, 20, 20);
+				_vm->_screen->setOneColor(128, 220, 20, 20);
+				_vm->_screen->setColor(128, 220, 20, 20);
 			} else {
 				_cursorBlinked = true;
-				_vm->_graphicsManager->setOneColor(128, 220, 220, 220);
-				_vm->_graphicsManager->setColor(128, 220, 220, 220);
+				_vm->_screen->setOneColor(128, 220, 220, 220);
+				_vm->_screen->setColor(128, 220, 220, 220);
 			}
 		}
 	}
@@ -585,11 +565,11 @@ void EventsManager::getMouseInfo() {
 
 void EventsManager::startCursorBlink() {
 	if (_vm->_voy->_eventFlags & EVTFLAG_RECORDING) {
-		_vm->_graphicsManager->setOneColor(128, 55, 5, 5);
-		_vm->_graphicsManager->setColor(128, 220, 20, 20);
+		_vm->_screen->setOneColor(128, 55, 5, 5);
+		_vm->_screen->setColor(128, 220, 20, 20);
 		_intPtr._hasPalette = true;
 
-		_vm->_graphicsManager->drawDot();
+		_vm->_screen->drawDot();
 		//copySection();
 	}
 }
@@ -606,8 +586,13 @@ void EventsManager::stopEvidDim() {
 Common::String EventsManager::getEvidString(int eventIndex) {
 	assert(eventIndex <= _vm->_voy->_eventCount);
 	VoyeurEvent &e = _vm->_voy->_events[eventIndex];
+
+	if (_vm->getLanguage() == Common::DE_DEU)
+		return Common::String::format("%03d %.2d:%.2d %s %s", eventIndex + 1,
+									  e._isAM ? e._hour : e._hour + 12, e._minute, e._isAM ? AM_DE : PM_DE, EVENT_TYPE_STRINGS_DE[e._type - 1]);
+
 	return Common::String::format("%03d %.2d:%.2d %s %s", eventIndex + 1,
-		e._hour, e._minute, e._isAM ? AM : PM, EVENT_TYPE_STRINGS[e._type - 1]);
+		e._hour, e._minute, e._isAM ? AM_EN : PM_EN, EVENT_TYPE_STRINGS_EN[e._type - 1]);
 }
 
 } // End of namespace Voyeur

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -25,13 +24,18 @@
 
 #include "common/array.h"
 #include "common/hashmap.h"
+#include "sci/sci.h"
+#include "sci/graphics/helpers.h"
+#include "sci/util.h"
 
 namespace Sci {
 
-#define SCI_CURSOR_SCI0_HEIGHTWIDTH 16
-#define SCI_CURSOR_SCI0_RESOURCESIZE 68
-
-#define SCI_CURSOR_SCI0_TRANSPARENCYCOLOR 1
+enum {
+	SCI_CURSOR_SCI0_HEIGHTWIDTH = 16,
+	SCI_CURSOR_SCI0_RESOURCESIZE = 68,
+	SCI_CURSOR_SCI0_TRANSPARENCYCOLOR = 1,
+	SCI_CURSOR_SCI1_GRAY = 7
+};
 
 class GfxView;
 class GfxPalette;
@@ -50,10 +54,8 @@ struct SciCursorSetPositionWorkarounds {
 
 class GfxCursor {
 public:
-	GfxCursor(ResourceManager *resMan, GfxPalette *palette, GfxScreen *screen);
+	GfxCursor(ResourceManager *resMan, GfxPalette *palette, GfxScreen *screen, GfxCoordAdjuster16 *coordAdjuster, EventManager *eventMan);
 	~GfxCursor();
-
-	void init(GfxCoordAdjuster *coordAdjuster, EventManager *event);
 
 	void kernelShow();
 	void kernelHide();
@@ -77,13 +79,21 @@ public:
 	 */
 	void kernelSetMoveZone(Common::Rect zone);
 
-	void kernelClearZoomZone();
+	/**
+	 * Creates a dynamic zoom cursor, that is used to zoom on specific parts of the screen,
+	 * using a separate larger picture. This was only used by two SCI1.1 games, Laura Bow 2
+	 * (for examining the glyphs), and Freddy Pharkas (for examining the prescription with
+	 * the whisky glass).
+	 *
+	 * In the Mac version of Freddy Pharkas, this was removed completely, and the scene has
+	 * been redesigned to work without this functionality. There was no version of LB2 for
+	 * the Macintosh platform.
+	 */
 	void kernelSetZoomZone(byte multiplier, Common::Rect zone, GuiResourceId viewNum, int loopNum, int celNum, GuiResourceId picNum, byte zoomColor);
+	void kernelClearZoomZone();
 
 	void kernelSetPos(Common::Point pos);
 	void kernelMoveCursor(Common::Point pos);
-
-	void setMacCursorRemapList(int cursorCount, reg_t *cursors);
 
 private:
 	void purgeCache();
@@ -91,7 +101,7 @@ private:
 	ResourceManager *_resMan;
 	GfxScreen *_screen;
 	GfxPalette *_palette;
-	GfxCoordAdjuster *_coordAdjuster;
+	GfxCoordAdjuster16 *_coordAdjuster;
 	EventManager *_event;
 
 	int _upscaledHires;
@@ -107,28 +117,32 @@ private:
 	GfxView *_zoomPicView;
 	byte _zoomColor;
 	byte _zoomMultiplier;
-	byte *_cursorSurface;
+	Common::SpanOwner<SciSpan<byte> > _cursorSurface;
 
 	CursorCache _cachedCursors;
 
 	bool _isVisible;
 
-	// KQ6 Windows has different black and white cursors. If this is true (set
-	// from the windows_cursors ini setting), then we use these and don't scale
-	// them by 2x like the rest of the graphics, like SSCI did. These look very
-	// ugly, which is why they aren't enabled by default.
-	bool _useOriginalKQ6WinCursors;
+	// The Windows CD versions of KQ6, SQ4 and LB2 and the Windows version of
+	// Pepper have extra sets of black and white cursors. Some games have one
+	// extra set (Pepper, SQ4), some have two extra sets (KQ6, LB2). If one of
+	// the kWinCursorBW alternatives is set (from the windows_cursors ini entry)
+	// then we use these b/w cursors instead of the DOS color cursors, which
+	// are the default in 256 colors mode.
+	// The CD version of SQ4 also contains a complete set of silver mouse
+	// cursors. If kWinCursorSilver is set (from the silver_cursors ini entry),
+	// then we use these instead and replace the game's gold cursors with their
+	// silver equivalents.
 
-	// The CD version of SQ4 contains a complete set of silver mouse cursors.
-	// If this is true (set from the silver_cursors ini setting), then we use
-	// these instead and replace the game's gold cursors with their silver
-	// equivalents.
-	bool _useSilverSQ4CDCursors;
-
-	// Mac versions of games use a remap list to remap their cursors
-	Common::Array<uint16> _macCursorRemap;
+	enum WinCursorStyle : int {
+		kWinCursorStyleDefault = 0,
+		kWinCursorStyleBWAlt1,
+		kWinCursorStyleBWAlt2,
+		kWinCursorStyleSilver
+	};
+	WinCursorStyle _winCursorStyle;
 };
 
 } // End of namespace Sci
 
-#endif
+#endif // SCI_GRAPHICS_CURSOR_H

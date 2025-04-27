@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -27,7 +26,7 @@
 #include "common/array.h"
 #include "common/memstream.h"
 #include "common/rect.h"
-#include "graphics/surface.h"
+#include "graphics/screen.h"
 #include "access/data.h"
 
 namespace Access {
@@ -35,11 +34,16 @@ namespace Access {
 class SpriteResource;
 class SpriteFrame;
 
-class ASurface : public Graphics::Surface {
+/**
+ * Base Access surface class. This derivces from Graphics::Screen
+ * because it has logic we'll need for our own Screen class that
+ * derives from this one
+ */
+class BaseSurface : virtual public Graphics::Screen {
 private:
 	Graphics::Surface _savedBlock;
 
-	void flipHorizontal(ASurface &dest);
+	void flipHorizontal(BaseSurface &dest);
 protected:
 	Common::Rect _savedBounds;
 public:
@@ -57,15 +61,11 @@ public:
 public:
 	static int _clipWidth, _clipHeight;
 public:
-	ASurface();
+	BaseSurface();
 
-	virtual ~ASurface();
-
-	void create(uint16 width, uint16 height);
+	~BaseSurface() override;
 
 	void clearBuffer();
-
-	bool clip(Common::Rect &r);
 
 	void plotImage(SpriteResource *sprite, int frameNum, const Common::Point &pt);
 
@@ -89,25 +89,21 @@ public:
 	 */
 	void plotB(SpriteFrame *frame, const Common::Point &pt);
 
-	virtual void copyBlock(ASurface *src, const Common::Rect &bounds);
+	virtual void copyBlock(BaseSurface *src, const Common::Rect &bounds);
 
 	virtual void restoreBlock();
 
 	virtual void drawRect();
 
-	virtual void transBlitFrom(ASurface *src, const Common::Point &destPos);
+	virtual void drawLine(int x1, int y1, int x2, int y2, int col);
 
-	virtual void transBlitFrom(ASurface *src, const Common::Rect &bounds);
+	virtual void drawLine();
 
-	virtual void transBlitFrom(ASurface &src);
+	virtual void drawBox();
 
-	virtual void blitFrom(Graphics::Surface &src);
+	virtual void copyBuffer(Graphics::ManagedSurface *src);
 
-	virtual void copyBuffer(Graphics::Surface *src);
-
-	virtual void addDirtyRect(const Common::Rect &r) {}
-
-	void copyTo(ASurface *dest) { dest->blitFrom(*this); }
+	void copyTo(BaseSurface *dest);
 
 	void saveBlock(const Common::Rect &bounds);
 
@@ -118,12 +114,25 @@ public:
 	void moveBufferUp();
 
 	void moveBufferDown();
+
+	bool clip(Common::Rect &r);
+};
+
+class ASurface : public BaseSurface {
+protected:
+	/**
+	 * Override the addDirtyRect from Graphics::Screen, since for standard
+	 * surfaces we don't need dirty rects to be tracked
+	 */
+	void addDirtyRect(const Common::Rect &r) override {}
+public:
+	ASurface() : BaseSurface() {}
 };
 
 class SpriteFrame : public ASurface {
 public:
 	SpriteFrame(AccessEngine *vm, Common::SeekableReadStream *stream, int frameSize);
-	~SpriteFrame();
+	~SpriteFrame() override;
 };
 
 class SpriteResource {

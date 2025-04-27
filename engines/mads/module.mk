@@ -3,8 +3,19 @@ MODULE := engines/mads
 MODULE_OBJS := \
 	dragonsphere/game_dragonsphere.o \
 	dragonsphere/dragonsphere_scenes.o \
+	dragonsphere/dragonsphere_scenes1.o \
+	dragonsphere/globals_dragonsphere.o \
+	forest/game_forest.o \
+	forest/forest_scenes.o \
+	forest/globals_forest.o \
 	phantom/game_phantom.o \
+	phantom/globals_phantom.o \
 	phantom/phantom_scenes.o \
+	phantom/phantom_scenes1.o \
+	phantom/phantom_scenes2.o \
+	phantom/phantom_scenes3.o \
+	phantom/phantom_scenes4.o \
+	phantom/phantom_scenes5.o \
 	nebular/dialogs_nebular.o \
 	nebular/game_nebular.o \
 	nebular/globals_nebular.o \
@@ -23,9 +34,10 @@ MODULE_OBJS := \
 	animation.o \
 	assets.o \
 	audio.o \
+	camera.o \
 	compression.o \
+	conversations.o \
 	debugger.o \
-	detection.o \
 	dialogs.o \
 	events.o \
 	font.o \
@@ -38,6 +50,8 @@ MODULE_OBJS := \
 	menu_views.o \
 	messages.o \
 	msurface.o \
+	metaengine.o \
+	mps_installer.o \
 	palette.o \
 	player.o \
 	rails.o \
@@ -58,3 +72,6 @@ endif
 
 # Include common rules
 include $(srcdir)/rules.mk
+
+# Detection objects
+DETECT_OBJS += $(MODULE)/detection.o

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,19 +15,16 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #if defined(WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-// winnt.h defines ARRAYSIZE, but we want our own one... - this is needed before including util.h
-#undef ARRAYSIZE
 #endif
 
-#define TRANSLATIONS_DAT_VER 3
+#define TRANSLATIONS_DAT_VER 4
 
 #include "common/translation.h"
 #include "common/config-manager.h"
@@ -35,26 +32,27 @@
 #include "common/fs.h"
 #include "common/system.h"
 #include "common/textconsole.h"
+#include "common/unicode-bidi.h"
 
 #ifdef USE_TRANSLATION
 
 namespace Common {
 
-DECLARE_SINGLETON(TranslationManager);
+DECLARE_SINGLETON(MainTranslationManager);
 
 bool operator<(const TLanguage &l, const TLanguage &r) {
-	return strcmp(l.name, r.name) < 0;
+	return l.name < r.name;
 }
 
-TranslationManager::TranslationManager() : _currentLang(-1), _charmap(0) {
-	loadTranslationsInfoDat();
+TranslationManager::TranslationManager(const Common::String &fileName) : _currentLang(-1) {
+	loadTranslationsInfoDat(fileName);
 
 	// Set the default language
 	setLanguage("");
 }
 
 TranslationManager::~TranslationManager() {
-	delete[] _charmap;
+
 }
 
 int32 TranslationManager::findMatchingLanguage(const String &lang) {
@@ -109,14 +107,14 @@ void TranslationManager::setLanguage(const String &lang) {
 	}
 }
 
-const char *TranslationManager::getTranslation(const char *message) const {
-	return getTranslation(message, NULL);
+U32String TranslationManager::getTranslation(const char *message) const {
+	return getTranslation(message, nullptr);
 }
 
-const char *TranslationManager::getTranslation(const char *message, const char *context) const {
+U32String TranslationManager::getTranslation(const char *message, const char *context) const {
 	// If no language is set or message is empty, return msgid as is
 	if (_currentTranslationMessages.empty() || *message == '\0')
-		return message;
+		return U32String(message);
 
 	// Binary-search for the msgid
 	int leftIndex = 0;
@@ -144,44 +142,42 @@ const char *TranslationManager::getTranslation(const char *message, const char *
 				++rightIndex;
 			}
 			// Find the context we want
-			if (context == NULL || *context == '\0' || leftIndex == rightIndex)
-				return _currentTranslationMessages[leftIndex].msgstr.c_str();
+			if (context == nullptr || *context == '\0' || leftIndex == rightIndex)
+				return _currentTranslationMessages[leftIndex].msgstr.decode();
 			// We could use again binary search, but there should be only a small number of contexts.
 			while (rightIndex > leftIndex) {
 				compareResult = strcmp(context, _currentTranslationMessages[rightIndex].msgctxt.c_str());
 				if (compareResult == 0)
-					return _currentTranslationMessages[rightIndex].msgstr.c_str();
+					return _currentTranslationMessages[rightIndex].msgstr.decode();
 				else if (compareResult > 0)
 					break;
 				--rightIndex;
 			}
-			return _currentTranslationMessages[leftIndex].msgstr.c_str();
+			return _currentTranslationMessages[leftIndex].msgstr.decode();
 		} else if (compareResult < 0)
 			rightIndex = midIndex - 1;
 		else
 			leftIndex = midIndex + 1;
 	}
 
-	return message;
-}
-
-String TranslationManager::getCurrentCharset() const {
-	if (_currentCharset.empty())
-		return "ASCII";
-	return _currentCharset;
+	return U32String(message);
 }
 
 String TranslationManager::getCurrentLanguage() const {
 	if (_currentLang == -1)
-		return "C";
+		return "en";
 	return _langs[_currentLang];
 }
 
-String TranslationManager::getTranslation(const String &message) const {
+bool TranslationManager::currentIsBuiltinLanguage() const {
+	return (_currentLang == -1);
+}
+
+U32String TranslationManager::getTranslation(const String &message) const {
 	return getTranslation(message.c_str());
 }
 
-String TranslationManager::getTranslation(const String &message, const String &context) const {
+U32String TranslationManager::getTranslation(const String &message, const String &context) const {
 	return getTranslation(message.c_str(), context.c_str());
 }
 
@@ -189,7 +185,7 @@ const TLangArray TranslationManager::getSupportedLanguageNames() const {
 	TLangArray languages;
 
 	for (unsigned int i = 0; i < _langNames.size(); i++) {
-		TLanguage lng(_langNames[i].c_str(), i + 1);
+		TLanguage lng(_langNames[i].decode(), i + 1);
 		languages.push_back(lng);
 	}
 
@@ -212,7 +208,7 @@ String TranslationManager::getLangById(int id) const {
 	case kTranslationAutodetectId:
 		return "";
 	case kTranslationBuiltinId:
-		return "C";
+		return "en";
 	default:
 		if (id >= 0 && id - 1 < (int)_langs.size())
 			return _langs[id - 1];
@@ -226,16 +222,15 @@ String TranslationManager::getLangById(int id) const {
 
 bool TranslationManager::openTranslationsFile(File &inFile) {
 	// First look in the Themepath if we can find the file.
-	if (ConfMan.hasKey("themepath") && openTranslationsFile(FSNode(ConfMan.get("themepath")), inFile))
+	if (ConfMan.hasKey("themepath") && openTranslationsFile(FSNode(ConfMan.getPath("themepath")), inFile))
 		return true;
 
 	// Then try to open it using the SearchMan.
 	ArchiveMemberList fileList;
-	SearchMan.listMatchingMembers(fileList, "translations.dat");
-	for (ArchiveMemberList::iterator it = fileList.begin(); it != fileList.end(); ++it) {
-		ArchiveMember       const &m      = **it;
-		SeekableReadStream *const  stream = m.createReadStream();
-		if (stream && inFile.open(stream, m.getName())) {
+	SearchMan.listMatchingMembers(fileList, Common::Path(_translationsFileName, Common::Path::kNoSeparator));
+	for (auto &m : fileList) {
+		SeekableReadStream *const stream = m->createReadStream();
+		if (stream && inFile.open(stream, m->getName())) {
 			if (checkHeader(inFile))
 				return true;
 			inFile.close();
@@ -252,7 +247,7 @@ bool TranslationManager::openTranslationsFile(const FSNode &node, File &inFile, 
 	// Check if we can find the file in this directory
 	// Since File::open(FSNode) makes all the needed tests, it is not really
 	// necessary to make them here. But it avoid printing warnings.
-	FSNode fileNode = node.getChild("translations.dat");
+	FSNode fileNode = node.getChild(_translationsFileName);
 	if (fileNode.exists() && fileNode.isReadable() && !fileNode.isDirectory()) {
 		if (inFile.open(fileNode)) {
 			if (checkHeader(inFile))
@@ -270,8 +265,8 @@ bool TranslationManager::openTranslationsFile(const FSNode &node, File &inFile, 
 	if (!node.getChildren(fileList, FSNode::kListDirectoriesOnly))
 		return false;
 
-	for (FSList::iterator i = fileList.begin(); i != fileList.end(); ++i) {
-		if (openTranslationsFile(*i, inFile, depth == -1 ? - 1 : depth - 1))
+	for (auto &file : fileList) {
+		if (openTranslationsFile(file, inFile, depth == -1 ? - 1 : depth - 1))
 			return true;
 	}
 
@@ -279,10 +274,11 @@ bool TranslationManager::openTranslationsFile(const FSNode &node, File &inFile, 
 	return false;
 }
 
-void TranslationManager::loadTranslationsInfoDat() {
+void TranslationManager::loadTranslationsInfoDat(const Common::String &name) {
 	File in;
+	_translationsFileName = name;
 	if (!openTranslationsFile(in)) {
-		warning("You are missing a valid 'translations.dat' file. GUI translation will not be available");
+		warning("You are missing a valid '%s' file. GUI translation will not be available", name.c_str());
 		return;
 	}
 
@@ -292,14 +288,11 @@ void TranslationManager::loadTranslationsInfoDat() {
 	// Get number of translations
 	int nbTranslations = in.readUint16BE();
 
-	// Get number of codepages
-	int nbCodepages = in.readUint16BE();
-
-	// Determine where the codepages start
-	_charmapStart = 0;
-	for (int i = 0; i < nbTranslations + 3; ++i)
-		_charmapStart += in.readUint16BE();
-	_charmapStart += in.pos();
+	// Skip translation description & size for the original language (english) block
+	// Also skip size of each translation block. Each block is written in Uint32BE.
+	for (int i = 0; i < nbTranslations + 2; i++) {
+		in.readUint32BE();
+	}
 
 	// Read list of languages
 	_langs.resize(nbTranslations);
@@ -311,14 +304,6 @@ void TranslationManager::loadTranslationsInfoDat() {
 		len = in.readUint16BE();
 		in.read(buf, len);
 		_langNames[i] = String(buf, len - 1);
-	}
-
-	// Read list of codepages
-	_charmaps.resize(nbCodepages);
-	for (int i = 0; i < nbCodepages; ++i) {
-		len = in.readUint16BE();
-		in.read(buf, len);
-		_charmaps[i] = String(buf, len - 1);
 	}
 
 	// Read messages
@@ -338,7 +323,6 @@ void TranslationManager::loadTranslationsInfoDat() {
 
 void TranslationManager::loadLanguageDat(int index) {
 	_currentTranslationMessages.clear();
-	_currentCharset.clear();
 	// Sanity check
 	if (index < 0 || index >= (int)_langs.size()) {
 		if (index != -1)
@@ -360,19 +344,16 @@ void TranslationManager::loadLanguageDat(int index) {
 		return;
 	}
 
-	// Get the number of codepages
-	int nbCodepages = in.readUint16BE();
-	if (nbCodepages != (int)_charmaps.size()) {
-		warning("The 'translations.dat' file has changed since starting ScummVM. GUI translation will not be available");
-		return;
-	}
-
 	// Get size of blocks to skip.
 	int skipSize = 0;
-	for (int i = 0; i < index + 3; ++i)
-		skipSize += in.readUint16BE();
+
+	// Skip translation description & size for the original language (english) block
+	// Also skip size of each translation block. All block sizes are written in Uint32BE.
+	for (int i = 0; i < index + 2; ++i)
+		skipSize += in.readUint32BE();
+
 	// We also need to skip the remaining block sizes
-	skipSize += 2 * (nbTranslations - index);
+	skipSize += 4 * (nbTranslations - index);	// 4 because block sizes are written in Uint32BE in the .dat file.
 
 	// Seek to start of block we want to read
 	in.seek(skipSize, SEEK_CUR);
@@ -380,11 +361,6 @@ void TranslationManager::loadLanguageDat(int index) {
 	// Read number of translated messages
 	int nbMessages = in.readUint16BE();
 	_currentTranslationMessages.resize(nbMessages);
-
-	// Read charset
-	len = in.readUint16BE();
-	in.read(buf, len);
-	_currentCharset = String(buf, len - 1);
 
 	// Read messages
 	for (int i = 0; i < nbMessages; ++i) {
@@ -403,29 +379,6 @@ void TranslationManager::loadLanguageDat(int index) {
 			_currentTranslationMessages[i].msgctxt = String(buf, len - 1);
 		}
 	}
-
-	// Find the charset
-	int charmapNum = -1;
-	for (uint i = 0; i < _charmaps.size(); ++i) {
-		if (_charmaps[i].equalsIgnoreCase(_currentCharset)) {
-			charmapNum = i;
-			break;
-		}
-	}
-
-	// Setup the new charset mapping
-	if (charmapNum == -1) {
-		delete[] _charmap;
-		_charmap = 0;
-	} else {
-		if (!_charmap)
-			_charmap = new uint32[256];
-
-		in.seek(_charmapStart + charmapNum * 256 * 4, SEEK_SET);
-		for (int i = 0; i < 256; ++i)
-			_charmap[i] = in.readUint32BE();
-	}
-
 }
 
 bool TranslationManager::checkHeader(File &in) {

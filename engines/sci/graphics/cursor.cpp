@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -31,7 +30,8 @@
 #include "sci/sci.h"
 #include "sci/event.h"
 #include "sci/engine/state.h"
-#include "sci/graphics/palette.h"
+#include "sci/graphics/drivers/gfxdriver.h"
+#include "sci/graphics/palette16.h"
 #include "sci/graphics/screen.h"
 #include "sci/graphics/coordadjuster.h"
 #include "sci/graphics/view.h"
@@ -40,8 +40,8 @@
 
 namespace Sci {
 
-GfxCursor::GfxCursor(ResourceManager *resMan, GfxPalette *palette, GfxScreen *screen)
-	: _resMan(resMan), _palette(palette), _screen(screen) {
+GfxCursor::GfxCursor(ResourceManager *resMan, GfxPalette *palette, GfxScreen *screen, GfxCoordAdjuster16 *coordAdjuster, EventManager *eventMan)
+	: _resMan(resMan), _palette(palette), _screen(screen), _coordAdjuster(coordAdjuster), _event(eventMan), _winCursorStyle(kWinCursorStyleDefault) {
 
 	_upscaledHires = _screen->getUpscaledHires();
 	_isVisible = true;
@@ -52,37 +52,31 @@ GfxCursor::GfxCursor(ResourceManager *resMan, GfxPalette *palette, GfxScreen *sc
 
 	_zoomZoneActive = false;
 	_zoomZone = Common::Rect();
-	_zoomCursorView = 0;
+	_zoomCursorView = nullptr;
 	_zoomCursorLoop = 0;
 	_zoomCursorCel = 0;
-	_zoomPicView = 0;
+	_zoomPicView = nullptr;
 	_zoomColor = 0;
 	_zoomMultiplier = 0;
-	_cursorSurface = 0;
 
-	if (g_sci && g_sci->getGameId() == GID_KQ6 && g_sci->getPlatform() == Common::kPlatformWindows)
-		_useOriginalKQ6WinCursors = ConfMan.getBool("windows_cursors");
-	else
-		_useOriginalKQ6WinCursors = false;
-
-	if (g_sci && g_sci->getGameId() == GID_SQ4 && getSciVersion() == SCI_VERSION_1_1)
-		_useSilverSQ4CDCursors = ConfMan.getBool("silver_cursors");
-	else
-		_useSilverSQ4CDCursors = false;
-
-	// _coordAdjuster and _event will be initialized later on
-	_coordAdjuster = NULL;
-	_event = NULL;
+	if (g_sci && g_sci->getPlatform() == Common::kPlatformWindows) {
+		int gid = g_sci->getGameId();
+		if (ConfMan.getBool("windows_cursors")) {
+			if (gid == GID_KQ6 || gid == GID_LAURABOW2 || gid == GID_ECOQUEST2)
+				_winCursorStyle = kWinCursorStyleBWAlt2;
+			else if (gid == GID_SQ4 || gid == GID_PEPPER)
+				_winCursorStyle = kWinCursorStyleBWAlt1;
+		}
+		// The silver_cursors setting is supposed to have priority over the windows_cursors setting
+		// (althought it would look better in the launcher if these options were mutually exclusive).
+		if (ConfMan.getBool("silver_cursors") && gid == GID_SQ4)
+			_winCursorStyle = kWinCursorStyleSilver;
+	}
 }
 
 GfxCursor::~GfxCursor() {
 	purgeCache();
 	kernelClearZoomZone();
-}
-
-void GfxCursor::init(GfxCoordAdjuster *coordAdjuster, EventManager *event) {
-	_coordAdjuster = coordAdjuster;
-	_event = event;
 }
 
 void GfxCursor::kernelShow() {
@@ -109,82 +103,71 @@ void GfxCursor::purgeCache() {
 }
 
 void GfxCursor::kernelSetShape(GuiResourceId resourceId) {
-	Resource *resource;
-	byte *resourceData;
-	Common::Point hotspot = Common::Point(0, 0);
-	byte colorMapping[4];
-	int16 x, y;
-	byte color;
-	int16 maskA, maskB;
-	byte *pOut;
-	byte *rawBitmap = new byte[SCI_CURSOR_SCI0_HEIGHTWIDTH * SCI_CURSOR_SCI0_HEIGHTWIDTH];
-	int16 heightWidth;
-
 	if (resourceId == -1) {
 		// no resourceId given, so we actually hide the cursor
 		kernelHide();
-		delete[] rawBitmap;
 		return;
 	}
 
 	// Load cursor resource...
-	resource = _resMan->findResource(ResourceId(kResourceTypeCursor, resourceId), false);
+	Resource *resource = _resMan->findResource(ResourceId(kResourceTypeCursor, resourceId), false);
 	if (!resource)
 		error("cursor resource %d not found", resourceId);
-	if (resource->size != SCI_CURSOR_SCI0_RESOURCESIZE)
+	if (resource->size() != SCI_CURSOR_SCI0_RESOURCESIZE)
 		error("cursor resource %d has invalid size", resourceId);
 
-	resourceData = resource->data;
-
-	if (getSciVersion() <= SCI_VERSION_01) {
+	Common::Point hotspot;
+	bool isSci0Cursor = (getSciVersion() <= SCI_VERSION_01);
+	if (isSci0Cursor) {
 		// SCI0 cursors contain hotspot flags, not actual hotspot coordinates.
 		// If bit 0 of resourceData[3] is set, the hotspot should be centered,
 		// otherwise it's in the top left of the mouse cursor.
-		hotspot.x = hotspot.y = resourceData[3] ? SCI_CURSOR_SCI0_HEIGHTWIDTH / 2 : 0;
+		hotspot.x = hotspot.y = resource->getUint8At(3) ? SCI_CURSOR_SCI0_HEIGHTWIDTH / 2 : 0;
 	} else {
 		// Cursors in newer SCI versions contain actual hotspot coordinates.
-		hotspot.x = READ_LE_UINT16(resourceData);
-		hotspot.y = READ_LE_UINT16(resourceData + 2);
+		hotspot.x = resource->getUint16LEAt(0);
+		hotspot.y = resource->getUint16LEAt(2);
 	}
 
-	// Now find out what colors we are supposed to use
-	colorMapping[0] = 0; // Black is hardcoded
-	colorMapping[1] = _screen->getColorWhite(); // White is also hardcoded
+	// SCI0 cursors are black and white and transparent.
+	// SCI1 cursors introduce gray when both masks are set.
+	// These colors are hard-coded in the video driver.
+	byte colorMapping[4];
+	colorMapping[0] = 0; // black
+	colorMapping[1] = _screen->getColorWhite();
 	colorMapping[2] = SCI_CURSOR_SCI0_TRANSPARENCYCOLOR;
-	colorMapping[3] = _palette->matchColor(170, 170, 170) & SCI_PALETTE_MATCH_COLORMASK; // Grey
-	// TODO: Figure out if the grey color is hardcoded
-	// HACK for the magnifier cursor in LB1, fixes its color (bug #3487092)
-	if (g_sci->getGameId() == GID_LAURABOW && resourceId == 1)
+	if (isSci0Cursor) {
 		colorMapping[3] = _screen->getColorWhite();
-	// HACK for Longbow cursors, fixes the shade of grey they're using (bug #3489101)
-	if (g_sci->getGameId() == GID_LONGBOW)
-		colorMapping[3] = _palette->matchColor(223, 223, 223) & SCI_PALETTE_MATCH_COLORMASK; // Light Grey
+	} else {
+		colorMapping[3] = SCI_CURSOR_SCI1_GRAY;
+	}
 
-	// Seek to actual data
-	resourceData += 4;
+	Common::SpanOwner<SciSpan<byte> > rawBitmap;
+	rawBitmap->allocate(SCI_CURSOR_SCI0_HEIGHTWIDTH * SCI_CURSOR_SCI0_HEIGHTWIDTH, resource->name() + " copy");
 
-	pOut = rawBitmap;
-	for (y = 0; y < SCI_CURSOR_SCI0_HEIGHTWIDTH; y++) {
-		maskA = READ_LE_UINT16(resourceData + (y << 1));
-		maskB = READ_LE_UINT16(resourceData + 32 + (y << 1));
+	byte *pOut = rawBitmap->getUnsafeDataAt(0, SCI_CURSOR_SCI0_HEIGHTWIDTH * SCI_CURSOR_SCI0_HEIGHTWIDTH);
+	for (int16 y = 0; y < SCI_CURSOR_SCI0_HEIGHTWIDTH; y++) {
+		uint16 maskA = resource->getUint16LEAt(4 + (y << 1));
+		uint16 maskB = resource->getUint16LEAt(4 + 32 + (y << 1));
 
-		for (x = 0; x < SCI_CURSOR_SCI0_HEIGHTWIDTH; x++) {
-			color = (((maskA << x) & 0x8000) | (((maskB << x) >> 1) & 0x4000)) >> 14;
+		for (int16 x = 0; x < SCI_CURSOR_SCI0_HEIGHTWIDTH; x++) {
+			byte color = (((maskA << x) & 0x8000) | (((maskB << x) >> 1) & 0x4000)) >> 14;
 			*pOut++ = colorMapping[color];
 		}
 	}
 
-	heightWidth = SCI_CURSOR_SCI0_HEIGHTWIDTH;
+	int16 heightWidth = SCI_CURSOR_SCI0_HEIGHTWIDTH;
 
-	if (_upscaledHires) {
+	if (_upscaledHires != GFX_SCREEN_UPSCALED_DISABLED && _upscaledHires != GFX_SCREEN_UPSCALED_480x300) {
 		// Scale cursor by 2x - note: sierra didn't do this, but it looks much better
 		heightWidth *= 2;
 		hotspot.x *= 2;
 		hotspot.y *= 2;
-		byte *upscaledBitmap = new byte[heightWidth * heightWidth];
-		_screen->scale2x(rawBitmap, upscaledBitmap, SCI_CURSOR_SCI0_HEIGHTWIDTH, SCI_CURSOR_SCI0_HEIGHTWIDTH);
-		delete[] rawBitmap;
-		rawBitmap = upscaledBitmap;
+
+		Common::SpanOwner<SciSpan<byte> > upscaledBitmap;
+		upscaledBitmap->allocate(heightWidth * heightWidth, "upscaled cursor bitmap");
+		_screen->scale2x(*rawBitmap, *upscaledBitmap, SCI_CURSOR_SCI0_HEIGHTWIDTH, SCI_CURSOR_SCI0_HEIGHTWIDTH);
+		rawBitmap.moveFrom(upscaledBitmap);
 	}
 
 	if (hotspot.x >= heightWidth || hotspot.y >= heightWidth) {
@@ -192,34 +175,21 @@ void GfxCursor::kernelSetShape(GuiResourceId resourceId) {
 				resourceId, hotspot.x, hotspot.y, heightWidth, heightWidth);
 	}
 
-	CursorMan.replaceCursor(rawBitmap, heightWidth, heightWidth, hotspot.x, hotspot.y, SCI_CURSOR_SCI0_TRANSPARENCYCOLOR);
-	kernelShow();
+	_screen->gfxDriver()->replaceCursor(rawBitmap->getUnsafeDataAt(0, heightWidth * heightWidth), heightWidth, heightWidth, hotspot.x, hotspot.y, SCI_CURSOR_SCI0_TRANSPARENCYCOLOR);
 
-	delete[] rawBitmap;
+	kernelShow();
 }
 
 void GfxCursor::kernelSetView(GuiResourceId viewNum, int loopNum, int celNum, Common::Point *hotspot) {
 	if (_cachedCursors.size() >= MAX_CACHED_CURSORS)
 		purgeCache();
 
-	// Use the original Windows cursors in KQ6, if requested
-	if (_useOriginalKQ6WinCursors)
+	// Use the original Windows cursors in KQ6 or LB2, if requested
+	if (_winCursorStyle == kWinCursorStyleBWAlt2)
 		viewNum += 2000;		// Windows cursors
 
-	if (g_sci->getGameId() == GID_PHANTASMAGORIA2) {
-		// HACK: Ignore cursor views for Phantasmagoria 2. They've got
-		// differences from other SCI32 views, thus we skip them for
-		// now, otherwise our view decoding code will crash.
-		// The view code will crash with *any* view in P2, but this hack
-		// allows the game to start and show the menu.
-		// TODO: Remove once the view code is updated to handle
-		// Phantasmagoria 2 views.
-		warning("TODO: Cursor views for Phantasmagoria 2");
-		return;
-	}
-
 	// Use the alternate silver cursors in SQ4 CD, if requested
-	if (_useSilverSQ4CDCursors) {
+	if (_winCursorStyle == kWinCursorStyleSilver) {
 		switch(viewNum) {
 		case 850:
 		case 852:
@@ -236,6 +206,9 @@ void GfxCursor::kernelSetView(GuiResourceId viewNum, int loopNum, int celNum, Co
 		default:
 			break;
 		}
+	} else if (_winCursorStyle == kWinCursorStyleBWAlt1) {
+		// Use the Windows black and white cursors
+		celNum += 1;
 	}
 
 	if (!_cachedCursors.contains(viewNum))
@@ -261,19 +234,19 @@ void GfxCursor::kernelSetView(GuiResourceId viewNum, int loopNum, int celNum, Co
 		return;
 	}
 
-	const byte *rawBitmap = cursorView->getBitmap(loopNum, celNum);
-	if (_upscaledHires && !_useOriginalKQ6WinCursors) {
+	const SciSpan<const byte> &rawBitmap = cursorView->getBitmap(loopNum, celNum);
+	if (_upscaledHires != GFX_SCREEN_UPSCALED_DISABLED && _upscaledHires != GFX_SCREEN_UPSCALED_480x300 && _winCursorStyle != kWinCursorStyleBWAlt2) {
 		// Scale cursor by 2x - note: sierra didn't do this, but it looks much better
 		width *= 2;
 		height *= 2;
 		cursorHotspot->x *= 2;
 		cursorHotspot->y *= 2;
-		byte *cursorBitmap = new byte[width * height];
-		_screen->scale2x(rawBitmap, cursorBitmap, celInfo->width, celInfo->height);
-		CursorMan.replaceCursor(cursorBitmap, width, height, cursorHotspot->x, cursorHotspot->y, clearKey);
-		delete[] cursorBitmap;
+		Common::SpanOwner<SciSpan<byte> > cursorBitmap;
+		cursorBitmap->allocate(width * height, "upscaled cursor bitmap");
+		_screen->scale2x(rawBitmap, *cursorBitmap, celInfo->width, celInfo->height);
+		_screen->gfxDriver()->replaceCursor(cursorBitmap->getUnsafeDataAt(0, width * height), width, height, cursorHotspot->x, cursorHotspot->y, clearKey);
 	} else {
-		CursorMan.replaceCursor(rawBitmap, width, height, cursorHotspot->x, cursorHotspot->y, clearKey);
+		_screen->gfxDriver()->replaceCursor(rawBitmap.getUnsafeDataAt(0, width * height), width, height, cursorHotspot->x, cursorHotspot->y, clearKey);
 	}
 
 	kernelShow();
@@ -304,12 +277,11 @@ void GfxCursor::setPosition(Common::Point pos) {
 		return;
 
 	if (!_upscaledHires) {
-		g_system->warpMouse(pos.x, pos.y);
+		_screen->gfxDriver()->setMousePos(pos);
 	} else {
 		_screen->adjustToUpscaledCoordinates(pos.y, pos.x);
 		g_system->warpMouse(pos.x, pos.y);
 	}
-
 	// WORKAROUNDS for games with windows that are hidden when the mouse cursor
 	// is moved outside them - also check setPositionWorkarounds above.
 	//
@@ -336,6 +308,9 @@ void GfxCursor::setPosition(Common::Point pos) {
 			&& ((workaround->newPositionX == pos.x) && (workaround->newPositionY == pos.y))) {
 			EngineState *s = g_sci->getEngineState();
 			s->_cursorWorkaroundActive = true;
+			// At least on OpenPandora it seems that the cursor is actually set, but a bit afterwards
+			// touch screen controls will overwrite the position. More information see kGetEvent in kevent.cpp.
+			s->_cursorWorkaroundPosCount = 5; // should be enough for OpenPandora
 			s->_cursorWorkaroundPoint = pos;
 			s->_cursorWorkaroundRect = Common::Rect(workaround->rectLeft, workaround->rectTop, workaround->rectRight, workaround->rectBottom);
 			return;
@@ -345,7 +320,7 @@ void GfxCursor::setPosition(Common::Point pos) {
 }
 
 Common::Point GfxCursor::getPosition() {
-	Common::Point mousePos = g_system->getEventManager()->getMousePos();
+	Common::Point mousePos = g_sci->_gfxScreen->gfxDriver()->getMousePos();
 
 	if (_upscaledHires)
 		_screen->adjustBackUpscaledCoordinates(mousePos.y, mousePos.x);
@@ -383,10 +358,10 @@ void GfxCursor::refreshPosition() {
 	if (_zoomZoneActive) {
 		// Cursor
 		const CelInfo *cursorCelInfo = _zoomCursorView->getCelInfo(_zoomCursorLoop, _zoomCursorCel);
-		const byte *cursorBitmap = _zoomCursorView->getBitmap(_zoomCursorLoop, _zoomCursorCel);
+		const SciSpan<const byte> &cursorBitmap = _zoomCursorView->getBitmap(_zoomCursorLoop, _zoomCursorCel);
 		// Pic
 		const CelInfo *picCelInfo = _zoomPicView->getCelInfo(0, 0);
-		const byte *rawPicBitmap = _zoomPicView->getBitmap(0, 0);
+		const SciSpan<const byte> &rawPicBitmap = _zoomPicView->getBitmap(0, 0);
 
 		// Compute hotspot of cursor
 		Common::Point cursorHotspot = Common::Point((cursorCelInfo->width >> 1) - cursorCelInfo->displaceX, cursorCelInfo->height - cursorCelInfo->displaceY - 1);
@@ -423,7 +398,12 @@ void GfxCursor::refreshPosition() {
 			}
 		}
 
-		CursorMan.replaceCursor(_cursorSurface, cursorCelInfo->width, cursorCelInfo->height, cursorHotspot.x, cursorHotspot.y, cursorCelInfo->clearKey);
+		_screen->gfxDriver()->replaceCursor(_cursorSurface->getUnsafeDataAt(0, cursorCelInfo->width * cursorCelInfo->height), cursorCelInfo->width, cursorCelInfo->height, cursorHotspot.x, cursorHotspot.y, cursorCelInfo->clearKey);
+		if (g_system->getScreenFormat().bytesPerPixel != 1) {
+			byte buf[3*256];
+			_screen->grabPalette(buf, 0, 256);
+			CursorMan.replaceCursorPalette(buf, 0, 256);
+		}
 	}
 }
 
@@ -443,15 +423,23 @@ void GfxCursor::kernelClearZoomZone() {
 	_zoomMultiplier = 0;
 	_zoomZoneActive = false;
 	delete _zoomCursorView;
-	_zoomCursorView = 0;
+	_zoomCursorView = nullptr;
 	delete _zoomPicView;
-	_zoomPicView = 0;
-	delete[] _cursorSurface;
-	_cursorSurface = 0;
+	_zoomPicView = nullptr;
+	_cursorSurface.clear();
 }
 
 void GfxCursor::kernelSetZoomZone(byte multiplier, Common::Rect zone, GuiResourceId viewNum, int loopNum, int celNum, GuiResourceId picNum, byte zoomColor) {
 	kernelClearZoomZone();
+
+	// This function is a stub in the Mac version of Freddy Pharkas.
+	// This function was only used in two games (LB2 and Pharkas), but there
+	// was no version of LB2 for the Macintosh platform.
+	// CHECKME: This wasn't verified against disassembly, one might want
+	// to check against it, in case there's some leftover code in the stubbed
+	// function (although it does seem that this was completely removed).
+	if (g_sci->getPlatform() == Common::kPlatformMacintosh)
+		return;
 
 	_zoomMultiplier = multiplier;
 
@@ -462,10 +450,7 @@ void GfxCursor::kernelSetZoomZone(byte multiplier, Common::Rect zone, GuiResourc
 	_zoomCursorLoop = (byte)loopNum;
 	_zoomCursorCel = (byte)celNum;
 	_zoomPicView = new GfxView(_resMan, _screen, _palette, picNum);
-	const CelInfo *cursorCelInfo = _zoomCursorView->getCelInfo(_zoomCursorLoop, _zoomCursorCel);
-	const byte *cursorBitmap = _zoomCursorView->getBitmap(_zoomCursorLoop, _zoomCursorCel);
-	_cursorSurface = new byte[cursorCelInfo->width * cursorCelInfo->height];
-	memcpy(_cursorSurface, cursorBitmap, cursorCelInfo->width * cursorCelInfo->height);
+	_cursorSurface->allocateFromSpan(_zoomCursorView->getBitmap(_zoomCursorLoop, _zoomCursorCel));
 
 	_zoomZone = zone;
 	kernelSetMoveZone(_zoomZone);
@@ -490,7 +475,7 @@ void GfxCursor::kernelMoveCursor(Common::Point pos) {
 
 	// Trigger event reading to make sure the mouse coordinates will
 	// actually have changed the next time we read them.
-	_event->getSciEvent(SCI_EVENT_PEEK);
+	_event->getSciEvent(kSciEventPeek);
 }
 
 void GfxCursor::kernelSetMacCursor(GuiResourceId viewNum, int loopNum, int celNum) {
@@ -500,32 +485,18 @@ void GfxCursor::kernelSetMacCursor(GuiResourceId viewNum, int loopNum, int celNu
 	// automatically. The view resources may exist, but none of the games actually
 	// use them.
 
-	if (_macCursorRemap.empty()) {
-		// QFG1/Freddy/Hoyle4 use a straight viewNum->cursor ID mapping
-		// KQ6 uses this mapping for its cursors
-		if (g_sci->getGameId() == GID_KQ6) {
-			if (viewNum == 990)      // Inventory Cursors
-				viewNum = loopNum * 16 + celNum + 2000;
-			else if (viewNum == 998) // Regular Cursors
-				viewNum = celNum + 1000;
-			else                     // Unknown cursor, ignored
-				return;
-		}
-		if (g_sci->hasMacIconBar())
-			g_sci->_gfxMacIconBar->setInventoryIcon(viewNum);
-	} else {
-		// If we do have the list, we'll be using a remap based on what the
-		// scripts have given us.
-		for (uint32 i = 0; i < _macCursorRemap.size(); i++) {
-			if (viewNum == _macCursorRemap[i]) {
-				viewNum = (i + 1) * 0x100 + loopNum * 0x10 + celNum;
-				break;
-			}
-
-			if (i == _macCursorRemap.size())
-				error("Unmatched Mac cursor %d", viewNum);
-		}
+	// QFG1/Freddy/Hoyle4 use a straight viewNum->cursor ID mapping
+	// KQ6 uses this mapping for its cursors
+	if (g_sci->getGameId() == GID_KQ6) {
+		if (viewNum == 990)      // Inventory Cursors
+			viewNum = loopNum * 16 + celNum + 2000;
+		else if (viewNum == 998) // Regular Cursors
+			viewNum = celNum + 1000;
+		else                     // Unknown cursor, ignored
+			return;
 	}
+	if (g_sci->hasMacIconBar())
+		g_sci->_gfxMacIconBar->setInventoryIcon(viewNum);
 
 	Resource *resource = _resMan->findResource(ResourceId(kResourceTypeCursor, viewNum), false);
 
@@ -537,28 +508,40 @@ void GfxCursor::kernelSetMacCursor(GuiResourceId viewNum, int loopNum, int celNu
 
 	CursorMan.disableCursorPalette(false);
 
-	assert(resource);
-
-	Common::MemoryReadStream resStream(resource->data, resource->size);
+	Common::MemoryReadStream resStream(resource->toStream());
 	Graphics::MacCursor *macCursor = new Graphics::MacCursor();
 
-	if (!macCursor->readFromStream(resStream)) {
+	// use black for mac monochrome inverted pixels so that cursor
+	//  features in FPFP and KQ6 Mac are displayed, bug #7050
+	byte macMonochromeInvertedPixelColor = 0;
+	if (!macCursor->readFromStream(resStream, false, macMonochromeInvertedPixelColor)) {
 		warning("Failed to load Mac cursor %d", viewNum);
 		delete macCursor;
 		return;
 	}
 
-	CursorMan.replaceCursor(macCursor->getSurface(), macCursor->getWidth(), macCursor->getHeight(),
-			macCursor->getHotspotX(), macCursor->getHotspotY(), macCursor->getKeyColor());
-	CursorMan.replaceCursorPalette(macCursor->getPalette(), 0, 256);
+	if (_upscaledHires == GFX_SCREEN_UPSCALED_640x400) {
+		// Scale cursor by 2x
+		uint16 width = macCursor->getWidth() * 2;
+		uint16 height = macCursor->getHeight() * 2;
+		uint16 cursorHotspotX = macCursor->getHotspotX() * 2;
+		uint16 cursorHotspotY = macCursor->getHotspotY() * 2;
+		Common::SpanOwner<SciSpan<byte> > cursorBitmap;
+		cursorBitmap->allocate(width * height, "upscaled cursor bitmap");
+		SciSpan<const byte> sourceBitmap(macCursor->getSurface(), macCursor->getWidth() * macCursor->getHeight());
+		_screen->scale2x(sourceBitmap, *cursorBitmap, macCursor->getWidth(), macCursor->getHeight());
+		CursorMan.replaceCursor(cursorBitmap->getUnsafeDataAt(0, width * height), width, height, cursorHotspotX, cursorHotspotY, macCursor->getKeyColor());
+
+		// CursorMan.replaceCursor() does this when called with just a Graphics::Cursor
+		if (macCursor->getPalette()) {
+			CursorMan.replaceCursorPalette(macCursor->getPalette(), macCursor->getPaletteStartIndex(), macCursor->getPaletteCount());
+		}
+	} else {
+		CursorMan.replaceCursor(macCursor);
+	}
 
 	delete macCursor;
 	kernelShow();
-}
-
-void GfxCursor::setMacCursorRemapList(int cursorCount, reg_t *cursors) {
-	for (int i = 0; i < cursorCount; i++)
-		_macCursorRemap.push_back(cursors[i].toUint16());
 }
 
 } // End of namespace Sci

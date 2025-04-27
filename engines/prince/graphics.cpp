@@ -4,19 +4,18 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
-
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -24,14 +23,14 @@
 #include "prince/prince.h"
 #include "prince/mhwanh.h"
 
-#include "graphics/palette.h"
+#include "graphics/paletteman.h"
 
 #include "common/memstream.h"
 
 namespace Prince {
 
 GraphicsMan::GraphicsMan(PrinceEngine *vm) : _vm(vm), _changed(false) {
-	initGraphics(640, 480, true);
+	initGraphics(640, 480);
 
 	_frontScreen = new Graphics::Surface();
 	_frontScreen->create(640, 480, Graphics::PixelFormat::createFormatCLUT8());
@@ -44,6 +43,8 @@ GraphicsMan::GraphicsMan(PrinceEngine *vm) : _vm(vm), _changed(false) {
 
 	_shadowTable70 = (byte *)malloc(256);
 	_shadowTable50 = (byte *)malloc(256);
+
+	_roomBackground = nullptr;
 }
 
 GraphicsMan::~GraphicsMan() {
@@ -81,7 +82,7 @@ void GraphicsMan::draw(Graphics::Surface *screen, const Graphics::Surface *s) {
 	uint16 w = MIN(screen->w, s->w);
 	const byte *src = (const byte *)s->getBasePtr(0, 0);
 	byte *dst = (byte *)screen->getBasePtr(0, 0);
-	for (uint y = 0; y < s->h; y++) {
+	for (int y = 0; y < s->h; y++) {
 		if (y < screen->h) {
 			memcpy(dst, src, w);
 		}
@@ -279,7 +280,7 @@ void GraphicsMan::drawTransparentWithTransDrawNode(Graphics::Surface *screen, Dr
 							// first and last row at the same time (height = 1) - no anti-alias
 							continue;
 						}
-						// new color value based on orginal screen surface color and sprite's edge pixel color
+						// new color value based on original screen surface color and sprite's edge pixel color
 						*dst2 = transTableData[*dst2 * 256 + value];
 					}
 				}
@@ -372,33 +373,33 @@ byte GraphicsMan::getBlendTableColor(byte pixelColor, byte backgroundPixelColor,
 	if (blendTable[pixelColor] != 255) {
 		currColor = blendTable[pixelColor];
 	} else {
-		const byte *originalPalette = _vm->_roomBmp->getPalette();
+		const byte *originalPalette = _vm->_roomBmp->getPalette().data();
 
 		int redFirstOrg = originalPalette[pixelColor * 3] * _vm->_mst_shadow / 256;
-		CLIP(redFirstOrg, 0, 255);
+		redFirstOrg = CLIP(redFirstOrg, 0, 255);
 		if (_vm->_mst_shadow <= 256) {
 			int redFirstBack = originalPalette[backgroundPixelColor * 3] * (256 - _vm->_mst_shadow) / 256;
-			CLIP(redFirstBack, 0, 255);
+			redFirstBack = CLIP(redFirstBack, 0, 255);
 			redFirstOrg += redFirstBack;
-			CLIP(redFirstOrg, 0, 255);
+			redFirstOrg = CLIP(redFirstOrg, 0, 255);
 		}
 
 		int greenFirstOrg = originalPalette[pixelColor * 3 + 1] * _vm->_mst_shadow / 256;
-		CLIP(greenFirstOrg, 0, 255);
+		greenFirstOrg = CLIP(greenFirstOrg, 0, 255);
 		if (_vm->_mst_shadow <= 256) {
 			int greenFirstBack = originalPalette[backgroundPixelColor * 3 + 1] * (256 - _vm->_mst_shadow) / 256;
-			CLIP(greenFirstBack, 0, 255);
+			greenFirstBack = CLIP(greenFirstBack, 0, 255);
 			greenFirstOrg += greenFirstBack;
-			CLIP(greenFirstOrg, 0, 255);
+			greenFirstOrg = CLIP(greenFirstOrg, 0, 255);
 		}
 
 		int blueFirstOrg = originalPalette[pixelColor * 3 + 2] * _vm->_mst_shadow / 256;
-		CLIP(blueFirstOrg, 0, 255);
+		blueFirstOrg = CLIP(blueFirstOrg, 0, 255);
 		if (_vm->_mst_shadow <= 256) {
 			int blueFirstBack = originalPalette[backgroundPixelColor * 3 + 2] * (256 - _vm->_mst_shadow) / 256;
-			CLIP(blueFirstBack, 0, 255);
+			blueFirstBack = CLIP(blueFirstBack, 0, 255);
 			blueFirstOrg += blueFirstBack;
-			CLIP(blueFirstOrg, 0, 255);
+			blueFirstOrg = CLIP(blueFirstOrg, 0, 255);
 		}
 
 		int bigValue = PrinceEngine::kIntMax; // infinity
@@ -433,7 +434,7 @@ byte GraphicsMan::getBlendTableColor(byte pixelColor, byte backgroundPixelColor,
 
 void GraphicsMan::makeShadowTable(int brightness, byte *shadowPalette) {
 	int shadow =  brightness * 256 / 100;
-	const byte *originalPalette = _vm->_roomBmp->getPalette();
+	const byte *originalPalette = _vm->_roomBmp->getPalette().data();
 
 	for (int i = 0; i < 256; i++) {
 		int redFirstOrg = originalPalette[3 * i] * shadow / 256;

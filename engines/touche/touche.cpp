@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -32,11 +31,12 @@
 #include "common/keyboard.h"
 #include "common/textconsole.h"
 
+#include "audio/audiostream.h"
 #include "audio/mixer.h"
 
 #include "engines/util.h"
 #include "graphics/cursorman.h"
-#include "graphics/palette.h"
+#include "graphics/paletteman.h"
 #include "gui/debugger.h"
 
 #include "touche/midi.h"
@@ -98,18 +98,11 @@ ToucheEngine::ToucheEngine(OSystem *system, Common::Language language)
 	_menuRedrawCounter = 0;
 	memset(_paletteBuffer, 0, sizeof(_paletteBuffer));
 
-	const Common::FSNode gameDataDir(ConfMan.get("path"));
+	const Common::FSNode gameDataDir(ConfMan.getPath("path"));
 
 	SearchMan.addSubDirectoryMatching(gameDataDir, "database");
 
-	DebugMan.addDebugChannel(kDebugEngine,   "Engine",   "Engine debug level");
-	DebugMan.addDebugChannel(kDebugGraphics, "Graphics", "Graphics debug level");
-	DebugMan.addDebugChannel(kDebugResource, "Resource", "Resource debug level");
-	DebugMan.addDebugChannel(kDebugOpcodes,  "Opcodes",  "Opcodes debug level");
-	DebugMan.addDebugChannel(kDebugMenu,     "Menu",     "Menu debug level");
-	DebugMan.addDebugChannel(kDebugCharset,  "Charset",   "Charset debug level");
-
-	_console = new ToucheConsole(this);
+	setDebugger(new ToucheConsole(this));
 
 	_newEpisodeNum = 0;
 	_currentEpisodeNum = 0;
@@ -190,15 +183,12 @@ ToucheEngine::ToucheEngine(OSystem *system, Common::Language language)
 }
 
 ToucheEngine::~ToucheEngine() {
-	DebugMan.clearAllDebugChannels();
-	delete _console;
-
 	stopMusic();
 	delete _midiPlayer;
 }
 
 Common::Error ToucheEngine::run() {
-	initGraphics(kScreenWidth, kScreenHeight, true);
+	initGraphics(kScreenWidth, kScreenHeight);
 
 	Graphics::setupFont(_language);
 
@@ -337,6 +327,8 @@ void ToucheEngine::writeConfigurationSettings() {
 		ConfMan.setBool("speech_mute", false);
 		ConfMan.setBool("subtitles", true);
 		break;
+	default:
+		break;
 	}
 	ConfMan.setInt("music_volume", getMusicVolume());
 	ConfMan.flushToDisk();
@@ -408,44 +400,45 @@ void ToucheEngine::processEvents(bool handleKeyEvents) {
 	Common::Event event;
 	while (_eventMan->pollEvent(event)) {
 		switch (event.type) {
-		case Common::EVENT_KEYDOWN:
+		case Common::EVENT_CUSTOM_ENGINE_ACTION_START:
 			if (!handleKeyEvents) {
 				break;
 			}
-			_flagsTable[600] = event.kbd.keycode;
-			if (event.kbd.keycode == Common::KEYCODE_ESCAPE) {
+			if (event.customType == kToucheActionSkipOrQuit) {
+				_flagsTable[600] = Common::KEYCODE_ESCAPE;
 				if (_displayQuitDialog) {
 					if (displayQuitDialog()) {
 						quitGame();
 					}
 				}
-			} else if (event.kbd.keycode == Common::KEYCODE_F5) {
+			} else if (event.customType == kToucheActionOpenOptions) {
 				if (_flagsTable[618] == 0 && !_hideInventoryTexts) {
 					handleOptions(0);
 				}
-			} else if (event.kbd.keycode == Common::KEYCODE_F9) {
+			} else if (event.customType == kToucheActionEnableFastWalk) {
 				_fastWalkMode = true;
-			} else if (event.kbd.keycode == Common::KEYCODE_F10) {
+			} else if (event.customType == kToucheActionDisableFastWalk) {
 				_fastWalkMode = false;
 			}
-			if (event.kbd.hasFlags(Common::KBD_CTRL)) {
-				if (event.kbd.keycode == Common::KEYCODE_f) {
-					_fastMode = !_fastMode;
-				} else if (event.kbd.keycode == Common::KEYCODE_d) {
-					this->getDebugger()->attach();
-					this->getDebugger()->onFrame();
-				}
+			if (event.customType == kToucheActionToggleFastMode) {
+				_fastMode = !_fastMode;
 			} else {
-				if (event.kbd.keycode == Common::KEYCODE_t) {
+				if (event.customType == kToucheActionToggleTalkTextMode) {
 					++_talkTextMode;
 					if (_talkTextMode == kTalkModeCount) {
 						_talkTextMode = 0;
 					}
 					displayTextMode(-(92 + _talkTextMode));
-				} else if (event.kbd.keycode == Common::KEYCODE_SPACE) {
+				} else if (event.customType == kToucheActionSkipDialogue) {
 					updateKeyCharTalk(2);
 				}
 			}
+			break;
+		case Common::EVENT_KEYDOWN:
+			if (!handleKeyEvents) {
+				break;
+			}
+			_flagsTable[600] = event.kbd.keycode;
 			break;
 		case Common::EVENT_LBUTTONDOWN:
 			_inp_leftMouseButtonPressed = true;
@@ -849,6 +842,8 @@ void ToucheEngine::setKeyCharFrame(int keyChar, int16 type, int16 value1, int16 
 	case 4:
 		key->anim3Start = value1;
 		key->anim3Count = value2;
+		break;
+	default:
 		break;
 	}
 }
@@ -1369,7 +1364,8 @@ int ToucheEngine::getStringWidth(int num) const {
 		debug("stringwidth: %s", str);
 		debugN("raw:");
 		const char *p = str;
-		while (*p) debugN(" %02X", (unsigned char)*p++);
+		while (*p)
+			debugN(" %02X", (unsigned char)*p++);
 		debugN("\n");
 	}
 	return Graphics::getStringWidth16(str);
@@ -1610,6 +1606,8 @@ void ToucheEngine::handleLeftMouseButtonClickOnInventory() {
 						drawInventory(_objectDescriptionNum, 1);
 					}
 					break;
+				default:
+					break;
 				}
 			}
 			break;
@@ -1696,6 +1694,8 @@ void ToucheEngine::handleMouseClickOnRoom(int flag) {
 						hitPosY = mousePos.y;
 					}
 				}
+				break;
+			default:
 				break;
 			}
 			if (_giveItemToCounter == 0 && !_hideInventoryTexts) {
@@ -2033,7 +2033,7 @@ void ToucheEngine::updateRoomAreas(int num, int flags) {
 		if (_programAreaTable[i].id == num) {
 			Area area = _programAreaTable[i].area;
 			if (i == 14 && _currentRoomNum == 8 && area.r.left == 715) {
-				// Workaround for bug #1751170. area[14].r.left (update rect) should
+				// Workaround for bug #3306. area[14].r.left (update rect) should
 				// be equal to area[7].r.left (redraw rect) but it's one off, which
 				// leads to a glitch when that room area needs to be redrawn.
 				area.r.left = 714;
@@ -2095,6 +2095,8 @@ void ToucheEngine::updateRoomRegions() {
 					_programAreaTable[i].animNext = 0;
 				}
 				i += _programAreaTable[i].animCount + 1;
+				break;
+			default:
 				break;
 			}
 		}
@@ -2192,16 +2194,15 @@ void ToucheEngine::drawInventory(int index, int flag) {
 
 void ToucheEngine::drawAmountOfMoneyInInventory() {
 	if (_flagsTable[606] == 0 && !_hideInventoryTexts) {
-		char text[10];
-		sprintf(text, "%d", _keyCharsTable[0].money);
+		Common::String textStr = Common::String::format("%d", _keyCharsTable[0].money);
 		Graphics::fillRect(_offscreenBuffer, kScreenWidth, 74, 354, 40, 16, 0xD2);
-		drawGameString(217, 94, 355, text);
+		drawGameString(217, 94, 355, textStr.c_str());
 		updateScreenArea(74, 354, 40, 16);
 		Graphics::fillRect(_offscreenBuffer, kScreenWidth, 150, 353, 40, 41, 0xD2);
 		if (_currentAmountOfMoney != 0) {
 			drawIcon(141, 348, 1);
-			sprintf(text, "%d", _currentAmountOfMoney);
-			drawGameString(217, 170, 378, text);
+			textStr = Common::String::format("%d", _currentAmountOfMoney);
+			drawGameString(217, 170, 378, textStr.c_str());
 		}
 		updateScreenArea(150, 353, 40, 41);
 	}
@@ -2209,7 +2210,7 @@ void ToucheEngine::drawAmountOfMoneyInInventory() {
 
 void ToucheEngine::packInventoryItems(int index) {
 	int16 *p = _inventoryStateTable[index].itemsList;
-	for (int i = 0; *p != -1; ++i, ++p) {
+	for (; *p != -1; ++p) {
 		if (p[0] == 0 && p[1] != -1) {
 			p[0] = p[1];
 			p[1] = 0;
@@ -2240,7 +2241,7 @@ void ToucheEngine::addItemToInventory(int inventory, int16 item) {
 		appendItemToInventoryList(inventory);
 		assert(inventory >= 0 && inventory < 3);
 		int16 *p = _inventoryStateTable[inventory].itemsList;
-		for (int i = 0; *p != -1; ++i, ++p) {
+		for (; *p != -1; ++p) {
 			if (*p == 0) {
 				*p = item;
 				_inventoryItemsInfoTable[item] = inventory | 0x10;
@@ -2259,7 +2260,7 @@ void ToucheEngine::removeItemFromInventory(int inventory, int16 item) {
 	} else {
 		assert(inventory >= 0 && inventory < 3);
 		int16 *p = _inventoryStateTable[inventory].itemsList;
-		for (int i = 0; *p != -1; ++i, ++p) {
+		for (; *p != -1; ++p) {
 			if (*p == item) {
 				*p = 0;
 				packInventoryItems(0);
@@ -2777,6 +2778,8 @@ void ToucheEngine::adjustKeyCharPosToWalkBox(KeyChar *key, int moveType) {
 			key->yPos = dy * kz / dz + y1;
 		}
 		break;
+	default:
+		break;
 	}
 }
 
@@ -3056,6 +3059,8 @@ void ToucheEngine::updateKeyCharWalkPath(KeyChar *key, int16 dx, int16 dy, int16
 			}
 		}
 		break;
+	default:
+		break;
 	}
 }
 
@@ -3309,7 +3314,9 @@ void ToucheEngine::processAnimationTable() {
 }
 
 void ToucheEngine::clearAnimationTable() {
-	memset(_animationTable, 0, sizeof(_animationTable));
+	for (uint i = 0; i < ARRAYSIZE(_animationTable); i++) {
+		_animationTable[i].clear();
+	}
 }
 
 void ToucheEngine::addToDirtyRect(const Common::Rect &r) {
@@ -3403,11 +3410,11 @@ void ToucheEngine::updatePalette() {
 	_system->getPaletteManager()->setPalette(_paletteBuffer, 0, 256);
 }
 
-bool ToucheEngine::canLoadGameStateCurrently() {
+bool ToucheEngine::canLoadGameStateCurrently(Common::U32String *msg) {
 	return _gameState == kGameStateGameLoop && _flagsTable[618] == 0 && !_hideInventoryTexts;
 }
 
-bool ToucheEngine::canSaveGameStateCurrently() {
+bool ToucheEngine::canSaveGameStateCurrently(Common::U32String *msg) {
 	return _gameState == kGameStateGameLoop && _flagsTable[618] == 0 && !_hideInventoryTexts;
 }
 
@@ -3415,7 +3422,7 @@ void ToucheEngine::initMusic() {
 	// Detect External Music Files
 	bool extMusic = true;
 	for (int num = 0; num < 26 && extMusic; num++) {
-		Common::String extMusicFilename = Common::String::format("track%02d", num+1);
+		Common::Path extMusicFilename(Common::String::format("track%02d", num+1));
 		Audio::SeekableAudioStream *musicStream = Audio::SeekableAudioStream::openStreamFile(extMusicFilename);
 		if (!musicStream)
 			extMusic = false;
@@ -3440,10 +3447,10 @@ void ToucheEngine::startMusic(int num) {
 		_fData.seek(offs);
 		_midiPlayer->play(_fData, size, true);
 	} else {
-		Common::String extMusicFilename = Common::String::format("track%02d", num);
+		Common::Path extMusicFilename(Common::String::format("track%02d", num));
 		Audio::SeekableAudioStream *extMusicFileStream = Audio::SeekableAudioStream::openStreamFile(extMusicFilename);
 		if (!extMusicFileStream) {
-			error("Unable to open %s for reading", extMusicFilename.c_str());
+			error("Unable to open %s for reading", extMusicFilename.toString().c_str());
 		}
 		Audio::LoopingAudioStream *loopStream = new Audio::LoopingAudioStream(extMusicFileStream, 0);
 		_mixer->playStream(Audio::Mixer::kMusicSoundType, &_musicHandle, loopStream, -1, _musicVolume);

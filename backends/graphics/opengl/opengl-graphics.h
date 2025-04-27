@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,19 +15,23 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #ifndef BACKENDS_GRAPHICS_OPENGL_OPENGL_GRAPHICS_H
 #define BACKENDS_GRAPHICS_OPENGL_OPENGL_GRAPHICS_H
 
-#include "backends/graphics/opengl/opengl-sys.h"
-#include "backends/graphics/graphics.h"
+#include "backends/graphics/opengl/framebuffer.h"
+#include "backends/graphics/windowed.h"
+
+#include "base/plugins.h"
 
 #include "common/frac.h"
 #include "common/mutex.h"
+#include "common/ustr.h"
+
+#include "graphics/surface.h"
 
 namespace Graphics {
 class Font;
@@ -40,101 +44,117 @@ namespace OpenGL {
 // SurfaceSDL backend enables it and disabling it can cause issues in sdl.cpp.
 #define USE_OSD 1
 
-class Texture;
+class Surface;
+class Pipeline;
+#if !USE_FORCED_GLES
+class LibRetroPipeline;
+#endif
 
 enum {
-	GFX_LINEAR = 0,
-	GFX_NEAREST = 1
+	GFX_OPENGL = 0
 };
 
-class OpenGLGraphicsManager : virtual public GraphicsManager {
+class OpenGLGraphicsManager : virtual public WindowedGraphicsManager {
 public:
 	OpenGLGraphicsManager();
 	virtual ~OpenGLGraphicsManager();
 
 	// GraphicsManager API
-	virtual bool hasFeature(OSystem::Feature f);
-	virtual void setFeatureState(OSystem::Feature f, bool enable);
-	virtual bool getFeatureState(OSystem::Feature f);
+	bool hasFeature(OSystem::Feature f) const override;
+	void setFeatureState(OSystem::Feature f, bool enable) override;
+	bool getFeatureState(OSystem::Feature f) const override;
 
-	virtual const OSystem::GraphicsMode *getSupportedGraphicsModes() const;
-	virtual int getDefaultGraphicsMode() const;
-	virtual bool setGraphicsMode(int mode);
-	virtual int getGraphicsMode() const;
-
-	virtual void resetGraphicsScale() {}
+	const OSystem::GraphicsMode *getSupportedGraphicsModes() const override;
+	int getDefaultGraphicsMode() const override;
+	bool setGraphicsMode(int mode, uint flags = OSystem::kGfxModeNoFlags) override;
+	int getGraphicsMode() const override;
 
 #ifdef USE_RGB_COLOR
-	virtual Graphics::PixelFormat getScreenFormat() const;
-	virtual Common::List<Graphics::PixelFormat> getSupportedFormats() const = 0;
+	Graphics::PixelFormat getScreenFormat() const override;
+	Common::List<Graphics::PixelFormat> getSupportedFormats() const override;
 #endif
 
-	virtual void beginGFXTransaction();
-	virtual OSystem::TransactionError endGFXTransaction();
+	const OSystem::GraphicsMode *getSupportedStretchModes() const override;
+	int getDefaultStretchMode() const override;
+	bool setStretchMode(int mode) override;
+	int getStretchMode() const override;
 
-	virtual int getScreenChangeID() const;
+#ifdef USE_SCALERS
+	uint getDefaultScaler() const override;
+	uint getDefaultScaleFactor() const override;
+	bool setScaler(uint mode, int factor) override;
+	uint getScaler() const override;
+	uint getScaleFactor() const override;
+#endif
 
-	virtual void initSize(uint width, uint height, const Graphics::PixelFormat *format);
+#if !USE_FORCED_GLES
+	bool setShader(const Common::Path &fileNode) override;
+#endif
 
-	virtual int16 getWidth();
-	virtual int16 getHeight();
+	void beginGFXTransaction() override;
+	OSystem::TransactionError endGFXTransaction() override;
 
-	virtual void copyRectToScreen(const void *buf, int pitch, int x, int y, int w, int h);
-	virtual void fillScreen(uint32 col);
+	int getScreenChangeID() const override;
 
-	virtual void setShakePos(int shakeOffset);
+	void initSize(uint width, uint height, const Graphics::PixelFormat *format) override;
 
-	virtual void updateScreen();
+	int16 getWidth() const override;
+	int16 getHeight() const override;
 
-	virtual Graphics::Surface *lockScreen();
-	virtual void unlockScreen();
+	void copyRectToScreen(const void *buf, int pitch, int x, int y, int w, int h) override;
+	void fillScreen(uint32 col) override;
+	void fillScreen(const Common::Rect &r, uint32 col) override;
 
-	virtual void setFocusRectangle(const Common::Rect& rect);
-	virtual void clearFocusRectangle();
+	void updateScreen() override;
 
-	virtual int16 getOverlayWidth();
-	virtual int16 getOverlayHeight();
+	Graphics::Surface *lockScreen() override;
+	void unlockScreen() override;
 
-	virtual void showOverlay();
-	virtual void hideOverlay();
+	void setFocusRectangle(const Common::Rect& rect) override;
+	void clearFocusRectangle() override;
 
-	virtual Graphics::PixelFormat getOverlayFormat() const;
+	int16 getOverlayWidth() const override;
+	int16 getOverlayHeight() const override;
 
-	virtual void copyRectToOverlay(const void *buf, int pitch, int x, int y, int w, int h);
-	virtual void clearOverlay();
-	virtual void grabOverlay(void *buf, int pitch);
+	Graphics::PixelFormat getOverlayFormat() const override;
 
-	virtual bool showMouse(bool visible);
-	virtual void warpMouse(int x, int y);
-	virtual void setMouseCursor(const void *buf, uint w, uint h, int hotspotX, int hotspotY, uint32 keycolor, bool dontScale, const Graphics::PixelFormat *format);
-	virtual void setCursorPalette(const byte *colors, uint start, uint num);
+	void copyRectToOverlay(const void *buf, int pitch, int x, int y, int w, int h) override;
+	void clearOverlay() override;
+	void grabOverlay(Graphics::Surface &surface) const override;
 
-	virtual void displayMessageOnOSD(const char *msg);
+	void setMouseCursor(const void *buf, uint w, uint h, int hotspotX, int hotspotY, uint32 keycolor, bool dontScale, const Graphics::PixelFormat *format, const byte *mask) override;
+	void setCursorPalette(const byte *colors, uint start, uint num) override;
+
+	void displayMessageOnOSD(const Common::U32String &msg) override;
+	void displayActivityIconOnOSD(const Graphics::Surface *icon) override;
 
 	// PaletteManager interface
-	virtual void setPalette(const byte *colors, uint start, uint num);
-	virtual void grabPalette(byte *colors, uint start, uint num);
+	void setPalette(const byte *colors, uint start, uint num) override;
+	void grabPalette(byte *colors, uint start, uint num) const override;
 
 protected:
+	void renderCursor();
+
 	/**
-	 * Set up the actual screen size available for the OpenGL code to do any
-	 * drawing.
-	 *
-	 * @param width  The width of the screen.
-	 * @param height The height of the screen.
+	 * Whether a GLES or GLES2 context is active.
 	 */
-	void setActualScreenSize(uint width, uint height);
+	bool isGLESContext() const { return OpenGLContext.type == kContextGLES || OpenGLContext.type == kContextGLES2; }
 
 	/**
 	 * Notify the manager of a OpenGL context change. This should be the first
 	 * thing to call after you created an OpenGL (ES) context!
 	 *
+	 * @param type               Type of the OpenGL (ES) contexts created.
 	 * @param defaultFormat      The new default format for the game screen
 	 *                           (this is used for the CLUT8 game screens).
 	 * @param defaultFormatAlpha The new default format with an alpha channel
 	 *                           (this is used for the overlay and cursor).
 	 */
-	void notifyContextCreate(const Graphics::PixelFormat &defaultFormat, const Graphics::PixelFormat &defaultFormatAlpha);
+	void notifyContextCreate(
+			ContextType type,
+			Framebuffer *target,
+			const Graphics::PixelFormat &defaultFormat,
+			const Graphics::PixelFormat &defaultFormatAlpha);
 
 	/**
 	 * Notify the manager that the OpenGL context is about to be destroyed.
@@ -145,42 +165,16 @@ protected:
 	void notifyContextDestroy();
 
 	/**
-	 * Adjust the physical mouse coordinates according to the currently visible screen.
-	 */
-	void adjustMousePosition(int16 &x, int16 &y);
-
-	/**
-	 * Set up the mouse position for graphics output.
+	 * Create a surface with the specified pixel format.
 	 *
-	 * @param x X coordinate in physical coordinates.
-	 * @param y Y coordinate in physical coordinates.
+	 * @param format     The pixel format the Surface object should accept as
+	 *                   input.
+	 * @param wantAlpha  For CLUT8 surfaces this marks whether an alpha
+	 *                   channel should be used.
+	 * @param wantScaler Whether or not a software scaler should be used.
+	 * @return A pointer to the surface or nullptr on failure.
 	 */
-	void setMousePosition(int x, int y);
-
-	/**
-	 * Query the mouse position in physical coordinates.
-	 */
-	void getMousePosition(int16 &x, int16 &y) const { x = _cursorX; y = _cursorY; }
-
-	/**
-	 * Set up the mouse position for the (event) system.
-	 *
-	 * @param x X coordinate in physical coordinates.
-	 * @param y Y coordinate in physical coordinates.
-	 */
-	virtual void setInternalMousePosition(int x, int y) = 0;
-
-private:
-	/**
-	 * Create a texture with the specified pixel format.
-	 *
-	 * @param format    The pixel format the Texture object should accept as
-	 *                  input.
-	 * @param wantAlpha For CLUT8 textures this marks whether an alpha
-	 *                  channel should be used.
-	 * @return A pointer to the texture or nullptr on failure.
-	 */
-	Texture *createTexture(const Graphics::PixelFormat &format, bool wantAlpha = false);
+	Surface *createSurface(const Graphics::PixelFormat &format, bool wantAlpha = false, bool wantScaler = false, bool wantMask = false);
 
 	//
 	// Transaction support
@@ -190,7 +184,8 @@ private:
 #ifdef USE_RGB_COLOR
 		    gameFormat(),
 #endif
-		    aspectRatioCorrection(false), graphicsMode(GFX_LINEAR) {
+		    aspectRatioCorrection(false), graphicsMode(GFX_OPENGL), filtering(true),
+		    scalerIndex(0), scaleFactor(1), shader() {
 		}
 
 		bool valid;
@@ -201,6 +196,12 @@ private:
 #endif
 		bool aspectRatioCorrection;
 		int graphicsMode;
+		bool filtering;
+
+		uint scalerIndex;
+		int scaleFactor;
+
+		Common::Path shader;
 
 		bool operator==(const VideoState &right) {
 			return gameWidth == right.gameWidth && gameHeight == right.gameHeight
@@ -208,7 +209,9 @@ private:
 			    && gameFormat == right.gameFormat
 #endif
 			    && aspectRatioCorrection == right.aspectRatioCorrection
-			    && graphicsMode == right.graphicsMode;
+			    && graphicsMode == right.graphicsMode
+				&& filtering == right.filtering
+			    && shader == right.shader;
 		}
 
 		bool operator!=(const VideoState &right) {
@@ -217,7 +220,7 @@ private:
 	};
 
 	/**
-	 * The currently setup video state.
+	 * The currently set up video state.
 	 */
 	VideoState _currentState;
 
@@ -246,6 +249,16 @@ private:
 	 */
 	int _screenChangeID;
 
+	/**
+	 * The current stretch mode.
+	 */
+	int _stretchMode;
+
+	/**
+	 * Scaled version of _gameScreenShakeXOffset and _gameScreenShakeYOffset (as a Common::Point)
+	 */
+	Common::Point _shakeOffsetScaled;
+
 protected:
 	/**
 	 * Set up the requested video mode. This takes parameters which describe
@@ -262,13 +275,23 @@ protected:
 	 */
 	virtual bool loadVideoMode(uint requestedWidth, uint requestedHeight, const Graphics::PixelFormat &format) = 0;
 
+	bool loadShader(const Common::Path &fileName);
+
 	/**
-	 * Save a screenshot of the full display as BMP to the given file. This
-	 * uses Common::DumpFile for writing the screenshot.
+	 * Refresh the screen contents.
+	 */
+	virtual void refreshScreen() = 0;
+
+	/**
+	 * Saves a screenshot of the entire window, excluding window decorations.
 	 *
 	 * @param filename The output filename.
+	 * @return true on success, false otherwise
 	 */
-	void saveScreenshot(const Common::String &filename) const;
+	bool saveScreenshot(const Common::Path &filename) const;
+
+	// Do not hide the argument-less saveScreenshot from the base class
+	using WindowedGraphicsManager::saveScreenshot;
 
 private:
 	//
@@ -276,55 +299,38 @@ private:
 	//
 
 	/**
+	 * Initialize the active context for use.
+	 */
+	void initializeGLContext();
+
+	/**
+	 * OpenGL pipeline used for rendering.
+	 */
+	Pipeline *_pipeline;
+
+#if !USE_FORCED_GLES
+	/**
+	 * OpenGL pipeline used for post-processing.
+	 */
+	LibRetroPipeline *_libretroPipeline;
+#endif
+
+protected:
+	/**
 	 * Try to determine the internal parameters for a given pixel format.
 	 *
 	 * @return true when the format can be used, false otherwise.
 	 */
 	bool getGLPixelFormat(const Graphics::PixelFormat &pixelFormat, GLenum &glIntFormat, GLenum &glFormat, GLenum &glType) const;
 
-	//
-	// Actual hardware screen
-	//
+	bool gameNeedsAspectRatioCorrection() const override;
+	int getGameRenderScale() const override;
+	void recalculateDisplayAreas() override;
+	void handleResizeImpl(const int width, const int height) override;
 
-	/**
-	 * The width of the physical output.
-	 */
-	uint _outputScreenWidth;
+	void updateLinearFiltering();
 
-	/**
-	 * The height of the physical output.
-	 */
-	uint _outputScreenHeight;
-
-	/**
-	 * @return The desired aspect of the game screen.
-	 */
-	frac_t getDesiredGameScreenAspect() const;
-
-	/**
-	 * Recalculates the area used to display the game screen.
-	 */
-	void recalculateDisplayArea();
-
-	/**
-	 * The X coordinate of the game screen.
-	 */
-	uint _displayX;
-
-	/**
-	 * The Y coordinate of the game screen.
-	 */
-	uint _displayY;
-
-	/**
-	 * The width of the game screen in physical coordinates.
-	 */
-	uint _displayWidth;
-
-	/**
-	 * The height of the game screen in physical coordinates.
-	 */
-	uint _displayHeight;
+	Pipeline *getPipeline() const { return _pipeline; }
 
 	/**
 	 * The default pixel format of the backend.
@@ -336,38 +342,29 @@ private:
 	 */
 	Graphics::PixelFormat _defaultFormatAlpha;
 
-	//
-	// Game screen
-	//
+	/**
+	 * Render target.
+	 */
+	Framebuffer *_targetBuffer;
 
 	/**
-	 * The virtual game screen.
+	 * The rendering surface for the virtual game screen.
 	 */
-	Texture *_gameScreen;
+	Surface *_gameScreen;
 
 	/**
 	 * The game palette if in CLUT8 mode.
 	 */
 	byte _gamePalette[3 * 256];
 
-	/**
-	 * The offset by which the screen is moved vertically.
-	 */
-	int _gameScreenShakeOffset;
-
 	//
 	// Overlay
 	//
 
 	/**
-	 * The overlay screen.
+	 * The rendering surface for the overlay.
 	 */
-	Texture *_overlay;
-
-	/**
-	 * Whether the overlay is visible or not.
-	 */
-	bool _overlayVisible;
+	Surface *_overlay;
 
 	//
 	// Cursor
@@ -379,37 +376,22 @@ private:
 	void updateCursorPalette();
 
 	/**
-	 * The cursor image.
+	 * The rendering surface for the mouse cursor.
 	 */
-	Texture *_cursor;
+	Surface *_cursor;
 
 	/**
-	 * X coordinate of the cursor in phyiscal coordinates.
+	 * The rendering surface for the opacity and inversion mask (if any)
 	 */
-	int _cursorX;
+	Surface *_cursorMask;
 
 	/**
-	 * Y coordinate of the cursor in physical coordinates.
-	 */
-	int _cursorY;
-
-	/**
-	 * X coordinate used for drawing the cursor.
-	 */
-	int _cursorDisplayX;
-
-	/**
-	 * Y coordinate used for drawing the cursor.
-	 */
-	int _cursorDisplayY;
-
-	/**
-	 * The X offset for the cursor hotspot in unscaled coordinates.
+	 * The X offset for the cursor hotspot in unscaled game coordinates.
 	 */
 	int _cursorHotspotX;
 
 	/**
-	 * The Y offset for the cursor hotspot in unscaled coordinates.
+	 * The Y offset for the cursor hotspot in unscaled game coordinates.
 	 */
 	int _cursorHotspotY;
 
@@ -420,24 +402,26 @@ private:
 	void recalculateCursorScaling();
 
 	/**
-	 * The X offset for the cursor hotspot in scaled coordinates.
+	 * The X offset for the cursor hotspot in scaled game display area
+	 * coordinates.
 	 */
 	int _cursorHotspotXScaled;
 
 	/**
-	 * The Y offset for the cursor hotspot in scaled coordinates.
+	 * The Y offset for the cursor hotspot in scaled game display area
+	 * coordinates.
 	 */
 	int _cursorHotspotYScaled;
 
 	/**
-	 * The width of the cursor scaled coordinates.
+	 * The width of the cursor in scaled game display area coordinates.
 	 */
-	uint _cursorWidthScaled;
+	float _cursorWidthScaled;
 
 	/**
-	 * The height of the cursor scaled coordinates.
+	 * The height of the cursor in scaled game display area coordinates.
 	 */
-	uint _cursorHeightScaled;
+	float _cursorHeightScaled;
 
 	/**
 	 * The key color.
@@ -445,9 +429,9 @@ private:
 	uint32 _cursorKeyColor;
 
 	/**
-	 * Whether the cursor is actually visible.
+	 * If true, use key color.
 	 */
-	bool _cursorVisible;
+	bool _cursorUseKey;
 
 	/**
 	 * Whether no cursor scaling should be applied.
@@ -464,10 +448,12 @@ private:
 	 */
 	byte _cursorPalette[3 * 256];
 
+#ifdef USE_SCALERS
 	/**
-	 * Draws a rectangle
+	 * The list of scaler plugins
 	 */
-	void drawRect(GLfloat x, GLfloat y, GLfloat w, GLfloat h);
+	const PluginList &_scalerPlugins;
+#endif
 
 #ifdef USE_OSD
 	//
@@ -477,33 +463,56 @@ protected:
 	/**
 	 * Returns the font used for on screen display
 	 */
-	virtual const Graphics::Font *getFontOSD();
+	virtual const Graphics::Font *getFontOSD() const;
 
 private:
 	/**
-	 * The OSD's contents.
+	 * Request for the OSD icon surface to be updated.
 	 */
-	Texture *_osd;
+	bool _osdMessageChangeRequest;
 
 	/**
-	 * Current opacity level of the OSD.
+	 * The next OSD message.
+	 *
+	 * If this value is not empty, the OSD message will be set
+	 * to it on the next frame.
 	 */
-	uint8 _osdAlpha;
+	Common::U32String _osdMessageNextData;
 
 	/**
-	 * When fading the OSD has started.
+	 * Set the OSD message surface with the value of the next OSD message.
 	 */
-	uint32 _osdFadeStartTime;
+	void osdMessageUpdateSurface();
 
 	/**
-	 * Mutex to allow displayMessageOnOSD to be used from the audio thread.
+	 * The OSD message's contents.
 	 */
-	Common::Mutex _osdMutex;
+	Surface *_osdMessageSurface;
+
+	/**
+	 * Current opacity level of the OSD message.
+	 */
+	uint8 _osdMessageAlpha;
+
+	/**
+	 * When fading the OSD message has started.
+	 */
+	uint32 _osdMessageFadeStartTime;
 
 	enum {
-		kOSDFadeOutDelay = 2 * 1000,
-		kOSDFadeOutDuration = 500,
-		kOSDInitialAlpha = 80
+		kOSDMessageFadeOutDelay = 2 * 1000,
+		kOSDMessageFadeOutDuration = 500,
+		kOSDMessageInitialAlpha = 80
+	};
+
+	/**
+	 * The OSD background activity icon's contents.
+	 */
+	Surface *_osdIconSurface;
+
+	enum {
+		kOSDIconTopMargin = 10,
+		kOSDIconRightMargin = 10
 	};
 #endif
 };

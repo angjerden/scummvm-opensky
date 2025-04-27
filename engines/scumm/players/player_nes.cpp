@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -90,25 +89,25 @@ static const byte LengthCounts[32] = {
 
 class SoundGen {
 protected:
-	byte wavehold;
-	uint32 freq;	// short
-	uint32 CurD;
+	byte wavehold = 0;
+	uint32 freq = 0;	// short
+	uint32 CurD = 1;
 
 public:
-	byte Timer;
-	int32 Pos;
-	uint32 Cycles;	// short
+	byte Timer = 0;
+	int32 Pos = 0;
+	uint32 Cycles = 1;	// short
 
 	inline byte GetTimer() const { return Timer; }
 };
 
 class Square : public SoundGen {
 protected:
-	byte volume, envelope, duty, swpspeed, swpdir, swpstep, swpenab;
-	byte Vol;
-	byte EnvCtr, Envelope, BendCtr;
-	bool Enabled, ValidFreq, Active;
-	bool EnvClk, SwpClk;
+	byte volume = 0, envelope = 0, duty = 0, swpspeed = 0, swpdir = 0, swpstep = 0, swpenab = 0;
+	byte Vol = 0;
+	byte EnvCtr = 1, Envelope = 0, BendCtr = 1;
+	bool Enabled = 0, ValidFreq = 0, Active = 0;
+	bool EnvClk = 0, SwpClk = 0;
 
 	void CheckActive();
 
@@ -128,10 +127,7 @@ static const int8 Duties[4][8] = {
 };
 
 void Square::Reset() {
-	memset(this, 0, sizeof(*this));
-	Cycles = 1;
-	EnvCtr = 1;
-	BendCtr = 1;
+	*this = Square();
 }
 
 void Square::CheckActive() {
@@ -178,6 +174,9 @@ void Square::Write(int Reg, byte Val) {
 		Enabled = (Val != 0);
 		if (!Enabled)
 			Timer = 0;
+		break;
+
+	default:
 		break;
 	}
 	CheckActive();
@@ -234,10 +233,10 @@ void Square::HalfFrame() {
 
 class Triangle : public SoundGen {
 protected:
-	byte linear;
-	byte LinCtr;
-	bool Enabled, Active;
-	bool LinClk;
+	byte linear = 0;
+	byte LinCtr = 0;
+	bool Enabled = false, Active = false;
+	bool LinClk = false;
 
 	void CheckActive();
 
@@ -257,8 +256,7 @@ static const int8 TriDuty[32] = {
 };
 
 void Triangle::Reset() {
-	memset(this, 0, sizeof(*this));
-	Cycles = 1;
+	*this = Triangle();
 }
 
 void Triangle::CheckActive() {
@@ -296,6 +294,9 @@ void Triangle::Write(int Reg, byte Val) {
 		Enabled = (Val != 0);
 		if (!Enabled)
 			Timer = 0;
+		break;
+
+	default:
 		break;
 	}
 	CheckActive();
@@ -336,13 +337,11 @@ void Triangle::HalfFrame() {
 
 class Noise : public SoundGen {
 protected:
-	byte volume, envelope, datatype;
-	byte Vol;
-	byte EnvCtr, Envelope;
-	bool Enabled;
-	bool EnvClk;
-
-	void CheckActive();
+	byte volume = 0, envelope = 0, datatype = 0;
+	byte Vol = 0;
+	byte EnvCtr = 1, Envelope = 0;
+	bool Enabled = false;
+	bool EnvClk = false;
 
 public:
 	void Reset();
@@ -358,11 +357,7 @@ static const uint32 NoiseFreq[16] = {
 };
 
 void Noise::Reset() {
-	memset(this, 0, sizeof(*this));
-	CurD = 1;
-	Cycles = 1;
-	EnvCtr = 1;
-
+	*this = Noise();
 }
 
 void Noise::Write(int Reg, byte Val) {
@@ -393,6 +388,9 @@ void Noise::Write(int Reg, byte Val) {
 		Enabled = (Val != 0);
 		if (!Enabled)
 			Timer = 0;
+		break;
+
+	default:
 		break;
 	}
 }
@@ -482,6 +480,8 @@ void APU::WriteReg(int Addr, byte Val) {
 				_square1.Write(4,Val & 0x2);
 				_triangle.Write(4,Val & 0x4);
 				_noise.Write(4,Val & 0x8);
+		break;
+	default:
 		break;
 	}
 }
@@ -600,7 +600,7 @@ Player_NES::Player_NES(ScummEngine *scumm, Audio::Mixer *mixer) {
 		_slot[i].framesleft = 0;
 		_slot[i].type = 0;
 		_slot[i].offset = 0;
-		_slot[i].data = NULL;
+		_slot[i].data = nullptr;
 	}
 
 	for (i = 0; i < NUMCHANS; i++) {
@@ -614,7 +614,7 @@ Player_NES::Player_NES(ScummEngine *scumm, Audio::Mixer *mixer) {
 	}
 	isSFXplaying = wasSFXplaying = false;
 
-	auxData1 = auxData2 = NULL;
+	auxData1 = auxData2 = nullptr;
 	numNotes = 0;
 
 	APU_writeControl(0);
@@ -1025,15 +1025,14 @@ top:
 				_mchan[x].envflags = 0x00;
 				_mchan[x].voldelta = -10;
 				break;
+
+			default:
+				break;
 			}
 		}
 
 		_mchan[x].volume += _mchan[x].voldelta;
-
-		if (_mchan[x].volume < 0)
-			_mchan[x].volume = 0;
-		if (_mchan[x].volume > MAXVOLUME)
-			_mchan[x].volume = MAXVOLUME;
+		_mchan[x].volume = CLIP(_mchan[x].volume, 0, MAXVOLUME);
 
 		APU_writeChannel(x, 0, (_mchan[x].volume >> 3) | _mchan[x].envflags);
 	}

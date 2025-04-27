@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,18 +15,22 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #ifndef IMAGE_CODECS_SVQ1_H
 #define IMAGE_CODECS_SVQ1_H
 
+#include "common/scummsys.h"
+
+#ifdef USE_SVQ1
+
+#include "common/bitstream.h"
 #include "image/codecs/codec.h"
 
 namespace Common {
-class BitStream;
+template <class BITSTREAM>
 class Huffman;
 struct Point;
 }
@@ -41,34 +45,43 @@ namespace Image {
 class SVQ1Decoder : public Codec {
 public:
 	SVQ1Decoder(uint16 width, uint16 height);
-	~SVQ1Decoder();
+	~SVQ1Decoder() override;
 
-	const Graphics::Surface *decodeFrame(Common::SeekableReadStream &stream);
-	Graphics::PixelFormat getPixelFormat() const { return _surface->format; }
+	const Graphics::Surface *decodeFrame(Common::SeekableReadStream &stream) override;
+	Graphics::PixelFormat getPixelFormat() const override { return _pixelFormat; }
+	bool setOutputPixelFormat(const Graphics::PixelFormat &format) override {
+		if (format.bytesPerPixel != 2 && format.bytesPerPixel != 4)
+			return false;
+		_pixelFormat = format;
+		return true;
+	}
 
 private:
+	Graphics::PixelFormat _pixelFormat;
 	Graphics::Surface *_surface;
 	uint16 _width, _height;
 	uint16 _frameWidth, _frameHeight;
 
 	byte *_last[3];
 
-	Common::Huffman *_blockType;
-	Common::Huffman *_intraMultistage[6];
-	Common::Huffman *_interMultistage[6];
-	Common::Huffman *_intraMean;
-	Common::Huffman *_interMean;
-	Common::Huffman *_motionComponent;
+	typedef Common::Huffman<Common::BitStream32BEMSB> HuffmanDecoder;
 
-	bool svq1DecodeBlockIntra(Common::BitStream *s, byte *pixels, int pitch);
-	bool svq1DecodeBlockNonIntra(Common::BitStream *s, byte *pixels, int pitch);
-	bool svq1DecodeMotionVector(Common::BitStream *s, Common::Point *mv, Common::Point **pmv);
+	HuffmanDecoder *_blockType;
+	HuffmanDecoder *_intraMultistage[6];
+	HuffmanDecoder *_interMultistage[6];
+	HuffmanDecoder *_intraMean;
+	HuffmanDecoder *_interMean;
+	HuffmanDecoder *_motionComponent;
+
+	bool svq1DecodeBlockIntra(Common::BitStream32BEMSB *s, byte *pixels, int pitch);
+	bool svq1DecodeBlockNonIntra(Common::BitStream32BEMSB *s, byte *pixels, int pitch);
+	bool svq1DecodeMotionVector(Common::BitStream32BEMSB *s, Common::Point *mv, Common::Point **pmv);
 	void svq1SkipBlock(byte *current, byte *previous, int pitch, int x, int y);
-	bool svq1MotionInterBlock(Common::BitStream *ss, byte *current, byte *previous, int pitch,
+	bool svq1MotionInterBlock(Common::BitStream32BEMSB *ss, byte *current, byte *previous, int pitch,
 			Common::Point *motion, int x, int y);
-	bool svq1MotionInter4vBlock(Common::BitStream *ss, byte *current, byte *previous, int pitch,
+	bool svq1MotionInter4vBlock(Common::BitStream32BEMSB *ss, byte *current, byte *previous, int pitch,
 			Common::Point *motion, int x, int y);
-	bool svq1DecodeDeltaBlock(Common::BitStream *ss, byte *current, byte *previous, int pitch,
+	bool svq1DecodeDeltaBlock(Common::BitStream32BEMSB *ss, byte *current, byte *previous, int pitch,
 			Common::Point *motion, int x, int y);
 
 	void putPixels8C(byte *block, const byte *pixels, int lineSize, int h);
@@ -83,5 +96,7 @@ private:
 };
 
 } // End of namespace Image
+
+#endif
 
 #endif

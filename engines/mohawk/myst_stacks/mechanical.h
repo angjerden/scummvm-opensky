@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -33,29 +32,36 @@ struct MystScriptEntry;
 
 namespace MystStacks {
 
-#define DECLARE_OPCODE(x) void x(uint16 op, uint16 var, uint16 argc, uint16 *argv)
+#define DECLARE_OPCODE(x) void x(uint16 var, const ArgumentsArray &args)
 
 class Mechanical : public MystScriptParser {
 public:
-	Mechanical(MohawkEngine_Myst *vm);
-	~Mechanical();
+	explicit Mechanical(MohawkEngine_Myst *vm);
+	~Mechanical() override;
 
-	void disablePersistentScripts();
-	void runPersistentScripts();
+	void disablePersistentScripts() override;
+	void runPersistentScripts() override;
 
 private:
 	void setupOpcodes();
-	uint16 getVar(uint16 var);
-	void toggleVar(uint16 var);
-	bool setVarValue(uint16 var, uint16 value);
+	uint16 getVar(uint16 var) override;
+	void toggleVar(uint16 var) override;
+	bool setVarValue(uint16 var, uint16 value) override;
 
-	virtual uint16 getMap() { return 9931; }
+	uint16 getMap() override { return 9931; }
 
 	void birdSing_run();
 	void elevatorRotation_run();
 	void elevatorGoMiddle_run();
 	void fortressRotation_run();
 	void fortressSimulation_run();
+
+	enum Direction {
+		kSouth = 0, // Starting Island with Myst linking book
+		kEast  = 1, // Island with right half of code
+		kNorth = 2, // Island with left half of code
+		kWest  = 3  // No island, just water
+	};
 
 	DECLARE_OPCODE(o_throneEnablePassage);
 	DECLARE_OPCODE(o_birdCrankStart);
@@ -80,7 +86,7 @@ private:
 	DECLARE_OPCODE(o_elevatorWindowMovie);
 	DECLARE_OPCODE(o_elevatorGoMiddle);
 	DECLARE_OPCODE(o_elevatorTopMovie);
-	DECLARE_OPCODE(o_fortressRotationSetPosition);
+	DECLARE_OPCODE(o_fortressRotationSetPosition); // Rotator control button (above elevator) has been pressed
 	DECLARE_OPCODE(o_mystStaircaseMovie);
 	DECLARE_OPCODE(o_elevatorWaitTimeout);
 	DECLARE_OPCODE(o_crystalEnterYellow);
@@ -107,9 +113,9 @@ private:
 	bool _gearsWereRunning;
 	uint16 _fortressRotationSpeed; // 78
 	uint16 _fortressRotationBrake; // 80
-	uint16 _fortressPosition; // 82
+	uint16 _fortressDirection; // 82
 	uint16 _fortressRotationSounds[4]; // 86 to 92
-	MystResourceType6 *_fortressRotationGears; // 172
+	MystAreaVideo *_fortressRotationGears; // 172
 
 	bool _fortressRotationShortMovieWorkaround;
 	uint32 _fortressRotationShortMovieCount;
@@ -121,8 +127,12 @@ private:
 	uint16 _fortressSimulationBrake; // 98
 	uint16 _fortressSimulationStartSound1; // 102
 	uint16 _fortressSimulationStartSound2; // 100
-	MystResourceType6 *_fortressSimulationHolo; // 160
-	MystResourceType6 *_fortressSimulationStartup; // 164
+	MystAreaVideo *_fortressSimulationHolo; // 160
+	MystAreaVideo *_fortressSimulationStartup; // 164
+
+	// HACK: Support negative rates with edit lists
+	double _fortressSimulationHoloRate;
+	// END HACK
 
 	uint16 _elevatorGoingDown; // 112
 
@@ -143,10 +153,10 @@ private:
 	bool _birdSinging; // 144
 	uint32 _birdCrankStartTime; // 136
 	uint32 _birdSingEndTime; // 140
-	MystResourceType6 *_bird; // 152
+	MystAreaVideo *_bird; // 152
 
 
-	MystResourceType6 *_snakeBox; // 156
+	MystAreaVideo *_snakeBox; // 156
 };
 
 } // End of namespace MystStacks

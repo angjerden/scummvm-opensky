@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -43,7 +42,7 @@ SVoy::SVoy(VoyeurEngine *vm):_vm(vm) {
 	_abortInterface = false;
 	_isAM = false;
 	Common::fill(&_phoneCallsReceived[0], &_phoneCallsReceived[5], false);
-	Common::fill(&_roomHotspotsEnabled[0], &_roomHotspotsEnabled[20], false);
+	Common::fill(&_roomHotspotsEnabled[0], &_roomHotspotsEnabled[32], false);
 	_victimMurdered = false;
 
 	_audioVisualStartTime = 0;
@@ -60,7 +59,6 @@ SVoy::SVoy(VoyeurEngine *vm):_vm(vm) {
 	_playStampMode = 0;
 	_switchBGNum = 0;
 	_transitionId = 0;
-	_victimNumber = 0;
 	_videoEventId = 0;
 	_vocSecondsOffset = 0;
 	_RTANum = 0;
@@ -118,7 +116,8 @@ void SVoy::synchronize(Common::Serializer &s) {
 	_audioHotspotTimes.synchronize(s);
 	_evidenceHotspotTimes.synchronize(s);
 
-	for (int idx = 0; idx < 20; ++idx) {
+	int count = s.getVersion() == 1 ? 20 : 32;
+	for (int idx = 0; idx < count; ++idx) {
 		s.syncAsByte(_roomHotspotsEnabled[idx]);
 	}
 
@@ -151,7 +150,7 @@ void SVoy::synchronize(Common::Serializer &s) {
 	s.syncAsSint16LE(_fadingStep1);
 	s.syncAsSint16LE(_fadingStep2);
 	s.syncAsSint16LE(_fadingType);
-	s.syncAsSint16LE(_victimNumber);
+	s.skip(sizeof(int16), 0, 2);
 	s.syncAsSint16LE(_incriminatedVictimNumber);
 	s.syncAsSint16LE(_videoEventId);
 
@@ -240,10 +239,10 @@ void SVoy::reviewAnEvidEvent(int eventIndex) {
 	int frameOff = e._computerOff;
 
 	if (_vm->_bVoy->getBoltGroup(_vm->_playStampGroupId)) {
-		_vm->_graphicsManager->_backColors = _vm->_bVoy->boltEntry(_vm->_playStampGroupId + 1)._cMapResource;
-		_vm->_graphicsManager->_backgroundPage = _vm->_bVoy->boltEntry(_vm->_playStampGroupId)._picResource;
-		_vm->_graphicsManager->_vPort->setupViewPort(_vm->_graphicsManager->_backgroundPage);
-		_vm->_graphicsManager->_backColors->startFade();
+		_vm->_screen->_backColors = _vm->_bVoy->boltEntry(_vm->_playStampGroupId + 1)._cMapResource;
+		_vm->_screen->_backgroundPage = _vm->_bVoy->boltEntry(_vm->_playStampGroupId)._picResource;
+		_vm->_screen->_vPort->setupViewPort(_vm->_screen->_backgroundPage);
+		_vm->_screen->_backColors->startFade();
 
 		_vm->doEvidDisplay(frameOff, e._dead);
 		_vm->_bVoy->freeBoltGroup(_vm->_playStampGroupId);
@@ -262,10 +261,10 @@ void SVoy::reviewComputerEvent(int eventIndex) {
 	_computerTextId = e._computerOn;
 
 	if (_vm->_bVoy->getBoltGroup(_vm->_playStampGroupId)) {
-		_vm->_graphicsManager->_backColors = _vm->_bVoy->boltEntry(_vm->_playStampGroupId + 1)._cMapResource;
-		_vm->_graphicsManager->_backgroundPage = _vm->_bVoy->boltEntry(_vm->_playStampGroupId)._picResource;
-		_vm->_graphicsManager->_vPort->setupViewPort(_vm->_graphicsManager->_backgroundPage);
-		_vm->_graphicsManager->_backColors->startFade();
+		_vm->_screen->_backColors = _vm->_bVoy->boltEntry(_vm->_playStampGroupId + 1)._cMapResource;
+		_vm->_screen->_backgroundPage = _vm->_bVoy->boltEntry(_vm->_playStampGroupId)._picResource;
+		_vm->_screen->_vPort->setupViewPort(_vm->_screen->_backgroundPage);
+		_vm->_screen->_backColors->startFade();
 		_vm->flipPageAndWaitForFade();
 
 		_vm->getComputerBrush();

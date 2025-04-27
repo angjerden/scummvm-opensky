@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,21 +15,18 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
-#ifndef TEENAGENT_ENGINE_H
-#define TEENAGENT_ENGINE_H
+#ifndef TEENAGENT_TEENAGENT_H
+#define TEENAGENT_TEENAGENT_H
 
 #include "engines/engine.h"
 
-#include "audio/audiostream.h"
 #include "audio/mixer.h"
 
 #include "common/random.h"
-#include "common/rect.h"
 #include "common/array.h"
 
 #include "gui/debugger.h"
@@ -38,6 +35,14 @@
 #include "teenagent/dialog.h"
 
 struct ADGameDescription;
+
+namespace Audio {
+class AudioStream;
+}
+
+namespace Common {
+struct Point;
+}
 
 /**
  * This is the namespace of the TeenAgent engine.
@@ -53,23 +58,23 @@ struct Object;
 struct UseHotspot;
 class Scene;
 class MusicPlayer;
-class Dialog;
 class Resources;
 class Inventory;
+class Pack;
 
 // Engine Debug Flags
 enum {
-	kDebugActor     = (1 << 0),
-	kDebugAnimation = (1 << 1),
-	kDebugCallbacks = (1 << 2),
-	kDebugDialog    = (1 << 3),
-	kDebugFont      = (1 << 4),
-	kDebugInventory = (1 << 5),
-	kDebugMusic     = (1 << 6),
-	kDebugObject    = (1 << 7),
-	kDebugPack      = (1 << 8),
-	kDebugScene     = (1 << 9),
-	kDebugSurface   = (1 << 10)
+	kDebugActor = 1,
+	kDebugAnimation,
+	kDebugCallbacks,
+	kDebugDialog,
+	kDebugFont,
+	kDebugInventory,
+	kDebugMusic,
+	kDebugObject,
+	kDebugPack,
+	kDebugScene,
+	kDebugSurface,
 };
 
 const uint16 kScreenWidth = 320;
@@ -80,14 +85,13 @@ public:
 	TeenAgentEngine(OSystem *system, const ADGameDescription *gd);
 	~TeenAgentEngine();
 
-	virtual Common::Error run();
-	virtual Common::Error loadGameState(int slot);
-	virtual Common::Error saveGameState(int slot, const Common::String &desc);
-	virtual bool canLoadGameStateCurrently() { return true; }
-	virtual bool canSaveGameStateCurrently() { return !_sceneBusy; }
-	virtual bool hasFeature(EngineFeature f) const;
-
-	GUI::Debugger *getDebugger() { return console; }
+	Common::Error run() override;
+	Common::String getSaveStateName(int slot) const override;
+	Common::Error loadGameState(int slot) override;
+	Common::Error saveGameState(int slot, const Common::String &desc, bool isAutosave = false) override;
+	bool canLoadGameStateCurrently(Common::U32String *msg = nullptr) override { return true; }
+	bool canSaveGameStateCurrently(Common::U32String *msg = nullptr) override { return !_sceneBusy; }
+	bool hasFeature(EngineFeature f) const override;
 
 	void init();
 
@@ -132,7 +136,7 @@ public:
 
 	void playMusic(byte id); //schedules play
 	void playSound(byte id, byte skipFrames);
-	void playSoundNow(byte id);
+	void playSoundNow(Pack *pack, byte id);
 	void enableObject(byte id, byte sceneId = 0);
 	void disableObject(byte id, byte sceneId = 0);
 	void hideActor();
@@ -153,7 +157,6 @@ public:
 	Inventory *inventory;
 	MusicPlayer *music;
 	Dialog *dialog;
-	Console *console;
 
 	void setMusic(byte id);
 

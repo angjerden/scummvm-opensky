@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -26,6 +25,7 @@
 
 /*
  * TGA decoder used in engines:
+ *	- titanic
  *  - wintermute
  *  - zvision
  */
@@ -33,6 +33,7 @@
 #ifndef IMAGE_TGA_H
 #define IMAGE_TGA_H
 
+#include "graphics/palette.h"
 #include "graphics/surface.h"
 #include "image/image_decoder.h"
 
@@ -41,6 +42,14 @@ class SeekableReadStream;
 }
 
 namespace Image {
+
+/**
+ * @defgroup image_tga TGA (TARGA) decoder
+ * @ingroup image
+ *
+ * @brief Decoder for TGA images.
+ * @{
+ */
 
 /** TarGa image-decoder
  * The following variations of TGA are supported:
@@ -59,9 +68,8 @@ public:
 	TGADecoder();
 	virtual ~TGADecoder();
 	virtual void destroy();
-	virtual const Graphics::Surface *getSurface() const { return &_surface; }
-	virtual const byte *getPalette() const { return _colorMap; }
-	virtual uint16 getPaletteColorCount() const { return _colorMapLength; }
+	const Graphics::Surface *getSurface() const override { return &_surface; }
+	const Graphics::Palette &getPalette() const override { return _colorMap; }
 	virtual bool loadStream(Common::SeekableReadStream &stream);
 private:
 	// Format-spec from:
@@ -77,7 +85,7 @@ private:
 
 	// Color-map:
 	bool _colorMapSize;
-	byte *_colorMap;
+	Graphics::Palette _colorMap;
 	int16 _colorMapOrigin;
 	int16 _colorMapLength;
 	byte _colorMapEntryLength;
@@ -94,7 +102,7 @@ private:
 	bool readDataRLE(Common::SeekableReadStream &tga, byte imageType, byte pixelDepth);
 	bool readColorMap(Common::SeekableReadStream &tga, byte imageType, byte pixelDepth);
 };
-
+/** @} */
 } // End of namespace Image
 
 #endif

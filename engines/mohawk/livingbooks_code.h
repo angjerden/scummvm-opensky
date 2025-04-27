@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -80,6 +79,10 @@ struct LBValue {
 		list = l;
 	}
 	LBValue(const LBValue &val) {
+		copy(val);
+	}
+
+	void copy(const LBValue &val) {
 		type = val.type;
 		switch (type) {
 		case kLBValueString:
@@ -106,8 +109,12 @@ struct LBValue {
 		case kLBValueList:
 			list = val.list;
 			break;
+		default:
+			break;
 		}
 	}
+
+	LBValue &operator=(const LBValue &other);
 
 	LBValueType type;
 	Common::String string;
@@ -137,7 +144,8 @@ struct LBList {
 };
 
 enum {
-	kLBCodeLiteralInteger = 0x1
+	kLBCodeLiteralInteger = 0x1,
+	kLBCodeLiteralIntegerLE = 0x11
 };
 
 enum {
@@ -263,6 +271,10 @@ public:
 	void cmdLeft(const Common::Array<LBValue> &params);
 	void cmdBottom(const Common::Array<LBValue> &params);
 	void cmdRight(const Common::Array<LBValue> &params);
+	void cmdXPos(const Common::Array<LBValue> &params);
+	void cmdYPos(const Common::Array<LBValue> &params);
+	void cmdWidth(const Common::Array<LBValue> &params);
+	void cmdHeight(const Common::Array<LBValue> &params);
 	void cmdMove(const Common::Array<LBValue> &params);
 	void cmdSetDragParams(const Common::Array<LBValue> &params);
 	void cmdNewList(const Common::Array<LBValue> &params);
@@ -273,6 +285,7 @@ public:
 	void cmdDeleteAt(const Common::Array<LBValue> &params);
 	void cmdSetProperty(const Common::Array<LBValue> &params);
 	void cmdGetProperty(const Common::Array<LBValue> &params);
+	void cmdDeleteVar(const Common::Array<LBValue> &params);
 	void cmdExec(const Common::Array<LBValue> &params);
 	void cmdReturn(const Common::Array<LBValue> &params);
 	void cmdSetPlayParams(const Common::Array<LBValue> &params);

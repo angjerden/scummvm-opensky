@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,14 +15,12 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 
 
-#include "common/str.h"
 #include "common/util.h"
 
 #include "scumm/help.h"
@@ -65,26 +63,29 @@ int ScummHelp::numPages(byte gameId) {
 #define ADD_LINE ADD_BIND("","")
 
 void ScummHelp::updateStrings(byte gameId, byte version, Common::Platform platform,
-				int page, String &title, String *&key, String *&dsc) {
-	key = new String[HELP_NUM_LINES];
-	dsc = new String[HELP_NUM_LINES];
+				int page, U32String &title, U32String *&key, U32String *&dsc) {
+	key = new U32String[HELP_NUM_LINES];
+	dsc = new U32String[HELP_NUM_LINES];
 	int i = 0;
 	switch (page) {
 	case 1:
 		title = _("Common keyboard commands:");
 		ADD_BIND("F5", _("Save / Load dialog"));
-		if (version >= 5)
-			ADD_BIND(".", _("Skip line of text"));
+		// I18N: "Selection screen" is what the English game manual
+		// calls it. It contains various options, a sound test, etc.
+		if (gameId == GID_LOOM && platform == Common::kPlatformPCEngine)
+			ADD_BIND("F6", _("Selection screen"));
+		ADD_BIND(".", _("Skip line of text"));
 		ADD_BIND(_("Esc"), _("Skip cutscene"));
 		ADD_BIND(_("Space"), _("Pause game"));
-		ADD_BIND(String(_("Ctrl")) + " 0-9", _("Load game state 1-10"));
-		ADD_BIND(String(_("Alt")) + " 0-9", _("Save game state 1-10"));
+		ADD_BIND(_("Ctrl") + U32String(" 0-9"), _("Load saved game 1-10"));
+		ADD_BIND(_("Alt") + U32String(" 0-9"), _("Save game 1-10"));
 #ifdef MACOSX
 		ADD_BIND("Cmd q", _("Quit"));
 #else
-		ADD_BIND(String(_("Alt")) + " x, " + _("Ctrl") + " z", _("Quit"));
+		ADD_BIND(_("Alt") + U32String(" x, ") + _("Ctrl") + U32String(" z"), _("Quit"));
 #endif
-		ADD_BIND(String(_("Alt")) + " " + _("Enter"), _("Toggle fullscreen"));
+		ADD_BIND(_("Alt") + U32String(" ") + _("Enter"), _("Toggle fullscreen"));
 		ADD_BIND("[, ]", _("Music volume up / down"));
 		ADD_BIND("-, +", _("Text speed slower / faster"));
 		ADD_BIND(_("Enter"), _("Simulate left mouse button"));
@@ -93,14 +94,13 @@ void ScummHelp::updateStrings(byte gameId, byte version, Common::Platform platfo
 	case 2:
 		title = _("Special keyboard commands:");
 		ADD_BIND("~, #", _("Show / Hide console"));
-		ADD_BIND(String(_("Ctrl")) + " d", _("Start the debugger"));
-		ADD_BIND(String(_("Ctrl")) + " s", _("Show memory consumption"));
-		ADD_BIND(String(_("Ctrl")) + " f", _("Run in fast mode (*)"));
-		ADD_BIND(String(_("Ctrl")) + " g", _("Run in really fast mode (*)"));
-		ADD_BIND(String(_("Ctrl")) + " m", _("Toggle mouse capture"));
-		ADD_BIND(String(_("Ctrl")) + " " + _("Alt") + " 1-8", _("Switch between graphics filters"));
-		ADD_BIND(String(_("Ctrl")) + " " + _("Alt") + " +, -", _("Increase / Decrease scale factor"));
-		ADD_BIND(String(_("Ctrl")) + " " + _("Alt") + " a", _("Toggle aspect-ratio correction"));
+		ADD_BIND(_("Ctrl") + _("Alt") + U32String(" d"), _("Start the debugger"));
+		ADD_BIND(_("Ctrl") + U32String(" f"), _("Run in fast mode (*)"));
+		ADD_BIND(_("Ctrl") + U32String(" g"), _("Run in really fast mode (*)"));
+		ADD_BIND(_("Ctrl") + U32String(" m"), _("Toggle mouse capture"));
+		ADD_BIND(_("Ctrl") + U32String(" ") + _("Alt") + U32String(" 9, 0"), _("Cycle between graphics filters"));
+		ADD_BIND(_("Ctrl") + U32String(" ") + _("Alt") + U32String(" +, -"), _("Increase / Decrease scale factor"));
+		ADD_BIND(_("Ctrl") + U32String(" ") + _("Alt") + U32String(" a"), _("Toggle aspect-ratio correction"));
 		ADD_LINE;
 		ADD_LINE;
 		// FIXME: This should use word-wrapping, and should not assume
@@ -112,7 +112,7 @@ void ScummHelp::updateStrings(byte gameId, byte version, Common::Platform platfo
 		break;
 	case 3:
 		if (gameId == GID_LOOM)
-			title = _("Spinning drafts on the keyboard:");
+			title = _("Spinning drafts on the keyboard:"); // I18N: Drafts is set of notes in Loom to invoke spells
 		else
 			title = _("Main game controls:");
 		switch (gameId) {
@@ -185,6 +185,8 @@ void ScummHelp::updateStrings(byte gameId, byte version, Common::Platform platfo
 			ADD_BIND("y, a", _("play A on distaff"));
 			ADD_BIND("u, b", _("play B on distaff"));
 			ADD_BIND("i, C", _("play C major on distaff"));
+			// I18N: Drafts is set of notes in Loom to invoke spells
+			ADD_BIND(_("Ctrl") + U32String(" d"), _("Shows the drafts inventory"));
 			break;
 		case GID_MONKEY_EGA:
 		case GID_MONKEY_VGA:
@@ -249,6 +251,8 @@ void ScummHelp::updateStrings(byte gameId, byte version, Common::Platform platfo
 			ADD_BIND("t", _("Talk to"));
 			ADD_BIND("i", _("Inventory"));
 			ADD_BIND("u", _("Use"));
+			break;
+		default:
 			break;
 		}
 		break;
@@ -320,6 +324,8 @@ void ScummHelp::updateStrings(byte gameId, byte version, Common::Platform platfo
 			ADD_TEXT(_("7, 4, and 1 are switched with"));
 			ADD_TEXT(_("9, 6, and 3, respectively."));
 			break;
+		default:
+			break;
 		}
 		break;
 	case 6:
@@ -336,7 +342,11 @@ void ScummHelp::updateStrings(byte gameId, byte version, Common::Platform platfo
 			ADD_BIND("6", _("Fly to right"));
 			ADD_BIND("3", _("Fly to lower right"));
 			break;
+		default:
+			break;
 		}
+		break;
+	default:
 		break;
 	}
 	while (i < HELP_NUM_LINES) {

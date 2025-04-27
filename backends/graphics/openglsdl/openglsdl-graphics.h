@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -30,59 +29,75 @@
 #include "common/array.h"
 #include "common/events.h"
 
-class OpenGLSdlGraphicsManager : public OpenGL::OpenGLGraphicsManager, public SdlGraphicsManager, public Common::EventObserver {
+class OpenGLSdlGraphicsManager : public OpenGL::OpenGLGraphicsManager, public SdlGraphicsManager {
 public:
-	OpenGLSdlGraphicsManager(uint desktopWidth, uint desktopHeight, SdlEventSource *eventSource, SdlWindow *window);
+	OpenGLSdlGraphicsManager(SdlEventSource *eventSource, SdlWindow *window);
 	virtual ~OpenGLSdlGraphicsManager();
 
-	// GraphicsManager API
-	virtual void activateManager();
-	virtual void deactivateManager();
+	bool hasFeature(OSystem::Feature f) const override;
+	void setFeatureState(OSystem::Feature f, bool enable) override;
+	bool getFeatureState(OSystem::Feature f) const override;
 
-	virtual bool hasFeature(OSystem::Feature f);
-	virtual void setFeatureState(OSystem::Feature f, bool enable);
-	virtual bool getFeatureState(OSystem::Feature f);
+	void initSize(uint w, uint h, const Graphics::PixelFormat *format) override;
+	void updateScreen() override;
 
-	virtual bool setGraphicsMode(int mode);
-	virtual void resetGraphicsScale();
-
-#ifdef USE_RGB_COLOR
-	virtual Common::List<Graphics::PixelFormat> getSupportedFormats() const;
-#endif
-
-	virtual void updateScreen();
+	float getHiDPIScreenFactor() const override;
 
 	// EventObserver API
-	virtual bool notifyEvent(const Common::Event &event);
+	bool notifyEvent(const Common::Event &event) override;
 
 	// SdlGraphicsManager API
-	virtual void notifyVideoExpose();
-	virtual void notifyResize(const uint width, const uint height);
-	virtual void transformMouseCoordinates(Common::Point &point);
-	virtual void notifyMousePos(Common::Point mouse);
+	void notifyVideoExpose() override;
+	void notifyResize(const int width, const int height) override;
+
+#if defined(USE_IMGUI) && SDL_VERSION_ATLEAST(2, 0, 0)
+	void *getImGuiTexture(const Graphics::Surface &image, const byte *palette, int palCount) override;
+	void freeImGuiTexture(void *texture) override;
+#endif
 
 protected:
-	virtual void setInternalMousePosition(int x, int y);
+	bool loadVideoMode(uint requestedWidth, uint requestedHeight, const Graphics::PixelFormat &format) override;
 
-	virtual bool loadVideoMode(uint requestedWidth, uint requestedHeight, const Graphics::PixelFormat &format);
+	void refreshScreen() override;
+
+	void handleResizeImpl(const int width, const int height) override;
+
+	bool saveScreenshot(const Common::Path &filename) const override;
+
 private:
 	bool setupMode(uint width, uint height);
 
 #if SDL_VERSION_ATLEAST(2, 0, 0)
+	int _glContextProfileMask, _glContextMajor, _glContextMinor;
+
 	SDL_GLContext _glContext;
 #else
 	uint32 _lastVideoModeLoad;
-	SDL_Surface *_hwScreen;
 #endif
 
-	void getWindowDimensions(int *width, int *height);
+#ifdef EMSCRIPTEN
+	/** 
+	 * See https://registry.khronos.org/webgl/specs/latest/1.0/#2 :
+	 * " By default, after compositing the contents of the drawing buffer shall be cleared to their default values [...]
+	 *   Techniques like synchronous drawing buffer access (e.g., calling readPixels or toDataURL in the same function
+	 *   that renders to the drawing buffer) can be used to get the contents of the drawing buffer "
+	 * 
+	 * This means we need to take the screenshot at the correct time, which we do by queueing taking the screenshot
+	 * for the next frame instead of taking it right away.
+	 */
+	bool _queuedScreenshot = false;
+	void saveScreenshot() override;
+#endif
 
+	OpenGL::ContextType _glContextType;
+
+	uint _forceFrameUpdate = 0;
 	uint _lastRequestedWidth;
 	uint _lastRequestedHeight;
 	uint _graphicsScale;
-	bool _ignoreLoadVideoMode;
 	bool _gotResize;
 
+	bool _vsync;
 	bool _wantsFullScreen;
 	uint _ignoreResizeEvents;
 
@@ -115,8 +130,6 @@ private:
 
 	uint _desiredFullscreenWidth;
 	uint _desiredFullscreenHeight;
-
-	virtual bool isHotkey(const Common::Event &event);
 };
 
 #endif

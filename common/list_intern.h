@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,15 +15,14 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #ifndef COMMON_LIST_INTERN_H
 #define COMMON_LIST_INTERN_H
 
-#include "common/scummsys.h"
+#include "common/util.h"
 
 namespace Common {
 
@@ -32,8 +31,11 @@ template<typename T> class List;
 
 namespace ListInternal {
 	struct NodeBase {
-		NodeBase *_prev;
-		NodeBase *_next;
+		NodeBase *_prev = nullptr;
+		NodeBase *_next = nullptr;
+
+		constexpr NodeBase() = default;
+		constexpr NodeBase(NodeBase *prev, NodeBase *next) : _prev(prev), _next(next) {}
 	};
 
 	template<typename T>
@@ -41,6 +43,9 @@ namespace ListInternal {
 		T _data;
 
 		Node(const T &x) : _data(x) {}
+		Node(T &&x) : _data(Common::move(x)) {}
+		template<class... TArgs>
+		Node(TArgs&&... args) : _data(Common::forward<TArgs>(args)...) {}
 	};
 
 	template<typename T> struct ConstIterator;
@@ -55,7 +60,7 @@ namespace ListInternal {
 
 		NodeBase *_node;
 
-		Iterator() : _node(0) {}
+		Iterator() : _node(nullptr) {}
 		explicit Iterator(NodeBase *node) : _node(node) {}
 
 		// Prefix inc
@@ -108,7 +113,7 @@ namespace ListInternal {
 
 		const NodeBase *_node;
 
-		ConstIterator() : _node(0) {}
+		ConstIterator() : _node(nullptr) {}
 		explicit ConstIterator(const NodeBase *node) : _node(node) {}
 		ConstIterator(const Iterator<T> &x) : _node(x._node) {}
 

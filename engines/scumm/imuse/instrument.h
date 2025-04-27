@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -25,24 +24,23 @@
 
 
 #include "common/scummsys.h"
+#include "common/serializer.h"
 
 class MidiChannel;
 
 namespace Scumm {
 
-class Serializer;
 class Instrument;
 
-class InstrumentInternal {
+class InstrumentInternal : public Common::Serializable {
 public:
-	virtual ~InstrumentInternal() {}
-	virtual void saveOrLoad(Serializer *s) = 0;
+	~InstrumentInternal() override {}
 	virtual void send(MidiChannel *mc) = 0;
 	virtual void copy_to(Instrument *dest) = 0;
 	virtual bool is_valid() = 0;
 };
 
-class Instrument {
+class Instrument : public Common::Serializable {
 private:
 	byte _type;
 	InstrumentInternal *_instrument;
@@ -54,12 +52,12 @@ public:
 		itAdLib = 2,
 		itRoland = 3,
 		itPcSpk = 4,
-		itMacSfx = 5
+		itMacDeprecated = 5
 	};
 
-	Instrument() : _type(0), _instrument(0) { }
-	~Instrument() { delete _instrument; }
-	static void nativeMT32(bool native);
+	Instrument() : _type(0), _instrument(0), _nativeMT32Device(false) { }
+	~Instrument() override { delete _instrument; }
+	void setNativeMT32Mode(bool isNativeMT32) { _nativeMT32Device = isNativeMT32; }
 	static const byte _gmRhythmMap[35];
 
 	void clear();
@@ -70,19 +68,20 @@ public:
 			dest->clear();
 	}
 
-	void program(byte program, bool mt32);
+	void program(byte program, byte bank, bool mt32SoundType);
 	void adlib(const byte *instrument);
 	void roland(const byte *instrument);
 	void pcspk(const byte *instrument);
-	void macSfx(byte program);
 
 	byte getType() { return _type; }
 	bool isValid() { return (_instrument ? _instrument->is_valid() : false); }
-	void saveOrLoad(Serializer *s);
+	void saveLoadWithSerializer(Common::Serializer &s) override;
 	void send(MidiChannel *mc) {
 		if (_instrument)
 			_instrument->send(mc);
 	}
+
+	bool _nativeMT32Device;
 };
 
 } // End of namespace Scumm

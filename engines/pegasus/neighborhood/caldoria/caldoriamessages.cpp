@@ -7,19 +7,18 @@
  * Additional copyright for this file:
  * Copyright (C) 1995-1997 Presto Studios, Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
-
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -35,6 +34,8 @@ static const NotificationFlags kMessageDoneFlag = 1;
 
 CaldoriaMessages::CaldoriaMessages(Neighborhood *owner, const NotificationID id, NotificationManager *manager) :
 		GameInteraction(kCaldoriaMessagesInteractionID, owner), Notification(id, manager), _messageMovie(kCaldoriaMessagesID) {
+	_neighborhoodNotification = nullptr;
+	_messageNumber = 0;
 }
 
 void CaldoriaMessages::openInteraction() {
@@ -71,6 +72,8 @@ void CaldoriaMessages::receiveNotification(Notification *notification, const Not
 		case kCaBedroomMessage2:
 			play1Message(2);
 			break;
+		default:
+			break;
 		}
 	} else {
 		_messageCallBack.releaseCallBack();
@@ -106,7 +109,7 @@ void CaldoriaMessages::play1Message(uint messageNumber) {
 		GameState.setCaldoriaSeenMessages(true);
 	}
 
-	_messageMovie.setVolume(((PegasusEngine *)g_engine)->getSoundFXLevel());
+	_messageMovie.setVolume(g_vm->getSoundFXLevel());
 	_messageMovie.moveElementTo(kCaldoriaMessageLeft, kCaldoriaMessageTop);
 	_messageMovie.setDisplayOrder(kCaldoriaMessagesOrder);
 	_messageMovie.startDisplaying();

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,12 +15,12 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "common/debug.h"
+#include "common/scummsys.h"
 #include "common/stream.h"
 #include "common/system.h"
 #include "common/textconsole.h"
@@ -29,10 +29,19 @@
 
 #include "image/codecs/mpeg.h"
 
+extern "C" {
+	#include <mpeg2dec/mpeg2.h>
+}
+
 namespace Image {
 
 MPEGDecoder::MPEGDecoder() : Codec() {
 	_pixelFormat = g_system->getScreenFormat();
+
+	// Default to a 32bpp format, if in 8bpp mode
+	if (_pixelFormat.bytesPerPixel == 1)
+		_pixelFormat = Graphics::PixelFormat(4, 8, 8, 8, 8, 8, 16, 24, 0);
+
 	_surface = 0;
 
 	_mpegDecoder = mpeg2_init();
@@ -78,8 +87,13 @@ bool MPEGDecoder::decodePacket(Common::SeekableReadStream &packet, uint32 &frame
 			if (_mpegInfo->display_fbuf) {
 				foundFrame = true;
 				const mpeg2_sequence_t *sequence = _mpegInfo->sequence;
+				const mpeg2_picture_t *picture = _mpegInfo->display_picture;
 
 				framePeriod += sequence->frame_period;
+				if (picture->nb_fields > 2) {
+					framePeriod += (sequence->frame_period / 2);
+
+				}
 
 				if (!dst) {
 					// If no destination is specified, use our internal storage

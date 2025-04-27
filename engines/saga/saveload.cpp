@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -44,7 +43,7 @@ static SaveFileData emptySlot = {
 
 char* SagaEngine::calcSaveFileName(uint slotNumber) {
 	static char name[MAX_FILE_NAME];
-	sprintf(name, "%s.s%02u", _targetName.c_str(), slotNumber);
+	Common::sprintf_s(name, "%s.s%02u", _targetName.c_str(), slotNumber);
 	return name;
 }
 
@@ -56,7 +55,7 @@ SaveFileData *SagaEngine::getSaveFile(uint idx) {
 		return &_saveFiles[_saveFilesCount - idx - 1];
 	} else {
 		if (!emptySlot.name[0])
-			strcpy(emptySlot.name, getTextString(kTextNewSave));
+			Common::strlcpy(emptySlot.name, getTextString(kTextNewSave), SAVE_TITLE_SIZE);
 
 		return (idx == 0) ? &emptySlot : &_saveFiles[_saveFilesCount - idx];
 	}
@@ -140,7 +139,7 @@ void SagaEngine::fillSaveList() {
 		slotNumber = atoi(slot);
 		if (slotNumber >= 0 && slotNumber < MAX_SAVES) {
 			name = calcSaveFileName(slotNumber);
-			if ((in = _saveFileMan->openForLoading(name)) != NULL) {
+			if ((in = _saveFileMan->openForLoading(name)) != nullptr) {
 				_saveHeader.type = in->readUint32BE();
 				_saveHeader.size = in->readUint32LE();
 				_saveHeader.version = in->readUint32LE();
@@ -151,7 +150,14 @@ void SagaEngine::fillSaveList() {
 					i++;
 					continue;
 				}
-				strcpy(_saveFiles[_saveFilesCount].name, _saveHeader.name);
+
+				Common::CodePage cp = Common::kDos850;
+				if (getGameId() == GID_ITE) {
+					if (getLanguage() == Common::JA_JPN)
+						cp = Common::kWindows932;
+				}
+
+				Common::strlcpy(_saveFiles[_saveFilesCount].name, Common::U32String(_saveHeader.name).encode(cp).c_str(), sizeof(_saveFiles[_saveFilesCount].name));
 				_saveFiles[_saveFilesCount].slotNumber = slotNumber;
 				delete in;
 				_saveFilesCount++;
@@ -185,12 +191,13 @@ void SagaEngine::save(const char *fileName, const char *saveName) {
 
 	// Original game title
 	memset(title, 0, TITLESIZE);
-	strncpy(title, _gameTitle.c_str(), TITLESIZE);
+	Common::strlcpy(title, _gameTitle.c_str(), TITLESIZE);
 	out->write(title, TITLESIZE);
 
 	// Thumbnail
 	// First draw scene without save dialog
 	int oldMode = _interface->getMode();
+	_render->clearFlag(RF_RENDERPAUSE); // Don't show paused game message in saved thumbnail
 	_interface->setMode(kPanelMain);
 	_render->drawScene();
 
@@ -272,7 +279,7 @@ void SagaEngine::load(const char *fileName) {
 	in->read(_saveHeader.name, sizeof(_saveHeader.name));
 
 	// Some older saves were not written in an endian safe fashion.
-	// We try to detect this here by checking for extremly high version values.
+	// We try to detect this here by checking for extremely high version values.
 	// If found, we retry with the data swapped.
 	if (_saveHeader.version > 0xFFFFFF) {
 		warning("This savegame is not endian safe, retrying with the data swapped");
@@ -381,6 +388,12 @@ void SagaEngine::load(const char *fileName) {
 	_music->setVolume(volume);
 
 	_interface->draw();
+
+	// Abort any scene entry protagonist animations and auto-cue speeches.
+	// Fixes bug #10009.
+	_actor->abortAllSpeeches();
+	_actor->_protagonist->_location = _actor->_protagonist->_finalTarget;
+	_actor->actorEndWalk(ID_PROTAG, true);
 }
 
 } // End of namespace Saga

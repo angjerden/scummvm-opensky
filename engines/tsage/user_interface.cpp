@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -205,7 +204,7 @@ void UIInventoryScroll::process(Event &event) {
 		toggle(true);
 
 		// Wait for the mouse to be released
-		BF_GLOBALS._events.waitForPress(EVENT_BUTTON_UP);
+		g_globals->_events.waitForPress(EVENT_BUTTON_UP);
 
 		// Restore unselected version
 		toggle(false);
@@ -253,7 +252,7 @@ void UICollection::show() {
 void UICollection::erase() {
 	if (_clearScreen) {
 		Rect tempRect(0, UI_INTERFACE_Y, SCREEN_WIDTH, SCREEN_HEIGHT);
-		GLOBALS._screenSurface.fillRect(tempRect, 0);
+		GLOBALS._screen.fillRect(tempRect, 0);
 		GLOBALS._sceneManager._scene->_backSurface.fillRect(tempRect, 0);
 		_clearScreen = false;
 	}
@@ -274,7 +273,7 @@ void UICollection::draw() {
 			_objList[idx]->draw();
 
 		// Draw the resulting UI onto the screen
-		GLOBALS._screenSurface.copyFrom(GLOBALS._sceneManager._scene->_backSurface,
+		GLOBALS._screen.copyFrom(GLOBALS._sceneManager._scene->_backSurface,
 			Rect(0, UI_INTERFACE_Y, SCREEN_WIDTH, SCREEN_HEIGHT),
 			Rect(0, UI_INTERFACE_Y, SCREEN_WIDTH, SCREEN_HEIGHT));
 
@@ -293,12 +292,12 @@ void UICollection::r2rDrawFrame() {
 	GfxSurface vertLineRight = visage.getFrame(3);
 	GfxSurface horizLine = visage.getFrame(2);
 
-	GLOBALS._screenSurface.copyFrom(horizLine, 0, 0);
-	GLOBALS._screenSurface.copyFrom(vertLineLeft, 0, 3);
-	GLOBALS._screenSurface.copyFrom(vertLineRight, SCREEN_WIDTH - 4, 3);
+	GLOBALS._screen.copyFrom(horizLine, 0, 0);
+	GLOBALS._screen.copyFrom(vertLineLeft, 0, 3);
+	GLOBALS._screen.copyFrom(vertLineRight, SCREEN_WIDTH - 4, 3);
 
 	// Restrict drawing area to exclude the borders at the edge of the screen
-	R2_GLOBALS._screenSurface._clipRect = Rect(4, 3, SCREEN_WIDTH - 4,
+	R2_GLOBALS._screen._clipRect = Rect(4, 3, SCREEN_WIDTH - 4,
 		SCREEN_HEIGHT - 3);
 }
 
@@ -415,6 +414,8 @@ void UIElements::setup(const Common::Point &pt) {
 		case 3:
 			item = &_slot4;
 			break;
+		default:
+			break;
 		}
 
 		xp = idx * 63 + 2;
@@ -487,6 +488,8 @@ void UIElements::updateInventory(int objectNumber) {
 		break;
 	case GType_Ringworld2:
 		_character.setFrame(R2_GLOBALS._player._characterIndex);
+		break;
+	default:
 		break;
 	}
 

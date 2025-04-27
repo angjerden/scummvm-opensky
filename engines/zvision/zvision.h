@@ -4,19 +4,18 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
-
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *
  */
@@ -24,9 +23,9 @@
 #ifndef ZVISION_ZVISION_H
 #define ZVISION_ZVISION_H
 
-#include "zvision/detection.h"
 #include "zvision/core/clock.h"
 #include "zvision/file/search_manager.h"
+#include "zvision/detection.h"
 
 #include "common/random.h"
 #include "common/events.h"
@@ -36,6 +35,10 @@
 #include "graphics/pixelformat.h"
 
 #include "gui/debugger.h"
+
+namespace Common {
+class Keymap;
+}
 
 namespace Video {
 class VideoDecoder;
@@ -51,10 +54,8 @@ class VideoDecoder;
  * - Zork: Grand Inquisitor
  *
  */
-
 namespace ZVision {
 
-struct ZVisionGameDescription;
 class Console;
 class ScriptManager;
 class RenderManager;
@@ -74,12 +75,12 @@ enum {
 	HIRES_WINDOW_WIDTH = 800,
 	HIRES_WINDOW_HEIGHT = 600,
 
-	// Zork nemesis working window sizes
-	ZNM_WORKING_WINDOW_WIDTH  = 512,
+	// Zork Nemesis working window sizes
+	ZNM_WORKING_WINDOW_WIDTH = 512,
 	ZNM_WORKING_WINDOW_HEIGHT = 320,
 
 	// ZGI working window sizes
-	ZGI_WORKING_WINDOW_WIDTH  = 640,
+	ZGI_WORKING_WINDOW_WIDTH = 640,
 	ZGI_WORKING_WINDOW_HEIGHT = 344,
 
 	ROTATION_SCREEN_EDGE_OFFSET = 60,
@@ -88,10 +89,30 @@ enum {
 	KEYBUF_SIZE = 20
 };
 
+enum ZVisionAction {
+	kZVisionActionNone,
+	kZVisionActionUp,
+	kZVisionActionDown,
+	kZVisionActionLeft,
+	kZVisionActionRight,
+	kZVisionActionSave,
+	kZVisionActionRestore,
+	kZVisionActionQuit,
+	kZVisionActionPreferences,
+	kZVisionActionShowFPS,
+	kZVisionActionSkipCutscene,
+
+	kZVisionActionCount
+};
+
+extern const char *mainKeymapId;
+extern const char *gameKeymapId;
+extern const char *cutscenesKeymapId;
+
 class ZVision : public Engine {
 public:
 	ZVision(OSystem *syst, const ZVisionGameDescription *gameDesc);
-	~ZVision();
+	~ZVision() override;
 
 public:
 	/**
@@ -104,7 +125,6 @@ public:
 	const Graphics::PixelFormat _screenPixelFormat;
 
 private:
-	Console *_console;
 	const ZVisionGameDescription *_gameDescription;
 
 	const int _desiredFrameTime;
@@ -116,12 +136,12 @@ private:
 	ScriptManager *_scriptManager;
 	RenderManager *_renderManager;
 	CursorManager *_cursorManager;
-	SaveManager *_saveManager;
 	StringManager *_stringManager;
-	MenuHandler *_menu;
 	SearchManager *_searchManager;
 	TextRenderer *_textRenderer;
 	MidiManager *_midiManager;
+	SaveManager *_saveManager;
+	MenuHandler *_menu;
 
 	// Clock
 	Clock _clock;
@@ -132,6 +152,8 @@ private:
 	// To prevent allocation every time we process events
 	Common::Event _event;
 
+	Common::Keymap *_gameKeymap, *_cutscenesKeymap;
+
 	int _frameRenderDelay;
 	int _renderedFrameCount;
 	int _fps;
@@ -141,11 +163,14 @@ private:
 	bool _videoIsPlaying;
 
 	uint8 _cheatBuffer[KEYBUF_SIZE];
+
 public:
-	uint32 getFeatures() const;
+	Common::Error run() override;
+	void pauseEngineIntern(bool pause) override;
+
+	ZVisionGameId getGameId() const;
 	Common::Language getLanguage() const;
-	Common::Error run();
-	void pauseEngineIntern(bool pause);
+	uint32 getFeatures() const;
 
 	ScriptManager *getScriptManager() const {
 		return _scriptManager;
@@ -174,11 +199,12 @@ public:
 	MenuHandler *getMenuHandler() const {
 		return _menu;
 	}
+
+	Common::Keymap *getGameKeymap() const {
+		return _gameKeymap;
+	}
 	Common::RandomSource *getRandomSource() const {
 		return _rnd;
-	}
-	ZVisionGameId getGameId() const {
-		return _gameDescription->gameId;
 	}
 	int16 getKeyboardVelocity() const {
 		return _keyboardVelocity;
@@ -210,9 +236,7 @@ public:
 	 * @param skippable       If true, the video can be skipped at any time using [Spacebar]
 	 */
 	void playVideo(Video::VideoDecoder &videoDecoder, const Common::Rect &destRect = Common::Rect(0, 0, 0, 0), bool skippable = true, Subtitle *sub = NULL);
-	Video::VideoDecoder *loadAnimation(const Common::String &fileName);
-
-	Common::String generateSaveFileName(uint slot);
+	Video::VideoDecoder *loadAnimation(const Common::Path &fileName);
 
 	void setRenderDelay(uint);
 	bool canRender();
@@ -222,8 +246,7 @@ public:
 		return _fps;
 	}
 
-	GUI::Debugger *getDebugger();
-	void syncSoundSettings();
+	void syncSoundSettings() override;
 
 	void loadSettings();
 	void saveSettings();
@@ -231,16 +254,17 @@ public:
 	bool ifQuit();
 
 	// Engine features
-	bool hasFeature(EngineFeature f) const;
-	bool canLoadGameStateCurrently();
-	bool canSaveGameStateCurrently();
-	Common::Error loadGameState(int slot);
-	Common::Error saveGameState(int slot, const Common::String &desc);
+	bool hasFeature(EngineFeature f) const override;
+	bool canLoadGameStateCurrently(Common::U32String *msg = nullptr) override;
+	bool canSaveGameStateCurrently(Common::U32String *msg = nullptr) override;
+	Common::Error loadGameState(int slot) override;
+	Common::Error saveGameState(int slot, const Common::String &desc, bool isAutosave = false) override;
+
 private:
 	void initialize();
 	void initFonts();
 
-	void parseStrFile(const Common::String fileName);
+	void parseStrFile(const Common::String &fileName);
 
 	/** Called every frame from ZVision::run() to process any events from EventMan */
 	void processEvents();
@@ -248,12 +272,13 @@ private:
 	void onMouseMove(const Common::Point &pos);
 
 	void registerDefaultSettings();
-	void shortKeys(Common::Event);
 
 	void cheatCodes(uint8 key);
 	void pushKeyToCheatBuf(uint8 key);
 	bool checkCode(const char *code);
 	uint8 getBufferedKey(uint8 pos);
+
+	double getVobAmplification(Common::String fileName) const;
 };
 
 } // End of namespace ZVision

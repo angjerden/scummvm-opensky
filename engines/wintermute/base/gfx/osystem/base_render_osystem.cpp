@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -34,8 +33,9 @@
 #include "engines/wintermute/math/math_util.h"
 #include "engines/wintermute/base/base_game.h"
 #include "engines/wintermute/base/base_sprite.h"
+#include "engines/util.h"
+
 #include "common/system.h"
-#include "graphics/transparent_surface.h"
 #include "common/queue.h"
 #include "common/config-manager.h"
 
@@ -116,19 +116,15 @@ bool BaseRenderOSystem::initRenderer(int width, int height, bool windowed) {
 	_borderTop = (int)((_realHeight - (_height * ratio)) / 2);
 	_borderBottom = (int)(_realHeight - (_height * ratio) - _borderTop);
 
-
-
 	_ratioX = (float)(_realWidth - _borderLeft - _borderRight) / (float)_width;
 	_ratioY = (float)(_realHeight - _borderTop - _borderBottom) / (float)_height;
 
 	_windowed = !ConfMan.getBool("fullscreen");
 
 	Graphics::PixelFormat format(4, 8, 8, 8, 8, 24, 16, 8, 0);
-	g_system->beginGFXTransaction();
-	g_system->initSize(_width, _height, &format);
-	OSystem::TransactionError gfxError = g_system->endGFXTransaction();
+	initGraphics(_width, _height, &format);
 
-	if (gfxError != OSystem::kTransactionSuccess) {
+	if (g_system->getScreenFormat() != format) {
 		warning("Couldn't setup GFX-backend for %dx%dx%d", _width, _height, format.bytesPerPixel * 8);
 		return STATUS_FAILED;
 	}
@@ -146,7 +142,15 @@ bool BaseRenderOSystem::initRenderer(int width, int height, bool windowed) {
 }
 
 bool BaseRenderOSystem::indicatorFlip() {
-	g_system->copyRectToScreen((byte *)_renderSurface->getBasePtr(_indicatorX, _indicatorY), _renderSurface->pitch, _indicatorX, _indicatorY, _indicatorWidthDrawn, _indicatorHeight);
+	if (_indicatorWidthDrawn > 0 && _indicatorHeight > 0) {
+		g_system->copyRectToScreen((byte *)_renderSurface->getBasePtr(_indicatorX, _indicatorY), _renderSurface->pitch, _indicatorX, _indicatorY, _indicatorWidthDrawn, _indicatorHeight);
+		g_system->updateScreen();
+	}
+	return STATUS_OK;
+}
+
+bool BaseRenderOSystem::forcedFlip() {
+	g_system->copyRectToScreen((byte *)_renderSurface->getPixels(), _renderSurface->pitch, 0, 0, _renderSurface->w, _renderSurface->h);
 	g_system->updateScreen();
 	return STATUS_OK;
 }
@@ -204,6 +208,19 @@ bool BaseRenderOSystem::flip() {
 	g_system->updateScreen();
 
 	return STATUS_OK;
+}
+
+//////////////////////////////////////////////////////////////////////
+void BaseRenderOSystem::onWindowChange() {
+	_windowed = !g_system->getFeatureState(OSystem::kFeatureFullscreenMode);
+}
+
+//////////////////////////////////////////////////////////////////////
+void BaseRenderOSystem::setWindowed(bool windowed) {
+	ConfMan.setBool("fullscreen", !windowed);
+	g_system->beginGFXTransaction();
+	g_system->setFeatureState(OSystem::kFeatureFullscreenMode, !windowed);
+	g_system->endGFXTransaction();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -268,8 +285,8 @@ Graphics::PixelFormat BaseRenderOSystem::getPixelFormat() const {
 	return _renderSurface->format;
 }
 
-void BaseRenderOSystem::drawSurface(BaseSurfaceOSystem *owner, const Graphics::Surface *surf, Common::Rect *srcRect, Common::Rect *dstRect, Graphics::TransformStruct &transform) {
-
+void BaseRenderOSystem::drawSurface(BaseSurfaceOSystem *owner, const Graphics::Surface *surf,
+                                    Common::Rect *srcRect, Common::Rect *dstRect, Graphics::TransformStruct &transform) {
 	if (_disableDirtyRects) {
 		RenderTicket *ticket = new RenderTicket(owner, surf, srcRect, dstRect, transform);
 		ticket->_wantsDraw = true;
@@ -432,7 +449,7 @@ void BaseRenderOSystem::drawTickets() {
 			drawFromSurface(ticket, &pos, &dstClip);
 			_needsFlip = true;
 		}
-		// Some tickets want redraw but don't actually clip the dirty area (typically the ones that shouldnt become clear-color)
+		// Some tickets want redraw but don't actually clip the dirty area (typically the ones that shouldn't become clear-color)
 		ticket->_wantsDraw = false;
 	}
 	g_system->copyRectToScreen((byte *)_renderSurface->getBasePtr(_dirtyRect->left, _dirtyRect->top), _renderSurface->pitch, _dirtyRect->left, _dirtyRect->top, _dirtyRect->width(), _dirtyRect->height());
@@ -495,7 +512,7 @@ bool BaseRenderOSystem::drawLine(int x1, int y1, int x2, int y2, uint32 color) {
 
 //////////////////////////////////////////////////////////////////////////
 BaseImage *BaseRenderOSystem::takeScreenshot() {
-// TODO: Clip by viewport.
+	// TODO: Clip by viewport.
 	BaseImage *screenshot = new BaseImage();
 	screenshot->copyFrom(_renderSurface);
 	return screenshot;
@@ -517,15 +534,6 @@ bool BaseRenderOSystem::setViewport(int left, int top, int right, int bottom) {
 
 	_renderRect = rect;
 	return STATUS_OK;
-}
-
-Rect32 BaseRenderOSystem::getViewPort() {
-	Rect32 ret;
-	ret.top = _renderRect.top;
-	ret.bottom = _renderRect.bottom;
-	ret.left = _renderRect.left;
-	ret.right = _renderRect.right;
-	return ret;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -576,7 +584,7 @@ void BaseRenderOSystem::endSaveLoad() {
 	_skipThisFrame = true;
 	_lastFrameIter = _renderQueue.end();
 
-	_renderSurface->fillRect(Common::Rect(0, 0, _renderSurface->h, _renderSurface->w), _renderSurface->format.ARGBToColor(255, 0, 0, 0));
+	_renderSurface->fillRect(Common::Rect(0, 0, _renderSurface->w, _renderSurface->h), _renderSurface->format.ARGBToColor(255, 0, 0, 0));
 	g_system->copyRectToScreen((byte *)_renderSurface->getPixels(), _renderSurface->pitch, 0, 0, _renderSurface->w, _renderSurface->h);
 	g_system->updateScreen();
 }

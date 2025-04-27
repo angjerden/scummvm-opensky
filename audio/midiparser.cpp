@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -31,27 +30,35 @@
 //
 //////////////////////////////////////////////////
 
-MidiParser::MidiParser() :
+MidiParser::MidiParser(int8 source) :
+_source(source),
 _hangingNotesCount(0),
-_driver(0),
+_driver(nullptr),
 _timerRate(0x4A0000),
 _ppqn(96),
 _tempo(500000),
 _psecPerTick(5208), // 500000 / 96
+_sysExDelay(0),
 _autoLoop(false),
 _smartJump(false),
 _centerPitchWheelOnUnload(false),
 _sendSustainOffOnNotesOff(false),
+_disableAllNotesOffMidiEvents(false),
+_disableAutoStartPlayback(false),
 _numTracks(0),
 _activeTrack(255),
 _abortParse(false),
-_jumpingToTick(false) {
+_jumpingToTick(false),
+_doParse(true),
+_pause(false) {
 	memset(_activeNotes, 0, sizeof(_activeNotes));
 	memset(_tracks, 0, sizeof(_tracks));
-	_nextEvent.start = NULL;
-	_nextEvent.delta = 0;
-	_nextEvent.event = 0;
-	_nextEvent.length = 0;
+	memset(_numSubtracks, 1, sizeof(_numSubtracks));
+	for (int i = 0; i < MAXIMUM_SUBTRACKS; i++) {
+		_nextSubtrackEvents[i].clear();
+		_nextSubtrackEvents[i].subtrack = i;
+	}
+	_nextEvent = &_nextSubtrackEvents[0];
 }
 
 void MidiParser::property(int prop, int value) {
@@ -68,11 +75,31 @@ void MidiParser::property(int prop, int value) {
 	case mpSendSustainOffOnNotesOff:
 		_sendSustainOffOnNotesOff = (value != 0);
 		break;
+	case mpDisableAllNotesOffMidiEvents:
+		_disableAllNotesOffMidiEvents = (value != 0);
+		break;
+	case mpDisableAutoStartPlayback:
+		_disableAutoStartPlayback = (value != 0);
+		break;
+	default:
+		break;
 	}
 }
 
 void MidiParser::sendToDriver(uint32 b) {
-	_driver->send(b);
+	if (_source < 0) {
+		_driver->send(b);
+	} else {
+		_driver->send(_source, b);
+	}
+}
+
+void MidiParser::sendMetaEventToDriver(byte type, byte *data, uint16 length) {
+	if (_source < 0) {
+		_driver->metaEvent(type, data, length);
+	} else {
+		_driver->metaEvent(_source, type, data, length);
+	}
 }
 
 void MidiParser::setTempo(uint32 tempo) {
@@ -119,7 +146,7 @@ void MidiParser::activeNote(byte channel, byte note, bool active) {
 }
 
 void MidiParser::hangingNote(byte channel, byte note, uint32 timeLeft, bool recycle) {
-	NoteTimer *best = 0;
+	NoteTimer *best = nullptr;
 	NoteTimer *ptr = _hangingNotes;
 	int i;
 
@@ -144,7 +171,7 @@ void MidiParser::hangingNote(byte channel, byte note, uint32 timeLeft, bool recy
 		}
 	}
 
-	// Occassionally we might get a zero or negative note
+	// Occasionally we might get a zero or negative note
 	// length, if the note should be turned on and off in
 	// the same iteration. For now just set it to 1 and
 	// we'll turn it off in the next cycle.
@@ -165,8 +192,13 @@ void MidiParser::hangingNote(byte channel, byte note, uint32 timeLeft, bool recy
 void MidiParser::onTimer() {
 	uint32 endTime;
 	uint32 eventTime;
+	uint32 eventTick;
 
-	if (!_position._playPos || !_driver)
+	// The SysEx delay can be decreased whenever time passes,
+	// even if the parser does not parse events.
+	_sysExDelay -= (_sysExDelay > _timerRate) ? _timerRate : _sysExDelay;
+
+	if (!_position.isTracking() || !_driver || !_doParse || _pause || !_driver->isReady(_source))
 		return;
 
 	_abortParse = false;
@@ -190,46 +222,126 @@ void MidiParser::onTimer() {
 		}
 	}
 
+	bool loopEvent = false;
 	while (!_abortParse) {
-		EventInfo &info = _nextEvent;
+		EventInfo &info = *_nextEvent;
+		uint8 subtrack = info.subtrack;
 
-		eventTime = _position._lastEventTime + info.delta * _psecPerTick;
+		eventTick = _position._subtracks[subtrack]._lastEventTick + info.delta;
+		eventTime = _position._lastEventTime + (eventTick - _position._lastEventTick) * _psecPerTick;
 		if (eventTime > endTime)
 			break;
 
-		// Process the next info.
-		_position._lastEventTick += info.delta;
-		if (info.event < 0x80) {
-			warning("Bad command or running status %02X", info.event);
-			_position._playPos = 0;
-			return;
+		if (!info.noop) {
+			// Process the next info.
+			if (info.event < 0x80) {
+				warning("Bad command or running status %02X", info.event);
+				_position.stopTracking();
+				return;
+			}
+
+			if (info.command() == 0x8) {
+				activeNote(info.channel(), info.basic.param1, false);
+			} else if (info.command() == 0x9) {
+				if (info.length > 0)
+					hangingNote(info.channel(), info.basic.param1, info.length * _psecPerTick - (endTime - eventTime));
+				else
+					activeNote(info.channel(), info.basic.param1, true);
+			}
+
+			// Player::metaEvent() in SCUMM will delete the parser object,
+			// so return immediately if that might have happened.
+			bool ret = processEvent(info);
+			if (!ret)
+				return;
 		}
 
-		if (info.command() == 0x8) {
-			activeNote(info.channel(), info.basic.param1, false);
-		} else if (info.command() == 0x9) {
-			if (info.length > 0)
-				hangingNote(info.channel(), info.basic.param1, info.length * _psecPerTick - (endTime - eventTime));
-			else
-				activeNote(info.channel(), info.basic.param1, true);
-		}
-
-		// Player::metaEvent() in SCUMM will delete the parser object,
-		// so return immediately if that might have happened.
-		bool ret = processEvent(info);
-		if (!ret)
-			return;
+		loopEvent |= info.loop;
 
 		if (!_abortParse) {
+			_position._playTime = eventTime;
 			_position._lastEventTime = eventTime;
-			parseNextEvent(_nextEvent);
+			_position._subtracks[subtrack]._lastEventTime = eventTime;
+
+			_position._playTick = eventTick;
+			_position._lastEventTick = eventTick;
+			_position._subtracks[subtrack]._lastEventTick = eventTick;
+
+			if (_position.isTracking(subtrack)) {
+				parseNextEvent(_nextSubtrackEvents[subtrack]);
+			}
+			determineNextEvent();
 		}
 	}
 
 	if (!_abortParse) {
 		_position._playTime = endTime;
-		_position._playTick = (_position._playTime - _position._lastEventTime) / _psecPerTick + _position._lastEventTick;
+		_position._playTick = (endTime - _position._lastEventTime) / _psecPerTick + _position._lastEventTick;
+		if (loopEvent) {
+			// One of the processed events has looped (part of) the MIDI data.
+			// Infinite looping will cause the tracker playtime to overflow
+			// eventually. Reset the tracker time and tick values to prevent
+			// this from happening.
+			rebaseTracking();
+		}
 	}
+}
+
+void MidiParser::rebaseTracking() {
+	uint32 earliestLastEventTick = 0xFFFFFFFF;
+	int earliestLastEventTickSubtrack = -1;
+	for (int i = 0; i < _numSubtracks[_activeTrack]; i++) {
+		if (_position.isTracking(i) && _position._subtracks[i]._lastEventTick < earliestLastEventTick) {
+			earliestLastEventTick = _position._subtracks[i]._lastEventTick;
+			earliestLastEventTickSubtrack = i;
+		}
+	}
+	if (earliestLastEventTickSubtrack == -1)
+		// Shouldn't happen
+		return;
+	uint32 earliestLastEventTime = _position._subtracks[earliestLastEventTickSubtrack]._lastEventTime;
+
+	// Subtract the same value from all time and tick values to keep
+	// a common timebase.
+	for (int i = 0; i < _numSubtracks[_activeTrack]; i++) {
+		if (_position.isTracking(i)) {
+			if (_position._subtracks[i]._lastEventTime >= earliestLastEventTime) {
+				_position._subtracks[i]._lastEventTime -= earliestLastEventTime;
+			} else {
+				// This shouldn't happen; maybe due to rounding?
+				// Just to be sure there is no underflow...
+				_position._subtracks[i]._lastEventTime = 0;
+			}
+			_position._subtracks[i]._lastEventTick -= earliestLastEventTick;
+		}
+	}
+	if (_position._playTime >= earliestLastEventTime) {
+		_position._playTime -= earliestLastEventTime;
+	} else {
+		_position._playTime = 0;
+	}
+	if (_position._lastEventTime >= earliestLastEventTime) {
+		_position._lastEventTime -= earliestLastEventTime;
+	} else {
+		_position._lastEventTime = 0;
+	}
+	_position._playTick -= earliestLastEventTick;
+	_position._lastEventTick -= earliestLastEventTick;
+}
+
+void MidiParser::determineNextEvent() {
+	uint32 lowestNextEventTick = 0xFFFFFFFF;
+	int lowestNextEventTickSubtrack = -1;
+	for (int i = 0; i < _numSubtracks[_activeTrack]; i++) {
+		if (_position.isTracking(i)) {
+			uint32 subtrackNextEventTick = _position._subtracks[i]._lastEventTick + _nextSubtrackEvents[i].delta;
+			if (subtrackNextEventTick < lowestNextEventTick) {
+				lowestNextEventTick = subtrackNextEventTick;
+				lowestNextEventTickSubtrack = i;
+			}
+		}
+	}
+	_nextEvent = &_nextSubtrackEvents[lowestNextEventTickSubtrack >= 0 ? lowestNextEventTickSubtrack : 0];
 }
 
 bool MidiParser::processEvent(const EventInfo &info, bool fireEvents) {
@@ -237,32 +349,49 @@ bool MidiParser::processEvent(const EventInfo &info, bool fireEvents) {
 		// SysEx event
 		// Check for trailing 0xF7 -- if present, remove it.
 		if (fireEvents) {
+			if (_sysExDelay > 0)
+				// Don't process this event if the delay from
+				// the previous SysEx hasn't passed yet.
+				return false;
+
+			uint16 delay;
 			if (info.ext.data[info.length-1] == 0xF7)
-				_driver->sysEx(info.ext.data, (uint16)info.length-1);
+				delay = _driver->sysExNoDelay(info.ext.data, (uint16)info.length-1);
 			else
-				_driver->sysEx(info.ext.data, (uint16)info.length);
+				delay = _driver->sysExNoDelay(info.ext.data, (uint16)info.length);
+
+			// Set the delay in microseconds so the next
+			// SysEx event will be delayed if necessary.
+			_sysExDelay = delay * 1000;
 		}
 	} else if (info.event == 0xFF) {
 		// META event
+		bool sendEventToDriver = true;
 		if (info.ext.type == 0x2F) {
 			// End of Track must be processed by us,
 			// as well as sending it to the output device.
-			if (_autoLoop) {
-				jumpToTick(0);
-				parseNextEvent(_nextEvent);
-			} else {
-				stopPlaying();
-				if (fireEvents)
-					_driver->metaEvent(info.ext.type, info.ext.data, (uint16)info.length);
+			_position.stopTracking(info.subtrack);
+			if (!_position.isTracking()) {
+				// All subtracks have finished playing
+				if (_autoLoop) {
+					jumpToTick(0);
+				} else {
+					stopPlaying();
+					if (fireEvents)
+						sendMetaEventToDriver(info.ext.type, info.ext.data, (uint16)info.length);
+				}
+				return false;
 			}
-			return false;
+			// Do not send End of Track to driver when there are
+			// still subtracks playing
+			sendEventToDriver = false;
 		} else if (info.ext.type == 0x51) {
 			if (info.length >= 3) {
 				setTempo(info.ext.data[0] << 16 | info.ext.data[1] << 8 | info.ext.data[2]);
 			}
 		}
-		if (fireEvents)
-			_driver->metaEvent(info.ext.type, info.ext.data, (uint16)info.length);
+		if (fireEvents && sendEventToDriver)
+			sendMetaEventToDriver(info.ext.type, info.ext.data, (uint16)info.length);
 	} else {
 		if (fireEvents)
 			sendToDriver(info.event, info.basic.param1, info.basic.param2);
@@ -296,13 +425,10 @@ void MidiParser::allNotesOff() {
 	}
 	_hangingNotesCount = 0;
 
-	// To be sure, send an "All Note Off" event (but not all MIDI devices
-	// support this...).
-
-	for (i = 0; i < 16; ++i) {
-		sendToDriver(0xB0 | i, 0x7b, 0); // All notes off
-		if (_sendSustainOffOnNotesOff)
-			sendToDriver(0xB0 | i, 0x40, 0); // Also send a sustain off event (bug #3116608)
+	if (!_disableAllNotesOffMidiEvents) {
+		// To be sure, send an "All Note Off" event (but not all MIDI devices
+		// support this...).
+		_driver->stopAllNotes(_sendSustainOffOnNotesOff);
 	}
 
 	memset(_activeNotes, 0, sizeof(_activeNotes));
@@ -331,20 +457,66 @@ bool MidiParser::setTrack(int track) {
 
 	if (_smartJump)
 		hangAllActiveNotes();
-	else
+	else if (isPlaying())
 		allNotesOff();
 
 	resetTracking();
+	_pause = false;
 	memset(_activeNotes, 0, sizeof(_activeNotes));
+	if (_disableAutoStartPlayback)
+		_doParse = false;
+	for (int i = 0; i < MAXIMUM_SUBTRACKS; i++) {
+		_nextSubtrackEvents[i].clear();
+	}
+	_nextEvent = &_nextSubtrackEvents[0];
+
+	onTrackStart(track);
+
 	_activeTrack = track;
-	_position._playPos = _tracks[track];
-	parseNextEvent(_nextEvent);
+	for (int i = 0; i < _numSubtracks[_activeTrack]; i++) {
+		_position._subtracks[i]._playPos = _tracks[_activeTrack][i];
+		parseNextEvent(_nextSubtrackEvents[i]);
+	}
+	determineNextEvent();
+
 	return true;
 }
 
 void MidiParser::stopPlaying() {
-	allNotesOff();
+	if (isPlaying())
+		allNotesOff();
 	resetTracking();
+	_pause = false;
+}
+
+bool MidiParser::startPlaying() {
+	if (_activeTrack >= _numTracks || _pause)
+		return false;
+	if (!_position.isTracking()) {
+		for (int i = 0; i < MAXIMUM_SUBTRACKS; i++) {
+			_nextSubtrackEvents[i].clear();
+		}
+		_nextEvent = &_nextSubtrackEvents[0];
+		for (int i = 0; i < _numSubtracks[_activeTrack]; i++) {
+			_position._subtracks[i]._playPos = _tracks[_activeTrack][i];
+			parseNextEvent(_nextSubtrackEvents[i]);
+		}
+		determineNextEvent();
+	}
+
+	_doParse = true;
+	return true;
+}
+
+void MidiParser::pausePlaying() {
+	if (isPlaying() && !_pause) {
+		_pause = true;
+		allNotesOff();
+	}
+}
+
+void MidiParser::resumePlaying() {
+	_pause = false;
 }
 
 void MidiParser::hangAllActiveNotes() {
@@ -352,8 +524,8 @@ void MidiParser::hangAllActiveNotes() {
 	// accounted for every active note.
 	uint16 tempActive[128];
 	memcpy(tempActive, _activeNotes, sizeof (tempActive));
+	Tracker currentPos(_position);
 
-	uint32 advanceTick = _position._lastEventTick;
 	while (true) {
 		int i;
 		for (i = 0; i < 128; ++i)
@@ -361,87 +533,132 @@ void MidiParser::hangAllActiveNotes() {
 				break;
 		if (i == 128)
 			break;
-		parseNextEvent(_nextEvent);
-		advanceTick += _nextEvent.delta;
-		if (_nextEvent.command() == 0x8) {
-			if (tempActive[_nextEvent.basic.param1] & (1 << _nextEvent.channel())) {
-				hangingNote(_nextEvent.channel(), _nextEvent.basic.param1, (advanceTick - _position._lastEventTick) * _psecPerTick, false);
-				tempActive[_nextEvent.basic.param1] &= ~(1 << _nextEvent.channel());
+
+		if (_position.isTracking(_nextEvent->subtrack))
+			parseNextEvent(_nextSubtrackEvents[_nextEvent->subtrack]);
+		determineNextEvent();
+
+		uint8 subtrack = _nextEvent->subtrack;
+		uint32 eventTick = _position._subtracks[subtrack]._lastEventTick + _nextEvent->delta;
+		if (_nextEvent->command() == 0x8) {
+			if (tempActive[_nextEvent->basic.param1] & (1 << _nextEvent->channel())) {
+				hangingNote(_nextEvent->channel(), _nextEvent->basic.param1, (eventTick - currentPos._lastEventTick) * _psecPerTick, false);
+				tempActive[_nextEvent->basic.param1] &= ~(1 << _nextEvent->channel());
 			}
-		} else if (_nextEvent.event == 0xFF && _nextEvent.ext.type == 0x2F) {
-			// warning("MidiParser::hangAllActiveNotes(): Hit End of Track with active notes left");
-			for (i = 0; i < 128; ++i) {
-				for (int j = 0; j < 16; ++j) {
-					if (tempActive[i] & (1 << j)) {
-						activeNote(j, i, false);
-						sendToDriver(0x80 | j, i, 0);
+		} else if (!_position.isTracking() || (_nextEvent->event == 0xFF && _nextEvent->ext.type == 0x2F)) {
+			_position.stopTracking(subtrack);
+			if (!_position.isTracking()) {
+				// warning("MidiParser::hangAllActiveNotes(): Hit End of Track with active notes left");
+				for (i = 0; i < 128; ++i) {
+					for (int j = 0; j < 16; ++j) {
+						if (tempActive[i] & (1 << j)) {
+							activeNote(j, i, false);
+							sendToDriver(0x80 | j, i, 0);
+						}
 					}
 				}
+				break;
 			}
-			break;
 		}
+
+		_position._lastEventTick = eventTick;
+		_position._subtracks[subtrack]._lastEventTick = eventTick;
 	}
+
+	_position = currentPos;
 }
 
 bool MidiParser::jumpToTick(uint32 tick, bool fireEvents, bool stopNotes, bool dontSendNoteOn) {
-	if (_activeTrack >= _numTracks)
+	if (_activeTrack >= _numTracks || _pause)
 		return false;
 
 	assert(!_jumpingToTick); // This function is not re-entrant
 	_jumpingToTick = true;
 
 	Tracker currentPos(_position);
-	EventInfo currentEvent(_nextEvent);
+	EventInfo *currentEvent = _nextEvent;
+	EventInfo currentSubtrackEvents[MAXIMUM_SUBTRACKS];
+	for (int i = 0; i < _numSubtracks[_activeTrack]; i++) {
+		currentSubtrackEvents[i] = _nextSubtrackEvents[i];
+	}
 
 	resetTracking();
-	_position._playPos = _tracks[_activeTrack];
-	parseNextEvent(_nextEvent);
+	for (int i = 0; i < _numSubtracks[_activeTrack]; i++) {
+		_position._subtracks[i]._playPos = _tracks[_activeTrack][i];
+		parseNextEvent(_nextSubtrackEvents[i]);
+	}
+	determineNextEvent();
 	if (tick > 0) {
 		while (true) {
-			EventInfo &info = _nextEvent;
-			if (_position._lastEventTick + info.delta >= tick) {
+			EventInfo &info = *_nextEvent;
+			uint8 subtrack = info.subtrack;
+			uint32 eventTick = _position._subtracks[subtrack]._lastEventTick + info.delta;
+			if (eventTick >= tick) {
 				_position._playTime += (tick - _position._lastEventTick) * _psecPerTick;
 				_position._playTick = tick;
 				break;
 			}
 
-			_position._lastEventTick += info.delta;
-			_position._lastEventTime += info.delta * _psecPerTick;
-			_position._playTick = _position._lastEventTick;
-			_position._playTime = _position._lastEventTime;
-
 			// Some special processing for the fast-forward case
 			if (info.command() == 0x9 && dontSendNoteOn) {
 				// Don't send note on; doing so creates a "warble" with
-				// some instruments on the MT-32. Refer to patch #3117577
+				// some instruments on the MT-32. Refer to bug #9262
 			} else if (info.event == 0xFF && info.ext.type == 0x2F) {
 				// End of track
-				// This means that we failed to find the right tick.
-				_position = currentPos;
-				_nextEvent = currentEvent;
-				_jumpingToTick = false;
-				return false;
+				_position.stopTracking(info.subtrack);
+				if (!_position.isTracking()) {
+					// This means that we failed to find the right tick.
+					_position = currentPos;
+					_nextEvent = currentEvent;
+					for (int i = 0; i < _numSubtracks[_activeTrack]; i++) {
+						_nextSubtrackEvents[i]  = currentSubtrackEvents[i];
+					}
+					_jumpingToTick = false;
+					return false;
+				}
 			} else {
 				processEvent(info, fireEvents);
 			}
 
-			parseNextEvent(_nextEvent);
+			uint32 eventTime = _position._lastEventTime + (eventTick - _position._lastEventTick) * _psecPerTick;
+			_position._playTime = eventTime;
+			_position._lastEventTime = eventTime;
+			_position._subtracks[subtrack]._lastEventTime = eventTime;
+
+			_position._playTick = eventTick;
+			_position._lastEventTick = eventTick;
+			_position._subtracks[subtrack]._lastEventTick = eventTick;
+
+			if (_position.isTracking(subtrack)) {
+				parseNextEvent(_nextSubtrackEvents[subtrack]);
+			}
+			determineNextEvent();
 		}
 	}
 
 	if (stopNotes) {
-		if (!_smartJump || !currentPos._playPos) {
+		if (!_smartJump || !currentPos.isTracking()) {
 			allNotesOff();
 		} else {
-			EventInfo targetEvent(_nextEvent);
 			Tracker targetPosition(_position);
+			EventInfo *targetEvent = _nextEvent;
+			EventInfo targetSubtrackEvents[MAXIMUM_SUBTRACKS];
+			for (int i = 0; i < _numSubtracks[_activeTrack]; i++) {
+				targetSubtrackEvents[i]  = _nextSubtrackEvents[i];
+			}
 
 			_position = currentPos;
 			_nextEvent = currentEvent;
+			for (int i = 0; i < _numSubtracks[_activeTrack]; i++) {
+				_nextSubtrackEvents[i] = currentSubtrackEvents[i];
+			}
 			hangAllActiveNotes();
 
-			_nextEvent = targetEvent;
 			_position = targetPosition;
+			_nextEvent = targetEvent;
+			for (int i = 0; i < _numSubtracks[_activeTrack]; i++) {
+				_nextSubtrackEvents[i] = targetSubtrackEvents[i];
+			}
 		}
 	}
 
@@ -451,11 +668,21 @@ bool MidiParser::jumpToTick(uint32 tick, bool fireEvents, bool stopNotes, bool d
 }
 
 void MidiParser::unloadMusic() {
-	resetTracking();
-	allNotesOff();
+	if (_numTracks == 0)
+		// No music data loaded
+		return;
+
+	stopPlaying();
 	_numTracks = 0;
 	_activeTrack = 255;
 	_abortParse = true;
+	memset(_tracks, 0, sizeof(_tracks));
+	memset(_numSubtracks, 1, sizeof(_numSubtracks));
+	for (int i = 0; i < MAXIMUM_SUBTRACKS; i++) {
+		_nextSubtrackEvents[i].clear();
+		_nextSubtrackEvents[i].subtrack = i;
+	}
+	_nextEvent = &_nextSubtrackEvents[0];
 
 	if (_centerPitchWheelOnUnload) {
 		// Center the pitch wheels in preparation for the next piece of

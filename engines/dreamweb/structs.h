@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -77,35 +76,7 @@ struct SetObject {
 	uint8 objId[4];
 	uint8 b16;
 	uint8 index;
-	uint8 frames[13]; // Table mapping animFrame to sprite frame number
-	                  // NB: Don't know the size yet
-	uint8 b31;
-	uint8 b32;
-	uint8 b33;
-	uint8 b34;
-	uint8 b35;
-	uint8 b36;
-	uint8 b37;
-	uint8 b38;
-	uint8 b39;
-	uint8 b40;
-	uint8 b41;
-	uint8 b42;
-	uint8 b43;
-	uint8 b44;
-	uint8 b45;
-	uint8 b46;
-	uint8 b47;
-	uint8 b48;
-	uint8 b49;
-	uint8 b50;
-	uint8 b51;
-	uint8 b52;
-	uint8 b53;
-	uint8 b54;
-	uint8 b55;
-	uint8 b56;
-	uint8 b57;
+	uint8 frames[40]; // Table mapping animFrame to sprite frame number
 	uint8 mapad[5];
 	uint8 b63;
 } PACKED_STRUCT;

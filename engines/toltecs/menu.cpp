@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -34,9 +33,22 @@
 #include "toltecs/render.h"
 #include "toltecs/resource.h"
 
+#include "backends/keymapper/keymapper.h"
+
 namespace Toltecs {
 
 MenuSystem::MenuSystem(ToltecsEngine *vm) : _vm(vm) {
+	_background = nullptr;
+	_running = false;
+	_currMenuID = _newMenuID = kMenuIdNone;
+	_currItemID = kItemIdNone;
+	_top = 0;
+	_savegameListTopIndex = 0;
+	_editingDescription = false;
+	_editingDescriptionID = kItemIdNone;
+	_editingDescriptionItem = nullptr;
+	_needRedraw = false;
+	_returnToGame = false;
 }
 
 MenuSystem::~MenuSystem() {
@@ -69,6 +81,11 @@ int MenuSystem::run(MenuID menuId) {
 	shadeRect(60, 39, 520, 247, 225, 229);
 
 	memcpy(_background->getPixels(), _vm->_screen->_frontScreen, 640 * 400);
+
+	if (menuId == kMenuIdMain)
+		_returnToGame = false;
+	else
+		_returnToGame = true;
 
 	while (_running) {
 		update();
@@ -114,6 +131,7 @@ void MenuSystem::handleEvents() {
 		case Common::EVENT_KEYDOWN:
 			handleKeyDown(event.kbd);
 			break;
+		case Common::EVENT_RETURN_TO_LAUNCHER:
 		case Common::EVENT_QUIT:
 			_running = false;
 			break;
@@ -190,6 +208,10 @@ void MenuSystem::handleKeyDown(const Common::KeyState& kbd) {
 			_running = false;
 		} else if (kbd.keycode == Common::KEYCODE_ESCAPE) {
 			_editingDescription = false;
+			//// Now we turn on the keymapper
+			Common::Keymapper *keymapper = _vm->getEventManager()->getKeymapper();
+			g_system->setFeatureState(OSystem::kFeatureVirtualKeyboard, false);
+			keymapper->getKeymap("toltecs-default")->setEnabled(true);
 		}
 	}
 }
@@ -257,10 +279,15 @@ void MenuSystem::initMenu(MenuID menuID) {
 			int slot = dialog->runModalWithCurrentTarget();
 			delete dialog;
 
-			if (slot >= 0)
+			if (slot >= 0) {
 				_vm->requestLoadgame(slot);
-
-			_running = false;
+				_running = false;
+			} else {
+				if (_returnToGame)
+					_running = false;
+				else
+					_newMenuID = kMenuIdMain;
+			}
 		}
 		break;
 	case kMenuIdSave:
@@ -278,18 +305,23 @@ void MenuSystem::initMenu(MenuID menuID) {
 			_savegames.push_back(SavegameItem(newSlotNum, Common::String::format("GAME %04d", _savegames.size())));
 			setSavegameCaptions(true);
 		} else {
-			GUI::SaveLoadChooser *dialog = new GUI::SaveLoadChooser(_("Save game:"), _("Save"), true);
-			int slot = dialog->runModalWithCurrentTarget();
-			Common::String desc = dialog->getResultString();
+			GUI::SaveLoadChooser dialog(_("Save game:"), _("Save"), true);
+			int slot = dialog.runModalWithCurrentTarget();
+			Common::String desc = dialog.getResultString();
 			if (desc.empty()) {
 				// Create our own description for the saved game, the user didn't enter one
-				desc = dialog->createDefaultSaveDescription(slot);
+				desc = dialog.createDefaultSaveDescription(slot);
 			}
 
-			if (slot >= 0)
+			if (slot >= 0) {
 				_vm->requestSavegame(slot, desc);
-
-			_running = false;
+				_running = false;
+			} else {
+				if (_returnToGame)
+					_running = false;
+				else
+					_newMenuID = kMenuIdMain;
+			}
 		}
 		break;
 	case kMenuIdVolumes:
@@ -515,7 +547,7 @@ int MenuSystem::loadSavegamesList() {
 		if (slotNum >= 0 && slotNum <= 999) {
 			Common::InSaveFile *in = saveFileMan->openForLoading(file->c_str());
 			if (in) {
-				if (Toltecs::ToltecsEngine::readSaveHeader(in, false, header) == Toltecs::ToltecsEngine::kRSHENoError) {
+				if (Toltecs::ToltecsEngine::readSaveHeader(in, header) == Toltecs::ToltecsEngine::kRSHENoError) {
 					_savegames.push_back(SavegameItem(slotNum, header.description));
 					//debug("%s -> %s", file->c_str(), header.description.c_str());
 				}
@@ -572,6 +604,11 @@ void MenuSystem::clickSavegameItem(ItemID id) {
 		_vm->requestLoadgame(savegameItem->_slotNum);
 		_running = false;
 	} else {
+		Common::Keymapper *keymapper = _vm->getEventManager()->getKeymapper();
+		// Now we turn off the keymapper so it does not interfere with full text input
+		keymapper->getKeymap("toltecs-default")->setEnabled(false);
+		g_system->setFeatureState(OSystem::kFeatureVirtualKeyboard, true);
+
 		_editingDescription = true;
 		_editingDescriptionItem = getItem(id);
 		_editingDescriptionID = id;

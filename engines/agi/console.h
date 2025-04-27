@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -50,6 +49,7 @@ private:
 	bool Cmd_SetObj(int argc, const char **argv);
 	bool Cmd_RunOpcode(int argc, const char **argv);
 	bool Cmd_Agiver(int argc, const char **argv);
+	bool Cmd_Version(int argc, const char **argv);
 	bool Cmd_Flags(int argc, const char **argv);
 	bool Cmd_Vars(int argc, const char **argv);
 	bool Cmd_Objs(int argc, const char **argv);
@@ -61,6 +61,14 @@ private:
 	bool Cmd_Cont(int argc, const char **argv);
 	bool Cmd_Room(int argc, const char **argv);
 	bool Cmd_BT(int argc, const char **argv);
+	bool Cmd_ShowMap(int argc, const char **argv);
+	bool Cmd_ScreenObj(int argc, const char **argv);
+	bool Cmd_VmVars(int argc, const char **argv);
+	bool Cmd_VmFlags(int argc, const char **argv);
+	bool Cmd_DisableAutomaticSave(int argc, const char **argv);
+	bool Cmd_DiskDump(int argc, const char **argv);
+
+	bool parseInteger(const char *argument, int &result);
 
 private:
 	AgiEngine *_vm;
@@ -69,7 +77,7 @@ private:
 class MickeyConsole : public GUI::Debugger {
 public:
 	MickeyConsole(MickeyEngine *mickey);
-	virtual ~MickeyConsole() {}
+	~MickeyConsole() override {}
 
 private:
 	MickeyEngine *_mickey;
@@ -82,7 +90,7 @@ private:
 class WinnieConsole : public GUI::Debugger {
 public:
 	WinnieConsole(WinnieEngine *winnie);
-	virtual ~WinnieConsole() {}
+	~WinnieConsole() override {}
 
 private:
 	WinnieEngine *_winnie;

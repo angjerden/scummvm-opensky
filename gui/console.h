@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -69,29 +68,31 @@ public:
 
 protected:
 	enum {
-		kBufferSize	= 32768,
 		kCharsPerLine = 128,
+		kBufferSize   = kCharsPerLine * 1024,
 
-		kHistorySize = 20
+		kHistorySize  = 20,
+		kDraggingTime = 10
 	};
 
 	const Graphics::Font *_font;
 
-	char	_buffer[kBufferSize];
-	int		_linesInBuffer;
+	char _buffer[kBufferSize];
+	int  _linesInBuffer;
 
-	int		_pageWidth;
-	int		_linesPerPage;
+	int _pageWidth;
+	int _linesPerPage;
 
-	int		_currentPos;
-	int		_scrollLine;
-	int		_firstLineInBuffer;
+	int _currentPos;
+	int _scrollLine;
+	int _firstLineInBuffer;
 
-	int		_promptStartPos;
-	int		_promptEndPos;
+	int _promptStartPos;
+	int _promptEndPos;
 
-	bool	_caretVisible;
-	uint32	_caretTime;
+	bool   _caretVisible;
+	uint32 _caretTime;
+	uint32 _selectionTime;
 
 	enum SlideMode {
 		kNoSlideMode,
@@ -99,8 +100,8 @@ protected:
 		kDownSlideMode
 	};
 
-	SlideMode	_slideMode;
-	uint32	_slideTime;
+	SlideMode _slideMode;
+	uint32    _slideTime;
 
 	ScrollBarWidget *_scrollBar;
 
@@ -120,27 +121,41 @@ protected:
 
 	float _widthPercent, _heightPercent;
 
-	int	_leftPadding;
-	int	_rightPadding;
-	int	_topPadding;
-	int	_bottomPadding;
+	int _leftPadding;
+	int _rightPadding;
+	int _topPadding;
+	int _bottomPadding;
 
 	void slideUpAndClose();
 
+	Common::String _prompt;
+
+	bool _isDragging;
+
+	int _selBegin;
+	int _selEnd;
+
+	int _scrollDirection;
+
 public:
 	ConsoleDialog(float widthPercent, float heightPercent);
+	virtual ~ConsoleDialog();
 
-	void open();
-	void close();
-	void drawDialog();
+	void open() override;
+	void close() override;
+	void drawDialog(DrawLayer layerToDraw) override;
 
-	void handleTickle();
-	void reflowLayout();
-	void handleMouseWheel(int x, int y, int direction);
-	void handleKeyDown(Common::KeyState state);
-	void handleCommand(CommandSender *sender, uint32 cmd, uint32 data);
+	void handleTickle() override;
+	void reflowLayout() override;
+	void handleMouseWheel(int x, int y, int direction) override;
+	void handleKeyDown(Common::KeyState state) override;
+	void handleCommand(CommandSender *sender, uint32 cmd, uint32 data) override;
+	void handleOtherEvent(const Common::Event &evt) override;
+	void handleMouseDown(int x, int y, int button, int clickCount) override;
+	void handleMouseMoved(int x, int y, int button) override;
+	void handleMouseUp(int x, int y, int button, int clickCount) override;
 
-	int printFormat(int dummy, const char *format, ...) GCC_PRINTF(3, 4);
+	int printFormat(int dummy, MSVC_PRINTF const char *format, ...) GCC_PRINTF(3, 4);
 	int vprintFormat(int dummy, const char *format, va_list argptr);
 
 	void printChar(int c);
@@ -158,6 +173,10 @@ public:
 		return _pageWidth;
 	}
 
+	void setPrompt(Common::String prompt);
+	void resetPrompt();
+	void clearBuffer();
+
 protected:
 	inline char &buffer(int idx) {
 		return _buffer[idx % kBufferSize];
@@ -167,26 +186,34 @@ protected:
 
 	int pos2line(int pos) { return (pos - (_scrollLine - _linesPerPage + 1) * kCharsPerLine) / kCharsPerLine; }
 
-	void drawLine(int line, bool restoreBg = true);
+	void drawLine(int line);
 	void drawCaret(bool erase);
 	void printCharIntern(int c);
 	void insertIntoPrompt(const char *str);
 	void print(const char *str);
 	void updateScrollBuffer();
 	void scrollToCurrent();
+	Common::String getUserInput();
 
 	void defaultKeyDownHandler(Common::KeyState &state);
 
 	// Line editing
-	void specialKeys(int keycode);
+	void specialKeys(Common::KeyCode keycode);
 	void nextLine();
 	void killChar();
 	void killLine();
 	void killLastWord();
 
 	// History
+	void loadHistory();
+	void saveHistory();
 	void addToHistory(const Common::String &str);
 	void historyScroll(int direction);
+
+	/**
+	 * Returns whether sel was modified
+	 */
+	bool clampSelection(int &sel);
 };
 
 } // End of namespace GUI

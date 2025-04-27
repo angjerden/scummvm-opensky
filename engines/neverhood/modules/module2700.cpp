@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -322,6 +321,8 @@ void Module2700::createScene(int sceneNum, int which) {
 		_vm->gameState().sceneNum = 31;
 		_childObject = new Scene2732(_vm, this);
 		break;
+	default:
+		break;
 	}
 	SetUpdateHandler(&Module2700::updateScene);
 	_childObject->handleUpdate();
@@ -498,6 +499,8 @@ void Module2700::updateScene() {
 		case 31:
 			createScene(28, 1);
 			break;
+		default:
+			break;
 		}
 	} else {
 		switch (_sceneNum) {
@@ -513,6 +516,8 @@ void Module2700::updateScene() {
 				_radioMusicInitialized = true;
 			}
 			break;
+		default:
+			break;
 		}
 	}
 }
@@ -525,6 +530,8 @@ uint32 Module2700::handleMessage(int messageNum, const MessageParam &param, Enti
 		_soundIndex++;
 		if (_soundIndex >= 4)
 			_soundIndex = 0;
+		break;
+	default:
 		break;
 	}
 	return messageResult;
@@ -564,7 +571,7 @@ Scene2701::Scene2701(NeverhoodEngine *vm, Module *parentModule, int which)
 		_asCarTrackShadow = insertSprite<AsCommonCarTrackShadow>(_asCar, _ssTrackShadowBackground->getSurface(), 4);
 		_asCarConnectorShadow = insertSprite<AsCommonCarConnectorShadow>(_asCar, _ssTrackShadowBackground->getSurface(), 4);
 	} else {
-		_ssTrackShadowBackground = NULL;
+		_ssTrackShadowBackground = nullptr;
 		_asCar = insertSprite<AsCommonCar>(this, 320, 240);
 	}
 
@@ -616,6 +623,8 @@ uint32 Scene2701::hmRidingCar(int messageNum, const MessageParam &param, Entity 
 	case 0x200D:
 		sendMessage(_parentModule, 0x200D, 0);
 		break;
+	default:
+		break;
 	}
 	return 0;
 }
@@ -633,6 +642,8 @@ uint32 Scene2701::hmCarAtHome(int messageNum, const MessageParam &param, Entity 
 		break;
 	case 0x200D:
 		sendMessage(_parentModule, 0x200D, 0);
+		break;
+	default:
 		break;
 	}
 	return 0;
@@ -752,6 +763,8 @@ uint32 Scene2702::handleMessage(int messageNum, const MessageParam &param, Entit
 	case 0x200D:
 		sendMessage(_parentModule, 0x200D, 0);
 		break;
+	default:
+		break;
 	}
 	return 0;
 }
@@ -761,7 +774,7 @@ void Scene2702::moveCarToPoint(NPoint pt) {
 	_tracks.findTrackPoint(pt, minMatchTrackIndex, minMatchDistance, _dataResource);
 	if (minMatchTrackIndex >= 0 && minMatchTrackIndex != _currTrackIndex) {
 		_newTrackIndex = minMatchTrackIndex;
-		_newTrackDestX = pt.x;
+		_newTrackDest = pt;
 		if (_isUpperTrack) {
 			if (_currTrackIndex == 0)
 				sendMessage(_asCar, 0x2003, _trackPoints->size() - 1);
@@ -773,7 +786,7 @@ void Scene2702::moveCarToPoint(NPoint pt) {
 			sendMessage(_asCar, 0x2003, _trackPoints->size() - 1);
 	} else {
 		_newTrackIndex = -1;
-		sendMessage(_asCar, 0x2004, pt.x);
+		sendMessage(_asCar, 0x2004, pt);
 	}
 }
 
@@ -790,7 +803,7 @@ void Scene2702::changeTrack() {
 		sendMessage(_asCar, NM_POSITION_CHANGE, 0);
 	else
 		sendMessage(_asCar, NM_POSITION_CHANGE, _trackPoints->size() - 1);
-	sendMessage(_asCar, 0x2004, _newTrackDestX);
+	sendMessage(_asCar, 0x2004, _newTrackDest);
 	_newTrackIndex = -1;
 }
 
@@ -819,8 +832,8 @@ Scene2703::Scene2703(NeverhoodEngine *vm, Module *parentModule, int which, uint3
 		_asCarTrackShadow = insertSprite<AsCommonCarTrackShadow>(_asCar, _ssTrackShadowBackground->getSurface(), 4);
 		_asCarConnectorShadow = insertSprite<AsCommonCarConnectorShadow>(_asCar, _ssTrackShadowBackground->getSurface(), 4);
 	} else {
-		_ssTrackShadowBackground = NULL;
-		_asCarShadow = NULL;
+		_ssTrackShadowBackground = nullptr;
+		_asCarShadow = nullptr;
 		_asCar = insertSprite<AsCommonCar>(this, 320, 240);
 	}
 
@@ -903,6 +916,8 @@ uint32 Scene2703::handleMessage(int messageNum, const MessageParam &param, Entit
 	case 0x200D:
 		sendMessage(_parentModule, 0x200D, 0);
 		break;
+	default:
+		break;
 	}
 	return 0;
 }
@@ -938,8 +953,8 @@ Scene2704::Scene2704(NeverhoodEngine *vm, Module *parentModule, int which, uint3
 		_asCarTrackShadow = insertSprite<AsCommonCarTrackShadow>(_asCar, _ssTrackShadowBackground->getSurface(), 4);
 		_asCarConnectorShadow = insertSprite<AsCommonCarConnectorShadow>(_asCar, _ssTrackShadowBackground->getSurface(), 4);
 	} else {
-		_ssTrackShadowBackground = NULL;
-		_asCarShadow = NULL;
+		_ssTrackShadowBackground = nullptr;
+		_asCarShadow = nullptr;
 		_asCar = insertSprite<AsCommonCar>(this, 320, 240);
 	}
 
@@ -1001,6 +1016,8 @@ uint32 Scene2704::handleMessage(int messageNum, const MessageParam &param, Entit
 		break;
 	case 0x200D:
 		sendMessage(_parentModule, 0x200D, 0);
+		break;
+	default:
 		break;
 	}
 	return 0;
@@ -1083,6 +1100,8 @@ uint32 Scene2706::handleMessage(int messageNum, const MessageParam &param, Entit
 	case 0x200D:
 		sendMessage(_parentModule, 0x200D, 0);
 		break;
+	default:
+		break;
 	}
 	return 0;
 }
@@ -1092,14 +1111,14 @@ void Scene2706::moveCarToPoint(NPoint pt) {
 	_tracks.findTrackPoint(pt, minMatchTrackIndex, minMatchDistance, _dataResource);
 	if (minMatchTrackIndex >= 0 && minMatchTrackIndex != _currTrackIndex) {
 		_newTrackIndex = minMatchTrackIndex;
-		_newTrackDestX = pt.x;
+		_newTrackDest = pt;
 		if (_currTrackIndex == 0)
 			sendMessage(_asCar, 0x2003, _trackPoints->size() - 1);
 		else
 			sendMessage(_asCar, 0x2003, 0);
 	} else {
 		_newTrackIndex = -1;
-		sendMessage(_asCar, 0x2004, pt.x);
+		sendMessage(_asCar, 0x2004, pt);
 	}
 }
 
@@ -1111,7 +1130,7 @@ void Scene2706::changeTrack() {
 		sendMessage(_asCar, NM_POSITION_CHANGE, _trackPoints->size() - 1);
 	else
 		sendMessage(_asCar, NM_POSITION_CHANGE, 0);
-	sendMessage(_asCar, 0x2004, _newTrackDestX);
+	sendMessage(_asCar, 0x2004, _newTrackDest);
 	_newTrackIndex = -1;
 }
 

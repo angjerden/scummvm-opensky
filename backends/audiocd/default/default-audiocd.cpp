@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,14 +15,17 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "backends/audiocd/default/default-audiocd.h"
 #include "audio/audiostream.h"
+#include "common/config-manager.h"
+#include "common/file.h"
 #include "common/system.h"
+#include "common/util.h"
+#include "common/formats/cue.h"
 
 DefaultAudioCDManager::DefaultAudioCDManager() {
 	_cd.playing = false;
@@ -37,7 +40,65 @@ DefaultAudioCDManager::DefaultAudioCDManager() {
 	assert(_mixer);
 }
 
-void DefaultAudioCDManager::play(int track, int numLoops, int startFrame, int duration, bool only_emulate) {
+DefaultAudioCDManager::~DefaultAudioCDManager() {
+	// Subclasses should call close as well
+	close();
+}
+
+bool DefaultAudioCDManager::open() {
+	// For emulation, opening is always valid
+	close();
+	return true;
+}
+
+void DefaultAudioCDManager::close() {
+	// Only need to stop for emulation
+	stop();
+}
+
+void DefaultAudioCDManager::fillPotentialTrackNames(Common::Array<Common::String> &trackNames, int track) const {
+	trackNames.reserve(4);
+	trackNames.push_back(Common::String::format("track%d", track));
+	trackNames.push_back(Common::String::format("track%02d", track));
+	trackNames.push_back(Common::String::format("track_%d", track));
+	trackNames.push_back(Common::String::format("track_%02d", track));
+}
+
+bool DefaultAudioCDManager::existExtractedCDAudioFiles(uint track) {
+	// keep this in sync with STREAM_FILEFORMATS
+	const char *extensions[] = {
+#ifdef USE_VORBIS
+		"ogg",
+#endif
+#ifdef USE_FLAC
+		"fla", "flac",
+#endif
+#ifdef USE_MAD
+		"mp3",
+#endif
+		"m4a",
+		"wav",
+		nullptr
+	};
+
+	Common::Array<Common::String> trackNames;
+	fillPotentialTrackNames(trackNames, track);
+
+	for (auto &trackName : trackNames) {
+		for (const char **ext = extensions; *ext; ++ext) {
+			const Common::String &filename = Common::String::format("%s.%s", trackName.c_str(), *ext);
+			if (Common::File::exists(Common::Path(filename, '/'))) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+bool DefaultAudioCDManager::play(int track, int numLoops, int startFrame, int duration, bool onlyEmulate,
+		Audio::Mixer::SoundType soundType) {
+	stop();
+
 	if (numLoops != 0 || startFrame != 0) {
 		_cd.track = track;
 		_cd.numLoops = numLoops;
@@ -47,18 +108,17 @@ void DefaultAudioCDManager::play(int track, int numLoops, int startFrame, int du
 		// Try to load the track from a compressed data file, and if found, use
 		// that. If not found, attempt to start regular Audio CD playback of
 		// the requested track.
-		char trackName[2][16];
-		sprintf(trackName[0], "track%d", track);
-		sprintf(trackName[1], "track%02d", track);
-		Audio::SeekableAudioStream *stream = 0;
+		Common::Array<Common::String> trackNames;
+		fillPotentialTrackNames(trackNames, track);
+		Audio::SeekableAudioStream *stream = nullptr;
 
-		for (int i = 0; !stream && i < 2; ++i)
-			stream = Audio::SeekableAudioStream::openStreamFile(trackName[i]);
+		for (auto &trackName : trackNames) {
+			stream = Audio::SeekableAudioStream::openStreamFile(Common::Path(trackName, '/'));
+			if (stream)
+				break;
+		}
 
-		// Stop any currently playing emulated track
-		_mixer->stopHandle(_handle);
-
-		if (stream != 0) {
+		if (stream != nullptr) {
 			Audio::Timestamp start = Audio::Timestamp(0, startFrame, 75);
 			Audio::Timestamp end = duration ? Audio::Timestamp(0, startFrame + duration, 75) : stream->getLength();
 
@@ -68,14 +128,35 @@ void DefaultAudioCDManager::play(int track, int numLoops, int startFrame, int du
 			repetitions. Finally, -1 means infinitely many
 			*/
 			_emulating = true;
-			_mixer->playStream(Audio::Mixer::kMusicSoundType, &_handle,
+			_mixer->playStream(soundType, &_handle,
 			                        Audio::makeLoopingAudioStream(stream, start, end, (numLoops < 1) ? numLoops + 1 : numLoops), -1, _cd.volume, _cd.balance);
-		} else {
-			_emulating = false;
-			if (!only_emulate)
-				playCD(track, numLoops, startFrame, duration);
+			return true;
 		}
 	}
+
+	return false;
+}
+
+bool DefaultAudioCDManager::playAbsolute(int startFrame, int numLoops, int duration, bool onlyEmulate,
+		Audio::Mixer::SoundType soundType, const char *cuesheet) {
+
+	Common::File cuefile;
+	if (!cuefile.open(cuesheet)) {
+		return false;
+	}
+	Common::String cuestring = cuefile.readString(0, cuefile.size());
+	Common::CueSheet cue(cuestring.c_str());
+
+	Common::CueSheet::CueTrack *track = cue.getTrackAtFrame(startFrame);
+	if (track == nullptr) {
+		warning("Unable to locate track for frame %i", startFrame);
+		return false;
+	} else {
+		warning("Playing from frame %i", startFrame);
+	}
+	int firstFrame = track->indices[0] == -1 ? track->indices[1] : track->indices[0];
+
+	return play(track->number, numLoops, startFrame - firstFrame, duration, onlyEmulate);
 }
 
 void DefaultAudioCDManager::stop() {
@@ -83,52 +164,32 @@ void DefaultAudioCDManager::stop() {
 		// Audio CD emulation
 		_mixer->stopHandle(_handle);
 		_emulating = false;
-	} else {
-		// Real Audio CD
-		stopCD();
 	}
 }
 
 bool DefaultAudioCDManager::isPlaying() const {
-	if (_emulating) {
-		// Audio CD emulation
+	// Audio CD emulation
+	if (_emulating)
 		return _mixer->isSoundHandleActive(_handle);
-	} else {
-		// Real Audio CD
-		return pollCD();
-	}
+
+	// The default class only handles emulation
+	return false;
 }
 
 void DefaultAudioCDManager::setVolume(byte volume) {
 	_cd.volume = volume;
-	if (_emulating) {
-		// Audio CD emulation
-		if (_mixer->isSoundHandleActive(_handle))
-			_mixer->setChannelVolume(_handle, _cd.volume);
-	} else {
-		// Real Audio CD
 
-		// Unfortunately I can't implement this atm
-		// since SDL doesn't seem to offer an interface method for this.
-
-		// g_system->setVolumeCD(_cd.volume);
-	}
+	// Audio CD emulation
+	if (_emulating && isPlaying())
+		_mixer->setChannelVolume(_handle, _cd.volume);
 }
 
 void DefaultAudioCDManager::setBalance(int8 balance) {
 	_cd.balance = balance;
-	if (_emulating) {
-		// Audio CD emulation
-		if (isPlaying())
-			_mixer->setChannelBalance(_handle, _cd.balance);
-	} else {
-		// Real Audio CD
 
-		// Unfortunately I can't implement this atm
-		// since SDL doesn't seem to offer an interface method for this.
-
-		// g_system->setBalanceCD(_cd.balance);
-	}
+	// Audio CD emulation
+	if (_emulating && isPlaying())
+		_mixer->setChannelBalance(_handle, _cd.balance);
 }
 
 void DefaultAudioCDManager::update() {
@@ -142,8 +203,6 @@ void DefaultAudioCDManager::update() {
 			// or not.
 			_emulating = false;
 		}
-	} else {
-		updateCD();
 	}
 }
 
@@ -152,3 +211,21 @@ DefaultAudioCDManager::Status DefaultAudioCDManager::getStatus() const {
 	info.playing = isPlaying();
 	return info;
 }
+
+bool DefaultAudioCDManager::openRealCD() {
+	Common::String cdrom = ConfMan.get("cdrom");
+
+	// Try to parse it as an int
+	char *endPos;
+	int drive = strtol(cdrom.c_str(), &endPos, 0);
+
+	// If not an integer, treat as a drive path
+	if (endPos == cdrom.c_str())
+		return openCD(Common::Path::fromConfig(cdrom));
+
+	if (drive < 0)
+		return false;
+
+	return openCD(drive);
+}
+

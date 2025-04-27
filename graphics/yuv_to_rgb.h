@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,17 +15,15 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 /**
- * @file
- * YUV to RGB conversion.
+ * @defgroup graphics_yuvtorgb YUV to RGB conversion
+ * @ingroup graphics
  *
- * Used in graphics:
- * - JPEGDecoder
+ * @brief Methods for converting YUV images into RGB surfaces.
  *
  * Used in video:
  * - BinkDecoder
@@ -33,6 +31,7 @@
  * - PSXStreamDecoder
  * - TheoraDecoder
  * - SVQ1Decoder
+ * @{
  */
 
 #ifndef GRAPHICS_YUV_TO_RGB_H
@@ -70,6 +69,21 @@ public:
 	void convert444(Graphics::Surface *dst, LuminanceScale scale, const byte *ySrc, const byte *uSrc, const byte *vSrc, int yWidth, int yHeight, int yPitch, int uvPitch);
 
 	/**
+	 * Convert a YUV422 image to an RGB surface
+	 *
+	 * @param dst     the destination surface
+	 * @param scale   the scale of the luminance values
+	 * @param ySrc    the source of the y component
+	 * @param uSrc    the source of the u component
+	 * @param vSrc    the source of the v component
+	 * @param yWidth  the width of the y surface (must be divisible by 2)
+	 * @param yHeight the height of the y surface
+	 * @param yPitch  the pitch of the y surface
+	 * @param uvPitch the pitch of the u and v surfaces
+	 */
+	void convert422(Graphics::Surface *dst, LuminanceScale scale, const byte *ySrc, const byte *uSrc, const byte *vSrc, int yWidth, int yHeight, int yPitch, int uvPitch);
+
+	/**
 	 * Convert a YUV420 image to an RGB surface
 	 *
 	 * @param dst     the destination surface
@@ -83,6 +97,22 @@ public:
 	 * @param uvPitch the pitch of the u and v surfaces
 	 */
 	void convert420(Graphics::Surface *dst, LuminanceScale scale, const byte *ySrc, const byte *uSrc, const byte *vSrc, int yWidth, int yHeight, int yPitch, int uvPitch);
+
+	/**
+	 * Convert a YUV420 image with Alpha component to an ARGB surface
+	 *
+	 * @param dst     the destination surface
+	 * @param scale   the scale of the luminance values
+	 * @param ySrc    the source of the y component
+	 * @param uSrc    the source of the u component
+	 * @param vSrc    the source of the v component
+	 * @param aSrc    the source of the a component
+	 * @param yWidth  the width of the y surface (must be divisible by 2)
+	 * @param yHeight the height of the y surface (must be divisible by 2)
+	 * @param yPitch  the pitch of the y surface
+	 * @param uvPitch the pitch of the u and v surfaces
+	 */
+	void convert420Alpha(Graphics::Surface *dst, LuminanceScale scale, const byte *ySrc, const byte *uSrc, const byte *vSrc, const byte *aSrc, int yWidth, int yHeight, int yPitch, int uvPitch);
 
 	/**
 	 * Convert a YUV410 image to an RGB surface
@@ -113,9 +143,8 @@ private:
 	const YUVToRGBLookup *getLookup(Graphics::PixelFormat format, LuminanceScale scale);
 
 	YUVToRGBLookup *_lookup;
-	int16 _colorTab[4 * 256]; // 2048 bytes
 };
-
+ /** @} */
 } // End of namespace Graphics
 
 #define YUVToRGBMan (::Graphics::YUVToRGBManager::instance())

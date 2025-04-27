@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -351,7 +350,7 @@ SceneExt::SceneExt(): Scene() {
 	_preventSaving = false;
 
 	// Reset screen clipping area
-	R2_GLOBALS._screenSurface._clipRect = Rect();
+	R2_GLOBALS._screen._clipRect = Rect();
 
 	// WORKAROUND: In the original, playing animations don't reset the global _animationCtr
 	// counter as scene changes unless the playing animation explicitly finishes. For now,
@@ -387,9 +386,13 @@ void SceneExt::postInit(SceneObjectList *OwnerList) {
 	int prevScene = R2_GLOBALS._sceneManager._previousScene;
 	int sceneNumber = R2_GLOBALS._sceneManager._sceneNumber;
 	if (g_vm->getFeatures() & GF_DEMO) {
-		if (((prevScene == -1) && (sceneNumber != 180) && (sceneNumber != 205) && (sceneNumber != 50))
+		if (prevScene == 0 && sceneNumber == 180) {
+			// Very start of the demo, title & intro about to be shown
+			R2_GLOBALS._uiElements._active = false;
+			R2_GLOBALS._uiElements.hide();
+		} else if (((prevScene == -1) && (sceneNumber != 180) && (sceneNumber != 205) && (sceneNumber != 50))
 			|| (prevScene == 0) || (sceneNumber == 600)
-			|| ((prevScene == 205 || prevScene == 180) && (sceneNumber == 100))) {
+			|| ((prevScene == 205 || prevScene == 180 || prevScene == 50) && (sceneNumber == 100))) {
 				R2_GLOBALS._uiElements._active = true;
 				R2_GLOBALS._uiElements.show();
 		} else {
@@ -513,7 +516,7 @@ void SceneExt::endStrip() {
 }
 
 void SceneExt::clearScreen() {
-	R2_GLOBALS._screenSurface.fillRect(R2_GLOBALS._screenSurface.getBounds(), 0);
+	R2_GLOBALS._screen.fillRect(R2_GLOBALS._screen.getBounds(), 0);
 }
 
 void SceneExt::refreshBackground(int xAmount, int yAmount) {
@@ -543,15 +546,12 @@ void SceneExt::refreshBackground(int xAmount, int yAmount) {
 	int screenSize = g_vm->_memoryManager.getSize(dataP);
 
 	// Lock the background for update
-	Graphics::Surface s = _backSurface.lockSurface();
-	assert(screenSize == (s.w * s.h));
+	assert(screenSize == (_backSurface.w * _backSurface.h));
+	Graphics::Surface s = _backSurface.getSubArea(Common::Rect(0, 0, _backSurface.w, _backSurface.h));
 
-	// Copy the data
+	// Copy the data into the surface
 	byte *destP = (byte *)s.getPixels();
 	Common::copy(dataP, dataP + (s.w * s.h), destP);
-	_backSurface.unlockSurface();
-
-	R2_GLOBALS._screenSurface.addDirtyRect(_backSurface.getBounds());
 
 	// Free the resource data
 	DEALLOCATE(dataP);
@@ -601,7 +601,7 @@ void SceneExt::loadBlankScene() {
 	_backSurface.create(SCREEN_WIDTH, SCREEN_HEIGHT * 3 / 2);
 	_backSurface.fillRect(_backSurface.getBounds(), 0);
 
-	R2_GLOBALS._screenSurface.fillRect(R2_GLOBALS._screenSurface.getBounds(), 0);
+	R2_GLOBALS._screen.fillRect(R2_GLOBALS._screen.getBounds(), 0);
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1129,7 +1129,7 @@ void Ringworld2Game::start() {
 
 	if (ConfMan.hasKey("save_slot")) {
 		slot = ConfMan.getInt("save_slot");
-		Common::String file = g_vm->generateSaveName(slot);
+		Common::String file = g_vm->getSaveStateName(slot);
 		Common::InSaveFile *in = g_vm->_system->getSavefileManager()->openForLoading(file);
 		if (in)
 			delete in;
@@ -1199,42 +1199,50 @@ void Ringworld2Game::endGame(int resNum, int lineNum) {
 }
 
 void Ringworld2Game::processEvent(Event &event) {
-	if (event.eventType == EVENT_KEYPRESS) {
-		switch (event.kbd.keycode) {
-		case Common::KEYCODE_F1:
+	if (event.eventType == EVENT_CUSTOM_ACTIONSTART) {
+		switch (event.customType) {
+		case kActionHelp:
 			// F1 - Help
 			HelpDialog::show();
 			break;
 
-		case Common::KEYCODE_F2:
+		case kActionSoundOptions:
 			// F2 - Sound Options
 			SoundDialog::execute();
 			break;
 
-		case Common::KEYCODE_F3:
+		case kActionQuitGame:
 			// F3 - Quit
 			quitGame();
 			event.handled = false;
 			break;
 
-		case Common::KEYCODE_F4:
+		case kActionRestartGame:
 			// F4 - Restart
 			restartGame();
 			R2_GLOBALS._events.setCursorFromFlag();
 			break;
 
-		case Common::KEYCODE_F7:
+		case kActionSaveGame:
+			// F5 - Save
+			saveGame();
+			R2_GLOBALS._events.setCursorFromFlag();
+			event.handled = true;
+			break;
+
+		case kActionRestoreGame:
 			// F7 - Restore
 			restoreGame();
 			R2_GLOBALS._events.setCursorFromFlag();
 			break;
 
-		case Common::KEYCODE_F8:
+		case kActionCredits:
 			// F8 - Credits
-			R2_GLOBALS._sceneManager.changeScene(205);
+			if (R2_GLOBALS._sceneManager._sceneNumber != 205)
+				R2_GLOBALS._sceneManager.changeScene(205);
 			break;
 
-		case Common::KEYCODE_F10:
+		case kActionPauseGame:
 			// F10 - Pause
 			GfxDialog::setPalette();
 			MessageDialog::show(GAME_PAUSED_MSG, OK_BTN_STRING);
@@ -1832,7 +1840,7 @@ void AnimationPlayer::remove() {
 }
 
 void AnimationPlayer::process(Event &event) {
-	if ((event.eventType == EVENT_KEYPRESS) && (event.kbd.keycode == Common::KEYCODE_ESCAPE) && _canSkip) {
+	if ((event.eventType == EVENT_CUSTOM_ACTIONSTART) && (event.customType == kActionEscape) && _canSkip) {
 		// Move the current position to the end
 		_position = _subData._duration;
 	}
@@ -1966,21 +1974,20 @@ void AnimationPlayer::drawFrame(int sliceIndex) {
 	byte *sliceData1 = sliceDataStart;
 
 	Rect playerBounds = _screenBounds;
-	int y = _screenBounds.top;
-	R2_GLOBALS._screenSurface.addDirtyRect(playerBounds);
 
-	Graphics::Surface surface = R2_GLOBALS._screenSurface.lockSurface();
+	Graphics::Surface dest = R2_GLOBALS._screen.getSubArea(playerBounds);
+	int y = 0;
 
 	// Handle different drawing modes
 	switch (slice._drawMode) {
 	case 0:
 		// Draw from uncompressed source
 		for (int sliceNum = 0; sliceNum < _subData._ySlices; ++sliceNum) {
-			for (int yIndex = 0; yIndex < _sliceHeight; ++yIndex) {
+			for (int yIndex = 0; yIndex < _sliceHeight; ++yIndex, ++y) {
 				// TODO: Check of _subData._drawType was done for two different kinds of
 				// line slice drawing in original
 				const byte *pSrc = (const byte *)sliceDataStart + READ_LE_UINT16(sliceData1 + sliceNum * 2);
-				byte *pDest = (byte *)surface.getBasePtr(playerBounds.left, y++);
+				byte *pDest = (byte *)dest.getBasePtr(0, y);
 
 				Common::copy(pSrc, pSrc + _subData._sliceSize, pDest);
 			}
@@ -1992,12 +1999,12 @@ void AnimationPlayer::drawFrame(int sliceIndex) {
 		case 0xfe:
 			// Draw from uncompressed source with optional skipped rows
 			for (int sliceNum = 0; sliceNum < _subData._ySlices; ++sliceNum) {
-				for (int yIndex = 0; yIndex < _sliceHeight; ++yIndex, playerBounds.top++) {
+				for (int yIndex = 0; yIndex < _sliceHeight; ++yIndex, ++y) {
 					int offset = READ_LE_UINT16(sliceData1 + sliceNum * 2);
 
 					if (offset) {
 						const byte *pSrc = (const byte *)sliceDataStart + offset;
-						byte *pDest = (byte *)surface.getBasePtr(playerBounds.left, playerBounds.top);
+						byte *pDest = (byte *)dest.getBasePtr(0, y);
 
 						//Common::copy(pSrc, pSrc + playerBounds.width(), pDest);
 						rleDecode(pSrc, pDest, playerBounds.width());
@@ -2008,11 +2015,11 @@ void AnimationPlayer::drawFrame(int sliceIndex) {
 		case 0xff:
 			// Draw from RLE compressed source
 			for (int sliceNum = 0; sliceNum < _subData._ySlices; ++sliceNum) {
-				for (int yIndex = 0; yIndex < _sliceHeight; ++yIndex, playerBounds.top++) {
+				for (int yIndex = 0; yIndex < _sliceHeight; ++yIndex, ++y) {
 					// TODO: Check of _subData._drawType was done for two different kinds of
 					// line slice drawing in original
 					const byte *pSrc = (const byte *)sliceDataStart + READ_LE_UINT16(sliceData1 + sliceNum * 2);
-					byte *pDest = (byte *)surface.getBasePtr(playerBounds.left, playerBounds.top);
+					byte *pDest = (byte *)dest.getBasePtr(0, y);
 
 					rleDecode(pSrc, pDest, _subData._sliceSize);
 				}
@@ -2024,10 +2031,10 @@ void AnimationPlayer::drawFrame(int sliceIndex) {
 			byte *sliceData2 = &slices._pixelData[slice2._sliceOffset - 96];
 
 			for (int sliceNum = 0; sliceNum < _subData._ySlices; ++sliceNum) {
-				for (int yIndex = 0; yIndex < _sliceHeight; ++yIndex) {
+				for (int yIndex = 0; yIndex < _sliceHeight; ++yIndex, ++y) {
 					const byte *pSrc1 = (const byte *)sliceDataStart + READ_LE_UINT16(sliceData2 + sliceNum * 2);
 					const byte *pSrc2 = (const byte *)sliceDataStart + READ_LE_UINT16(sliceData1 + sliceNum * 2);
-					byte *pDest = (byte *)surface.getBasePtr(playerBounds.left, y++);
+					byte *pDest = (byte *)dest.getBasePtr(0, y);
 
 					if (slice2._drawMode == 0) {
 						// Uncompressed background, foreground compressed
@@ -2047,17 +2054,14 @@ void AnimationPlayer::drawFrame(int sliceIndex) {
 		break;
 	}
 
-	// Unlock the screen surface
-	R2_GLOBALS._screenSurface.unlockSurface();
-
 	if (_objectMode == ANIMOBJMODE_42) {
 		_screenBounds.expandPanes();
 
 		// Copy the drawn frame to the back surface
-		Rect srcRect = R2_GLOBALS._screenSurface.getBounds();
+		Rect srcRect = R2_GLOBALS._screen.getBounds();
 		Rect destRect = srcRect;
 		destRect.translate(-g_globals->_sceneOffset.x, -g_globals->_sceneOffset.y);
-		R2_GLOBALS._sceneManager._scene->_backSurface.copyFrom(R2_GLOBALS._screenSurface,
+		R2_GLOBALS._sceneManager._scene->_backSurface.copyFrom(R2_GLOBALS._screen,
 			srcRect, destRect);
 
 		// Draw any objects into the scene

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -70,8 +69,8 @@ namespace Parallaction {
 
 class MidiParser_MSC : public MidiParser {
 protected:
-	virtual void parseNextEvent(EventInfo &info);
-	virtual bool loadMusic(byte *data, uint32 size);
+	void parseNextEvent(EventInfo &info) override;
+	bool loadMusic(byte *data, uint32 size) override;
 
 	uint8  read1(byte *&data) {
 		return *data++;
@@ -86,28 +85,33 @@ protected:
 	byte *_trackEnd;
 
 public:
-	MidiParser_MSC() : byte_11C5A(false) {
+	MidiParser_MSC() : byte_11C5A(false), _beats(0), _lastEvent(0), _trackEnd(nullptr) {
 	}
 };
 
 void MidiParser_MSC::parseMetaEvent(EventInfo &info) {
-	uint8 type = read1(_position._playPos);
-	uint8 len = read1(_position._playPos);
+	byte *playPos = _position._subtracks[0]._playPos;
+
+	uint8 type = read1(playPos);
+	uint8 len = read1(playPos);
 	info.ext.type = type;
 	info.length = len;
-	info.ext.data = 0;
+	info.ext.data = nullptr;
 
 	if (type == 0x51) {
-		info.ext.data = _position._playPos;
+		info.ext.data = playPos;
 	} else {
 		warning("unknown meta event 0x%02X", type);
 		info.ext.type = 0;
 	}
 
-	_position._playPos += len;
+	playPos += len;
+
+	_position._subtracks[0]._playPos = playPos;
 }
 
 void MidiParser_MSC::parseMidiEvent(EventInfo &info) {
+	byte *playPos = _position._subtracks[0]._playPos;
 	uint8 type = info.command();
 
 	switch (type) {
@@ -116,13 +120,13 @@ void MidiParser_MSC::parseMidiEvent(EventInfo &info) {
 	case 0xA:
 	case 0xB:
 	case 0xE:
-		info.basic.param1 = read1(_position._playPos);
-		info.basic.param2 = read1(_position._playPos);
+		info.basic.param1 = read1(playPos);
+		info.basic.param2 = read1(playPos);
 		break;
 
 	case 0xC:
 	case 0xD:
-		info.basic.param1 = read1(_position._playPos);
+		info.basic.param1 = read1(playPos);
 		info.basic.param2 = 0;
 		break;
 
@@ -131,13 +135,15 @@ void MidiParser_MSC::parseMidiEvent(EventInfo &info) {
 	}
 
 	//if ((type == 0xB) && (info.basic.param1 == 64)) info.basic.param2 = 127;
-
+	_position._subtracks[0]._playPos = playPos;
 }
 
 void MidiParser_MSC::parseNextEvent(EventInfo &info) {
-	info.start = _position._playPos;
+	byte *playPos = _position._subtracks[0]._playPos;
 
-	if (_position._playPos >= _trackEnd) {
+	info.start = playPos;
+
+	if (playPos >= _trackEnd) {
 		// fake an end-of-track meta event
 		info.delta = 0;
 		info.event = 0xFF;
@@ -147,22 +153,23 @@ void MidiParser_MSC::parseNextEvent(EventInfo &info) {
 	}
 
 	info.length = 0;
-	info.delta = readVLQ(_position._playPos);
-	info.event = read1(_position._playPos);
+	info.delta = readVLQ(playPos);
+	info.event = read1(playPos);
 
 	if (info.event == 0xFF) {
+		_position._subtracks[0]._playPos = playPos;
 		parseMetaEvent(info);
 		return;
 	}
 
 	if (info.event < 0x80) {
-		_position._playPos--;
+		playPos--;
 		info.event = _lastEvent;
 	}
 
+	_position._subtracks[0]._playPos = playPos;
 	parseMidiEvent(info);
 	_lastEvent = info.event;
-
 }
 
 bool MidiParser_MSC::loadMusic(byte *data, uint32 size) {
@@ -187,7 +194,8 @@ bool MidiParser_MSC::loadMusic(byte *data, uint32 size) {
 	_trackEnd = data + size;
 
 	_numTracks = 1;
-	_tracks[0] = pos;
+	_numSubtracks[0] = 1;
+	_tracks[0][0] = pos;
 
 	setTempo(500000);
 	setTrack(0);
@@ -207,12 +215,12 @@ public:
 
 	void play(Common::SeekableReadStream *stream);
 	virtual void pause(bool p);
-	virtual void pause() { assert(0); } // overridden
-	virtual void setVolume(int volume);
-	virtual void onTimer();
+	void pause() override { assert(0); } // overridden
+	void setVolume(int volume) override;
+	void onTimer() override;
 
 	// MidiDriver_BASE interface
-	virtual void send(uint32 b);
+	void send(uint32 b) override;
 
 
 private:
@@ -302,6 +310,8 @@ void MidiPlayer_MSC::send(uint32 b) {
 	case 0x07B0: // volume change
 		_channelsVolume[ch] = param2;
 		break;
+	default:
+		break;
 	}
 
 	sendToChannel(ch, b);
@@ -372,7 +382,7 @@ void DosSoundMan_br::pause(bool p) {
 }
 
 AmigaSoundMan_br::AmigaSoundMan_br(Parallaction_br *vm) : SoundMan_br(vm)  {
-	_musicStream = 0;
+	_musicStream = nullptr;
 }
 
 AmigaSoundMan_br::~AmigaSoundMan_br() {
@@ -381,7 +391,7 @@ AmigaSoundMan_br::~AmigaSoundMan_br() {
 
 Audio::AudioStream *AmigaSoundMan_br::loadChannelData(const char *filename, Channel *ch, bool looping) {
 	Common::SeekableReadStream *stream = _vm->_disk->loadSound(filename);
-	Audio::AudioStream *input = 0;
+	Audio::AudioStream *input = nullptr;
 
 	if (_vm->getFeatures() & GF_DEMO) {
 		uint32 dataSize = stream->size();
@@ -454,7 +464,7 @@ void AmigaSoundMan_br::stopMusic() {
 	if (_mixer->isSoundHandleActive(_musicHandle)) {
 		_mixer->stopHandle(_musicHandle);
 		delete _musicStream;
-		_musicStream = 0;
+		_musicStream = nullptr;
 	}
 }
 
@@ -467,6 +477,11 @@ SoundMan_br::SoundMan_br(Parallaction_br *vm) : _vm(vm) {
 
 	_musicEnabled = true;
 	_sfxEnabled = true;
+
+	_sfxLooping = false;
+	_sfxVolume = 0;
+	_sfxRate = 0;
+	_sfxChannel = 0;
 }
 
 SoundMan_br::~SoundMan_br() {
@@ -493,11 +508,11 @@ void SoundMan_br::stopSfx(uint channel) {
 
 	debugC(1, kDebugAudio, "SoundMan_br::stopSfx(%i)", channel);
 	_mixer->stopHandle(_channels[channel].handle);
-	_channels[channel].stream = 0;
+	_channels[channel].stream = nullptr;
 }
 
 void SoundMan_br::execute(int command, const char *parm) {
-	uint32 n = parm ? strtoul(parm, 0, 10) : 0;
+	uint32 n = parm ? strtoul(parm, nullptr, 10) : 0;
 	bool b = (n == 1) ? true : false;
 
 	switch (command) {
@@ -534,6 +549,9 @@ void SoundMan_br::execute(int command, const char *parm) {
 
 	case SC_PAUSE:
 		pause(b);
+		break;
+
+	default:
 		break;
 	}
 }

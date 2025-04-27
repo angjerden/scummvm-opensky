@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -32,6 +31,8 @@
 
 #include "common/file.h"
 #include "common/system.h"
+
+#include "graphics/paletteman.h"
 
 namespace Mortevielle {
 
@@ -77,8 +78,8 @@ bool SavegameManager::loadSavegame(const Common::String &filename) {
 	Common::SeekableReadStream *stream = g_system->getSavefileManager()->openForLoading(filename);
 
 	Common::File f;
-	if (stream == NULL) {
-		if (!f.open(filename)) {
+	if (stream == nullptr) {
+		if (!f.open(Common::Path(filename))) {
 			warning("Unable to open save file '%s'", filename.c_str());
 			return false;
 		}
@@ -92,14 +93,16 @@ bool SavegameManager::loadSavegame(const Common::String &filename) {
 	if (!strncmp(&buffer[0], &SAVEGAME_ID[0], 4)) {
 		// Yes, it is, so skip over the savegame header
 		SavegameHeader header;
-		readSavegameHeader(stream, header);
-		delete header.thumbnail;
+		if (!readSavegameHeader(stream, header)) {
+			delete stream;
+			return false;
+		}
 	} else {
 		stream->seek(0);
 	}
 
 	// Read the game contents
-	Common::Serializer sz(stream, NULL);
+	Common::Serializer sz(stream, nullptr);
 	sync_save(sz);
 
 	g_vm->_coreVar = g_vm->_saveStruct;
@@ -145,7 +148,7 @@ Common::Error SavegameManager::saveGame(int n, const Common::String &saveName) {
 	if (g_vm->_saveStruct._currPlace == ROOM26)
 		g_vm->_saveStruct._currPlace = LANDING;
 
-	Common::String filename = _vm->generateSaveFilename(n);
+	Common::String filename = _vm->getSaveStateName(n);
 	f = g_system->getSavefileManager()->openForSaving(filename);
 
 	// Write out the savegame header
@@ -156,7 +159,7 @@ Common::Error SavegameManager::saveGame(int n, const Common::String &saveName) {
 	writeSavegameHeader(f, saveName);
 
 	// Write out the savegame contents
-	Common::Serializer sz(NULL, f);
+	Common::Serializer sz(nullptr, f);
 	sync_save(sz);
 
 	// Close the save file
@@ -170,11 +173,11 @@ Common::Error SavegameManager::saveGame(int n, const Common::String &saveName) {
 }
 
 Common::Error SavegameManager::loadGame(int slot) {
-	return loadGame(_vm->generateSaveFilename(slot));
+	return loadGame(_vm->getSaveStateName(slot));
 }
 
 Common::Error SavegameManager::saveGame(int slot) {
-	return saveGame(slot, _vm->generateSaveFilename(slot));
+	return saveGame(slot, _vm->getSaveStateName(slot));
 }
 
 void SavegameManager::writeSavegameHeader(Common::OutSaveFile *out, const Common::String &saveName) {
@@ -208,9 +211,7 @@ void SavegameManager::writeSavegameHeader(Common::OutSaveFile *out, const Common
 	out->writeSint16LE(td.tm_min);
 }
 
-bool SavegameManager::readSavegameHeader(Common::InSaveFile *in, SavegameHeader &header) {
-	header.thumbnail = NULL;
-
+WARN_UNUSED_RESULT bool SavegameManager::readSavegameHeader(Common::InSaveFile *in, SavegameHeader &header, bool skipThumbnail) {
 	// Get the savegame version
 	header.version = in->readByte();
 
@@ -221,9 +222,9 @@ bool SavegameManager::readSavegameHeader(Common::InSaveFile *in, SavegameHeader 
 		header.saveName += ch;
 
 	// Get the thumbnail
-	header.thumbnail = Graphics::loadThumbnail(*in);
-	if (!header.thumbnail)
+	if (!Graphics::loadThumbnail(*in, header.thumbnail, skipThumbnail)) {
 		return false;
+	}
 
 	// Read in save date/time
 	header.saveYear = in->readSint16LE();
@@ -235,12 +236,11 @@ bool SavegameManager::readSavegameHeader(Common::InSaveFile *in, SavegameHeader 
 	return true;
 }
 
-SaveStateList SavegameManager::listSaves(const Common::String &target) {
+SaveStateList SavegameManager::listSaves(const MetaEngine *metaEngine, const Common::String &target) {
 	Common::String pattern = target;
-	pattern += ".???";
+	pattern += ".###";
 
 	Common::StringArray files = g_system->getSavefileManager()->listSavefiles(pattern);
-	sort(files.begin(), files.end());	// Sort (hopefully ensuring we are sorted numerically..)
 
 	SaveStateList saveList;
 	for (Common::StringArray::const_iterator file = files.begin(); file != files.end(); ++file) {
@@ -264,7 +264,6 @@ SaveStateList SavegameManager::listSaves(const Common::String &target) {
 				validFlag = readSavegameHeader(in, header);
 
 				if (validFlag) {
-					delete header.thumbnail;
 					saveDescription = header.saveName;
 				}
 			} else if (file->size() == 497) {
@@ -276,16 +275,17 @@ SaveStateList SavegameManager::listSaves(const Common::String &target) {
 
 			if (validFlag)
 				// Got a valid savegame
-				saveList.push_back(SaveStateDescriptor(slotNumber, saveDescription));
+				saveList.push_back(SaveStateDescriptor(metaEngine, slotNumber, saveDescription));
 
 			delete in;
 		}
 	}
 
+	Common::sort(saveList.begin(), saveList.end(), SaveStateDescriptorSlotComparator());
 	return saveList;
 }
 
-SaveStateDescriptor SavegameManager::querySaveMetaInfos(const Common::String &fileName) {
+SaveStateDescriptor SavegameManager::querySaveMetaInfos(const MetaEngine *metaEngine, const Common::String &fileName) {
 	Common::InSaveFile *f = g_system->getSavefileManager()->openForLoading(fileName);
 
 	if (f) {
@@ -304,18 +304,18 @@ SaveStateDescriptor SavegameManager::querySaveMetaInfos(const Common::String &fi
 			// Original savegame perhaps?
 			delete f;
 
-			SaveStateDescriptor desc(slot, Common::String::format("Savegame - %03d", slot));
-			desc.setDeletableFlag(slot != 0);
-			desc.setWriteProtectedFlag(slot == 0);
-			return desc;
+			return SaveStateDescriptor(metaEngine, slot, Common::String::format("Savegame - %03d", slot));
 		} else {
 			// Get the savegame header information
 			SavegameHeader header;
-			readSavegameHeader(f, header);
+			if (!readSavegameHeader(f, header, false)) {
+				delete f;
+				return SaveStateDescriptor();
+			}
 			delete f;
 
 			// Create the return descriptor
-			SaveStateDescriptor desc(slot, header.saveName);
+			SaveStateDescriptor desc(metaEngine, slot, header.saveName);
 			desc.setDeletableFlag(true);
 			desc.setWriteProtectedFlag(false);
 			desc.setThumbnail(header.thumbnail);

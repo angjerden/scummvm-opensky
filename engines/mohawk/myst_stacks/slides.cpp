@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -29,30 +28,31 @@
 #include "mohawk/myst_stacks/slides.h"
 
 #include "common/system.h"
-#include "gui/message.h"
 
 namespace Mohawk {
 namespace MystStacks {
 
-Slides::Slides(MohawkEngine_Myst *vm) : MystScriptParser(vm) {
+Slides::Slides(MohawkEngine_Myst *vm) :
+		MystScriptParser(vm, kDemoSlidesStack) {
 	setupOpcodes();
+
 	_vm->_cursor->hideCursor();
+
+	_cardSwapEnabled = false;
+	_nextCardID = 0;
+	_nextCardTime = 0;
 }
 
 Slides::~Slides() {
 }
 
-#define OPCODE(op, x) _opcodes.push_back(new MystOpcode(op, (OpcodeProcMyst) &Slides::x, #x))
-
 void Slides::setupOpcodes() {
 	// "Stack-Specific" Opcodes
-	OPCODE(100, o_returnToMenu);
+	REGISTER_OPCODE(100, Slides, o_returnToMenu);
 
 	// "Init" Opcodes
-	OPCODE(200, o_setCardSwap);
+	REGISTER_OPCODE(200, Slides, o_setCardSwap);
 }
-
-#undef OPCODE
 
 void Slides::disablePersistentScripts() {
 	_cardSwapEnabled = false;
@@ -61,7 +61,7 @@ void Slides::disablePersistentScripts() {
 void Slides::runPersistentScripts() {
 	if (_cardSwapEnabled) {
 		// Used on Cards...
-		if (_vm->_system->getMillis() > _nextCardTime) {
+		if (_vm->getTotalPlayTime() > _nextCardTime) {
 			_vm->_gfx->fadeToBlack();
 			_vm->changeToCard(_nextCardID, kNoTransition);
 			_vm->_gfx->fadeFromBlack();
@@ -69,19 +69,15 @@ void Slides::runPersistentScripts() {
 	}
 }
 
-void Slides::o_returnToMenu(uint16 op, uint16 var, uint16 argc, uint16 *argv) {
-	debugC(kDebugScript, "Opcode %d: Return to menu", op);
-
+void Slides::o_returnToMenu(uint16 var, const ArgumentsArray &args) {
 	// Go to the information screens of the menu
 	_vm->changeToStack(kDemoStack, 2002, 0, 0);
 }
 
-void Slides::o_setCardSwap(uint16 op, uint16 var, uint16 argc, uint16 *argv) {
-	_nextCardID = argv[0];
+void Slides::o_setCardSwap(uint16 var, const ArgumentsArray &args) {
+	_nextCardID = args[0];
 
-	debugC(kDebugScript, "Opcode %d: Set next card %d", op, _nextCardID);
-
-	_nextCardTime = _vm->_system->getMillis() + 5000;
+	_nextCardTime = _vm->getTotalPlayTime() + 5000;
 	_cardSwapEnabled = true;
 }
 

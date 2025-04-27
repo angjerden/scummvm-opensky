@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,13 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ *
+ * This file is dual-licensed.
+ * In addition to the GPLv3 license mentioned above, this code is also
+ * licensed under LGPL 2.1. See LICENSES/COPYING.LGPL file for the
+ * full text of the license.
  *
  */
 
@@ -412,7 +417,7 @@ bool Penetration::MapObject::isIn(const MapObject &obj) const {
 
 
 Penetration::ManagedMouth::ManagedMouth(uint16 tX, uint16 tY, MouthType t) :
-	MapObject(tX, tY, 0, 0), mouth(0), type(t) {
+	MapObject(tX, tY, 0, 0), mouth(nullptr), type(t) {
 
 }
 
@@ -422,7 +427,7 @@ Penetration::ManagedMouth::~ManagedMouth() {
 
 
 Penetration::ManagedSub::ManagedSub(uint16 tX, uint16 tY) :
-	MapObject(tX, tY, kMapTileWidth, kMapTileHeight), sub(0) {
+	MapObject(tX, tY, kMapTileWidth, kMapTileHeight), sub(nullptr) {
 
 }
 
@@ -431,7 +436,7 @@ Penetration::ManagedSub::~ManagedSub() {
 }
 
 
-Penetration::ManagedEnemy::ManagedEnemy() : MapObject(0, 0, 0, 0), enemy(0), dead(false) {
+Penetration::ManagedEnemy::ManagedEnemy() : MapObject(0, 0, 0, 0), enemy(nullptr), dead(false) {
 }
 
 Penetration::ManagedEnemy::~ManagedEnemy() {
@@ -441,11 +446,11 @@ Penetration::ManagedEnemy::~ManagedEnemy() {
 void Penetration::ManagedEnemy::clear() {
 	delete enemy;
 
-	enemy = 0;
+	enemy = nullptr;
 }
 
 
-Penetration::ManagedBullet::ManagedBullet() : MapObject(0, 0, 0, 0), bullet(0) {
+Penetration::ManagedBullet::ManagedBullet() : MapObject(0, 0, 0, 0), bullet(nullptr) {
 }
 
 Penetration::ManagedBullet::~ManagedBullet() {
@@ -455,12 +460,12 @@ Penetration::ManagedBullet::~ManagedBullet() {
 void Penetration::ManagedBullet::clear() {
 	delete bullet;
 
-	bullet = 0;
+	bullet = nullptr;
 }
 
 
-Penetration::Penetration(GobEngine *vm) : _vm(vm), _background(0), _sprites(0), _objects(0), _sub(0),
-	_shieldMeter(0), _healthMeter(0), _floor(0), _isPlaying(false) {
+Penetration::Penetration(GobEngine *vm) : _vm(vm), _background(nullptr), _sprites(nullptr), _objects(nullptr), _sub(nullptr),
+	_shieldMeter(nullptr), _healthMeter(nullptr), _floor(0), _isPlaying(false) {
 
 	_background = new Surface(320, 200, 1);
 
@@ -587,8 +592,8 @@ void Penetration::deinit() {
 	delete _objects;
 	delete _sprites;
 
-	_objects = 0;
-	_sprites = 0;
+	_objects = nullptr;
+	_sprites = nullptr;
 }
 
 void Penetration::clearMap() {
@@ -609,7 +614,7 @@ void Penetration::clearMap() {
 
 	delete _sub;
 
-	_sub = 0;
+	_sub = nullptr;
 
 	_map->fill(kColorBlack);
 }
@@ -715,6 +720,9 @@ void Penetration::createMap() {
 				_sub->sub = new Submarine(*_objects);
 				_sub->sub->setPosition(kPlayAreaX + kPlayAreaBorderWidth, kPlayAreaY + kPlayAreaBorderHeight);
 				break;
+
+			default:
+				break;
 			}
 		}
 	}
@@ -770,7 +778,7 @@ void Penetration::drawFloorText() {
 
 	const char **strings = kStrings[getLanguage()];
 
-	const char *floorString = 0;
+	const char *floorString = nullptr;
 	if      (_floor == 0)
 		floorString = strings[kString3rdBasement];
 	else if (_floor == 1)
@@ -837,7 +845,7 @@ void Penetration::fadeIn() {
 
 void Penetration::setPalette() {
 	// Fade to black
-	_vm->_palAnim->fade(0, 0, 0);
+	_vm->_palAnim->fade(nullptr, 0, 0);
 
 	// Set palette
 	memcpy(_vm->_draw->_vgaPalette, kPalettes[_floor], 3 * kPaletteSize);
@@ -980,10 +988,6 @@ void Penetration::checkInput() {
 				_keys[kKeyRight] = true;
 			else if (event.kbd.keycode == Common::KEYCODE_SPACE)
 				_keys[kKeySpace] = true;
-			else if (event.kbd.keycode == Common::KEYCODE_d) {
-				_vm->getDebugger()->attach();
-				_vm->getDebugger()->onFrame();
-			}
 			break;
 
 		case Common::EVENT_KEYUP:
@@ -1050,7 +1054,7 @@ bool Penetration::isBlocked(const MapObject &self, int16 x, int16 y, MapObject *
 
 void Penetration::findPath(MapObject &obj, int x, int y, MapObject **blockedBy) {
 	if (blockedBy)
-		*blockedBy = 0;
+		*blockedBy = nullptr;
 
 	while ((x != 0) || (y != 0)) {
 		uint16 oldX = obj.mapX;
@@ -1330,20 +1334,20 @@ void Penetration::checkShields() {
 }
 
 void Penetration::checkMouths() {
-	for (Common::List<ManagedMouth>::iterator m = _mouths.begin(); m != _mouths.end(); ++m) {
-		if (!m->mouth->isDeactivated())
+	for (auto &curMouth : _mouths) {
+		if (!curMouth.mouth->isDeactivated())
 			continue;
 
-		if ((( m->tileX      == _sub->tileX) && (m->tileY == _sub->tileY)) ||
-		    (((m->tileX + 1) == _sub->tileX) && (m->tileY == _sub->tileY))) {
+		if ((( curMouth.tileX      == _sub->tileX) && (curMouth.tileY == _sub->tileY)) ||
+		    (((curMouth.tileX + 1) == _sub->tileX) && (curMouth.tileY == _sub->tileY))) {
 
-			m->mouth->activate();
+			curMouth.mouth->activate();
 
 			// Play the mouth sound and do health gain/loss
-			if        (m->type == kMouthTypeBite) {
+			if (curMouth.type == kMouthTypeBite) {
 				_vm->_sound->blasterPlay(&_soundBite, 1, 0);
 				healthLose(230);
-			} else if (m->type == kMouthTypeKiss) {
+			} else if (curMouth.type == kMouthTypeKiss) {
 				_vm->_sound->blasterPlay(&_soundKiss, 1, 0);
 				healthGain(120);
 			}
@@ -1355,8 +1359,8 @@ void Penetration::checkExits() {
 	if (!_sub->sub->canMove())
 		return;
 
-	for (Common::List<MapObject>::iterator e = _exits.begin(); e != _exits.end(); ++e) {
-		if ((e->tileX == _sub->tileX) && (e->tileY == _sub->tileY)) {
+	for (auto &ex : _exits) {
+		if ((ex.tileX == _sub->tileX) && (ex.tileY == _sub->tileY)) {
 			_sub->setMapFromTilePosition();
 
 			_sub->sub->leave();

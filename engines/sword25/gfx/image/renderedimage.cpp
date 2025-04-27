@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -100,7 +99,7 @@ static byte *readSavegameThumbnail(const Common::String &filename, uint &fileSiz
 }
 
 RenderedImage::RenderedImage(const Common::String &filename, bool &result) :
-	_isTransparent(true) {
+	_alphaType(Graphics::ALPHA_FULL) {
 	result = false;
 
 	PackageManager *pPackage = Kernel::getInstance()->getPackage();
@@ -126,19 +125,10 @@ RenderedImage::RenderedImage(const Common::String &filename, bool &result) :
 	}
 
 	// Uncompress the image
-	int pitch;
-	byte *dst;
-	int w, h;
 	if (isPNG)
-		result = ImgLoader::decodePNGImage(pFileData, fileSize, dst, w, h, pitch);
+		result = ImgLoader::decodePNGImage(pFileData, fileSize, _surface.surfacePtr());
 	else
-		result = ImgLoader::decodeThumbnailImage(pFileData, fileSize, dst, w, h, pitch);
-
-	_surface.w = w;
-	_surface.h = h;
-	_surface.pitch = w * 4;
-	_surface.setPixels(dst);
-	_surface.format = Graphics::PixelFormat(4, 8, 8, 8, 8, 24, 16, 8, 0);
+		result = ImgLoader::decodeThumbnailImage(pFileData, fileSize, _surface.surfacePtr());
 
 	if (!result) {
 		error("Could not decode image.");
@@ -150,11 +140,7 @@ RenderedImage::RenderedImage(const Common::String &filename, bool &result) :
 	delete[] pFileData;
 
 	_doCleanup = true;
-
-#if defined(SCUMM_LITTLE_ENDIAN)
-	// Makes sense for LE only at the moment
-	checkForTransparency();
-#endif
+	_alphaType = _surface.detectAlpha();
 
 	return;
 }
@@ -162,7 +148,7 @@ RenderedImage::RenderedImage(const Common::String &filename, bool &result) :
 // -----------------------------------------------------------------------------
 
 RenderedImage::RenderedImage(uint width, uint height, bool &result) :
-	_isTransparent(true) {
+	_alphaType(Graphics::ALPHA_FULL) {
 
 	_surface.create(width, height, Graphics::PixelFormat(4, 8, 8, 8, 8, 24, 16, 8, 0));
 
@@ -174,7 +160,7 @@ RenderedImage::RenderedImage(uint width, uint height, bool &result) :
 	return;
 }
 
-RenderedImage::RenderedImage() : _isTransparent(true) {
+RenderedImage::RenderedImage() : _alphaType(Graphics::ALPHA_FULL) {
 	_backSurface = Kernel::getInstance()->getGfx()->getSurface();
 
 	_surface.format = Graphics::PixelFormat(4, 8, 8, 8, 8, 24, 16, 8, 0);
@@ -187,6 +173,9 @@ RenderedImage::RenderedImage() : _isTransparent(true) {
 // -----------------------------------------------------------------------------
 
 RenderedImage::~RenderedImage() {
+	if (_doCleanup) {
+		_surface.free();
+	}
 }
 
 // -----------------------------------------------------------------------------
@@ -233,7 +222,16 @@ uint RenderedImage::getPixel(int x, int y) {
 // -----------------------------------------------------------------------------
 
 bool RenderedImage::blit(int posX, int posY, int flipping, Common::Rect *pPartRect, uint color, int width, int height, RectangleList *updateRects) {
-	_surface.blit(*_backSurface, posX, posY, (((flipping & 1) ? Graphics::FLIP_V : 0) | ((flipping & 2) ? Graphics::FLIP_H : 0)), pPartRect, color, width, height);
+	int newFlipping = (((flipping & 1) ? Graphics::FLIP_V : 0) | ((flipping & 2) ? Graphics::FLIP_H : 0));
+
+	int ca = (color >> BS_ASHIFT) & 0xff;
+	int cr = (color >> BS_RSHIFT) & 0xff;
+	int cg = (color >> BS_GSHIFT) & 0xff;
+	int cb = (color >> BS_BSHIFT) & 0xff;
+
+	if (width == -1) width = pPartRect ? pPartRect->width() : _surface.w;
+	if (height == -1) height = pPartRect ? pPartRect->height() : _surface.h;
+	_surface.blendBlitTo(*_backSurface, posX, posY, newFlipping, pPartRect, _surface.format.ARGBToColor(ca, cr, cg, cb), width, height, Graphics::BLEND_NORMAL, _alphaType);
 
 	return true;
 }
@@ -260,20 +258,6 @@ void RenderedImage::copyDirectly(int posX, int posY) {
 	h = CLIP((int)h, 0, (int)MAX((int)_backSurface->h - posY, 0));
 
 	g_system->copyRectToScreen(data, _backSurface->pitch, posX, posY, w, h);
-}
-
-void RenderedImage::checkForTransparency() {
-	// Check if the source bitmap has any transparent pixels at all
-	_isTransparent = false;
-	byte *data = (byte *)_surface.getPixels();
-	for (int i = 0; i < _surface.h; i++) {
-		for (int j = 0; j < _surface.w; j++) {
-			_isTransparent = data[3] != 0xff;
-			if (_isTransparent)
-				return;
-			data += 4;
-		}
-	}
 }
 
 } // End of namespace Sword25

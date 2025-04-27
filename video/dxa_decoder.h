@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -24,6 +23,7 @@
 #define VIDEO_DXA_DECODER_H
 
 #include "common/rational.h"
+#include "graphics/palette.h"
 #include "graphics/pixelformat.h"
 #include "video/video_decoder.h"
 
@@ -69,7 +69,7 @@ private:
 		int getCurFrame() const { return _curFrame; }
 		int getFrameCount() const { return _frameCount; }
 		const Graphics::Surface *decodeNextFrame();
-		const byte *getPalette() const { _dirtyPalette = false; return _palette; }
+		const byte *getPalette() const { _dirtyPalette = false; return _palette.data(); }
 		bool hasDirtyPalette() const { return _dirtyPalette; }
 
 		void setFrameStartPos();
@@ -104,7 +104,7 @@ private:
 		uint16 _width, _height;
 		uint32 _frameRate;
 		uint32 _frameCount;
-		byte _palette[256 * 3];
+		Graphics::Palette _palette;
 		mutable bool _dirtyPalette;
 		int _curFrame;
 		uint32 _frameStartOffset;

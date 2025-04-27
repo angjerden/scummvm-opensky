@@ -7,19 +7,18 @@
  * Additional copyright for this file:
  * Copyright (C) 1995-1997 Presto Studios, Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
-
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -35,16 +34,15 @@
 namespace Pegasus {
 
 GraphicsManager::GraphicsManager(PegasusEngine *vm) : _vm(vm) {
-	initGraphics(640, 480, true, NULL);
+	initGraphics(640, 480, nullptr);
 
 	if (_vm->_system->getScreenFormat().bytesPerPixel == 1)
 		error("No true color mode available");
 
 	_backLayer = kMinAvailableOrder;
 	_frontLayer = kMaxAvailableOrder;
-	_firstDisplayElement = _lastDisplayElement = 0;
+	_firstDisplayElement = _lastDisplayElement = nullptr;
 	_workArea.create(640, 480, _vm->_system->getScreenFormat());
-	_modifiedScreen = false;
 	_curSurface = &_workArea;
 	_erase = false;
 	_updatesEnabled = true;
@@ -78,7 +76,7 @@ void GraphicsManager::addDisplayElement(DisplayElement *newElement) {
 
 	if (_firstDisplayElement) {
 		DisplayElement *runner = _firstDisplayElement;
-		DisplayElement *lastRunner = 0;
+		DisplayElement *lastRunner = nullptr;
 
 		// Search for first element whose display order is greater than
 		// the new element's and add the new element just before it.
@@ -117,8 +115,8 @@ void GraphicsManager::removeDisplayElement(DisplayElement *oldElement) {
 
 	if (oldElement == _firstDisplayElement) {
 		if (oldElement == _lastDisplayElement) {
-			_firstDisplayElement = 0;
-			_lastDisplayElement = 0;
+			_firstDisplayElement = nullptr;
+			_lastDisplayElement = nullptr;
 		} else {
 			_firstDisplayElement = oldElement->_nextElement;
 		}
@@ -147,19 +145,17 @@ void GraphicsManager::removeDisplayElement(DisplayElement *oldElement) {
 		}
 	}
 
-	oldElement->_nextElement = 0;
+	oldElement->_nextElement = nullptr;
 	oldElement->_elementIsDisplaying = false;
 }
 
 void GraphicsManager::updateDisplay() {
-	bool screenDirty = false;
-
 	if (!_dirtyRect.isEmpty()) {
 		// Fill the dirty area with black if erase mode is enabled
 		if (_erase)
 			_workArea.fillRect(_dirtyRect, _workArea.format.RGBToColor(0, 0, 0));
 
-		for (DisplayElement *runner = _firstDisplayElement; runner != 0; runner = runner->_nextElement) {
+		for (DisplayElement *runner = _firstDisplayElement; runner != nullptr; runner = runner->_nextElement) {
 			Common::Rect bounds;
 			runner->getBounds(bounds);
 
@@ -167,29 +163,18 @@ void GraphicsManager::updateDisplay() {
 			// but it should work fine for now.
 			if (bounds.intersects(_dirtyRect) && runner->validToDraw(_backLayer, _frontLayer)) {
 				runner->draw(bounds);
-				screenDirty = true;
 			}
 		}
 
 		// Copy only the dirty rect to the screen
-		if (screenDirty)
-			g_system->copyRectToScreen((byte *)_workArea.getBasePtr(_dirtyRect.left, _dirtyRect.top), _workArea.pitch, _dirtyRect.left, _dirtyRect.top, _dirtyRect.width(), _dirtyRect.height());
+		g_system->copyRectToScreen((byte *)_workArea.getBasePtr(_dirtyRect.left, _dirtyRect.top), _workArea.pitch, _dirtyRect.left, _dirtyRect.top, _dirtyRect.width(), _dirtyRect.height());
 
 		// Clear the dirty rect
 		_dirtyRect = Common::Rect();
 	}
 
-	if (_updatesEnabled && (screenDirty || _modifiedScreen))
+	if (_updatesEnabled)
 		g_system->updateScreen();
-
-	_modifiedScreen = false;
-}
-
-void GraphicsManager::clearScreen() {
-	Graphics::Surface *screen = g_system->lockScreen();
-	screen->fillRect(Common::Rect(0, 0, 640, 480), g_system->getScreenFormat().RGBToColor(0, 0, 0));
-	g_system->unlockScreen();
-	_modifiedScreen = true;
 }
 
 DisplayElement *GraphicsManager::findDisplayElement(const DisplayElementID id) {
@@ -201,7 +186,7 @@ DisplayElement *GraphicsManager::findDisplayElement(const DisplayElementID id) {
 		runner = runner->_nextElement;
 	}
 
-	return 0;
+	return nullptr;
 }
 
 void GraphicsManager::doFadeOutSync(const TimeValue time, const TimeScale scale, bool isBlack) {
@@ -212,10 +197,6 @@ void GraphicsManager::doFadeOutSync(const TimeValue time, const TimeScale scale,
 void GraphicsManager::doFadeInSync(const TimeValue time, const TimeScale scale, bool isBlack) {
 	_screenFader->doFadeInSync(time, scale, isBlack);
 	_updatesEnabled = true;
-}
-
-void GraphicsManager::markCursorAsDirty() {
-	_modifiedScreen = true;
 }
 
 void GraphicsManager::newShakePoint(int32 index1, int32 index2, int32 maxRadius) {
@@ -262,12 +243,6 @@ void GraphicsManager::shakeTheWorld(TimeValue duration, TimeScale scale) {
 
 	Common::Point lastOffset(0, 0);
 
-	// Store the current screen for later use
-	Graphics::Surface oldScreen;
-	Graphics::Surface *curScreen = g_system->lockScreen();
-	oldScreen.copyFrom(*curScreen);
-	g_system->unlockScreen();
-
 	// Convert to millis
 	duration = duration * 1000 / scale;
 
@@ -276,39 +251,7 @@ void GraphicsManager::shakeTheWorld(TimeValue duration, TimeScale scale) {
 	while (g_system->getMillis() < startTime + duration) {
 		Common::Point thisOffset = _shakeOffsets[(g_system->getMillis() - startTime) * (kMaxShakeOffsets - 1) / duration];
 		if (thisOffset != lastOffset) {
-			// Fill the screen with black
-			Graphics::Surface *screen = g_system->lockScreen();
-			screen->fillRect(Common::Rect(0, 0, 640, 480), g_system->getScreenFormat().RGBToColor(0, 0, 0));
-			g_system->unlockScreen();
-
-			// Calculate the src/dst offsets and the width/height
-			int32 srcOffsetX, dstOffsetX, width;
-
-			if (thisOffset.x > 0) {
-				srcOffsetX = 0;
-				dstOffsetX = thisOffset.x;
-				width = 640 - dstOffsetX;
-			} else {
-				srcOffsetX = -thisOffset.x;
-				dstOffsetX = 0;
-				width = 640 - srcOffsetX;
-			}
-
-			int32 srcOffsetY, dstOffsetY, height;
-
-			if (thisOffset.y > 0) {
-				srcOffsetY = 0;
-				dstOffsetY = thisOffset.y;
-				height = 480 - dstOffsetY;
-			} else {
-				srcOffsetY = -thisOffset.y;
-				dstOffsetY = 0;
-				height = 480 - srcOffsetY;
-			}
-
-			// Now copy to the screen
-			g_system->copyRectToScreen((byte *)oldScreen.getBasePtr(srcOffsetX, srcOffsetY), oldScreen.pitch,
-					dstOffsetX, dstOffsetY, width, height);
+			g_system->setShakePos(thisOffset.x, thisOffset.y);
 			g_system->updateScreen();
 
 			lastOffset = thisOffset;
@@ -318,11 +261,9 @@ void GraphicsManager::shakeTheWorld(TimeValue duration, TimeScale scale) {
 	}
 
 	if (lastOffset.x != 0 || lastOffset.y != 0) {
-		g_system->copyRectToScreen((byte *)oldScreen.getPixels(), oldScreen.pitch, 0, 0, 640, 480);
+		g_system->setShakePos(0, 0);
 		g_system->updateScreen();
 	}
-
-	oldScreen.free();
 }
 
 void GraphicsManager::enableErase() {

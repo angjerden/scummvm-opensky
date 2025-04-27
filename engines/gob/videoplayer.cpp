@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,11 +15,18 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ *
+ * This file is dual-licensed.
+ * In addition to the GPLv3 license mentioned above, this code is also
+ * licensed under LGPL 2.1. See LICENSES/COPYING.LGPL file for the
+ * full text of the license.
  *
  */
 
+
+#include "video/coktel_decoder.h"
 
 #include "gob/videoplayer.h"
 #include "gob/global.h"
@@ -130,15 +137,24 @@ int VideoPlayer::openVideo(bool primary, const Common::String &file, Properties 
 
 		// WORKAROUND: In some rare cases, the cursor should still be
 		// displayed while a video is playing.
+		Common::String videoFile = file;
+		videoFile.toUppercase();
+		if (videoFile.hasSuffix(".IMD"))
+			videoFile = videoFile.substr(0, videoFile.find('.'));
 		_noCursorSwitch = false;
+
 		if (primary && (_vm->getGameType() == kGameTypeLostInTime)) {
-			if (!file.compareToIgnoreCase("PORTA03") ||
-			    !file.compareToIgnoreCase("PORTA03A") ||
-			    !file.compareToIgnoreCase("CALE1") ||
-			    !file.compareToIgnoreCase("AMIL2") ||
-			    !file.compareToIgnoreCase("AMIL3B") ||
-			    !file.compareToIgnoreCase("DELB"))
-				_noCursorSwitch = true;
+			static const Common::StringArray videosWithCursorLIT = {
+				"PORTA03", "PORTA03A", "CALE1", "AMIL2", "AMIL3B", "DELB", "DELG"
+			};
+			_noCursorSwitch = (Common::find(videosWithCursorLIT.begin(), videosWithCursorLIT.end(), videoFile) != videosWithCursorLIT.end());
+		}
+
+		if (primary && (_vm->getGameType() == kGameTypeGob3)) {
+			static const Common::StringArray videosWithCursorGob3 = {
+				"CAIL1", "CAIL2"
+			};
+			_noCursorSwitch = (Common::find(videosWithCursorGob3.begin(), videosWithCursorGob3.end(), videoFile) != videosWithCursorGob3.end());
 		}
 
 		// WORKAROUND: In Woodruff, Coh Cott vanished in one video on her party.
@@ -154,9 +170,17 @@ int VideoPlayer::openVideo(bool primary, const Common::String &file, Properties 
 			bool screenSize = properties.flags & kFlagScreenSurface;
 
 			if (ownSurf) {
-				_vm->_draw->_spritesArray[properties.sprite] =
-					_vm->_video->initSurfDesc(screenSize ? _vm->_width  : video->decoder->getWidth(),
-					                          screenSize ? _vm->_height : video->decoder->getHeight(), 0);
+				uint16 height = screenSize ? _vm->_width  : video->decoder->getWidth();
+				uint16 width = screenSize ? _vm->_height : video->decoder->getHeight();
+
+				if (height > 0 && width > 0) {
+					_vm->_draw->_spritesArray[properties.sprite] =
+						_vm->_video->initSurfDesc(screenSize ? _vm->_width  : video->decoder->getWidth(),
+												  screenSize ? _vm->_height : video->decoder->getHeight(), 0);
+				} else {
+					warning("VideoPlayer::openVideo() file=%s:"
+							"Invalid surface dimensions (%dx%d)", file.c_str(), width, height);
+				}
 			}
 
 			if (!_vm->_draw->_spritesArray[properties.sprite] &&
@@ -274,7 +298,7 @@ void VideoPlayer::finishVideoSound(int slot) {
 
 void VideoPlayer::waitSoundEnd(int slot) {
 	Video *video = getVideoBySlot(slot);
-	if (!video || !video->decoder)
+	if (!video || !video->decoder || video->live)
 		return;
 
 	video->decoder->finishSound();
@@ -329,6 +353,9 @@ bool VideoPlayer::play(int slot, Properties &properties) {
 		//       Except for Urban Runner and Bambou, where it leads to glitches
 		properties.breakKey = kShortKeyEscape;
 
+	if (_vm->_draw->_renderFlags & RENDERFLAG_DOUBLEVIDEO)
+		video->decoder->setDouble(true);
+
 	while ((properties.startFrame != properties.lastFrame) &&
 	       (properties.startFrame < (int32)(video->decoder->getFrameCount() - 1))) {
 
@@ -349,6 +376,9 @@ bool VideoPlayer::play(int slot, Properties &properties) {
 			waitEndFrame(slot);
 	}
 
+	if (_vm->_draw->_renderFlags & RENDERFLAG_DOUBLEVIDEO)
+		video->decoder->setDouble(false);
+
 	evalBgShading(*video);
 
 	return true;
@@ -368,9 +398,23 @@ void VideoPlayer::waitEndFrame(int slot, bool onlySound) {
 	}
 }
 
+int32 VideoPlayer::getExpectedFrameFromCurrentTime(int slot) {
+	Video *video = getVideoBySlot(slot);
+	if (!video)
+		return -1;
+
+	return video->decoder->getExpectedFrameFromCurrentTime();
+}
+
+
 bool VideoPlayer::isPlayingLive() const {
 	const Video *video = getVideoBySlot(0);
 	return video && video->live;
+}
+
+bool VideoPlayer::isSoundPlaying() const {
+	const Video *video = getVideoBySlot(0);
+	return video && video->decoder && video->decoder->isSoundPlaying();
 }
 
 void VideoPlayer::updateLive(bool force) {
@@ -383,11 +427,18 @@ void VideoPlayer::updateLive(int slot, bool force) {
 	if (!video || !video->live)
 		return;
 
+	int nbrOfLiveVideos = 0;
+	for (int i = 0; i < kVideoSlotCount; i++) {
+		Video *otherVideo = getVideoBySlot(i);
+		if (otherVideo && otherVideo->live)
+			++nbrOfLiveVideos;
+	}
+
 	if (video->properties.startFrame >= (int32)(video->decoder->getFrameCount() - 1)) {
 		// Video ended
 
 		if (!video->properties.loop) {
-			if (!(video->properties.flags & kFlagNoVideo))
+			if (!(video->properties.flags & kFlagNoVideo) || nbrOfLiveVideos == 1)
 				WRITE_VAR_OFFSET(212, (uint32)-1);
 			_vm->_vidPlayer->closeVideo(slot);
 			return;
@@ -404,7 +455,7 @@ void VideoPlayer::updateLive(int slot, bool force) {
 	if (!force && (video->decoder->getTimeToNextFrame() > 0))
 		return;
 
-	if (!(video->properties.flags & kFlagNoVideo))
+	if (!(video->properties.flags & kFlagNoVideo) || nbrOfLiveVideos == 1)
 		WRITE_VAR_OFFSET(212, video->properties.startFrame + 1);
 
 	bool backwards = video->properties.startFrame > video->properties.lastFrame;
@@ -654,6 +705,13 @@ uint16 VideoPlayer::getDefaultY(int slot) const {
 	return video->decoder->getDefaultY();
 }
 
+uint32 VideoPlayer::getFlags(int slot) const {
+	const Video *video = getVideoBySlot(slot);
+	if (!video)
+		return 0;
+
+	return video->decoder->getFlags();
+}
 const Common::List<Common::Rect> *VideoPlayer::getDirtyRects(int slot) const {
 	const Video *video = getVideoBySlot(slot);
 	if (!video)
@@ -686,8 +744,8 @@ int32 VideoPlayer::getSubtitleIndex(int slot) const {
 	return video->decoder->getSubtitleIndex();
 }
 
-void VideoPlayer::writeVideoInfo(const Common::String &file, int16 varX, int16 varY,
-		int16 varFrames, int16 varWidth, int16 varHeight) {
+void VideoPlayer::writeVideoInfo(const Common::String &file, uint16 varX, uint16 varY,
+		uint16 varFrames, uint16 varWidth, uint16 varHeight) {
 
 	Properties properties;
 
@@ -724,7 +782,7 @@ void VideoPlayer::writeVideoInfo(const Common::String &file, int16 varX, int16 v
 
 bool VideoPlayer::copyFrame(int slot, Surface &dest,
 		uint16 left, uint16 top, uint16 width, uint16 height, uint16 x, uint16 y,
-		int32 transp) const {
+		int32 transp, bool yAxisReflection) const {
 
 	const Video *video = getVideoBySlot(slot);
 	if (!video)
@@ -740,7 +798,7 @@ bool VideoPlayer::copyFrame(int slot, Surface &dest,
 	// of the frame data which is undesirable.
 	Surface src(surface->w, surface->h, surface->format.bytesPerPixel, (byte *)const_cast<void *>(surface->getPixels()));
 
-	dest.blit(src, left, top, left + width - 1, top + height - 1, x, y, transp);
+	dest.blit(src, left, top, left + width - 1, top + height - 1, x, y, transp, yAxisReflection);
 	return true;
 }
 
@@ -916,7 +974,7 @@ void VideoPlayer::copyPalette(const Video &video, int16 palStart, int16 palEnd) 
 	palStart =  palStart      * 3;
 	palEnd   = (palEnd   + 1) * 3;
 
-	for (int i = palStart; i <= palEnd; i++)
+	for (int i = palStart; i < palEnd; i++)
 		((char *)(_vm->_global->_pPaletteDesc->vgaPal))[i] = video.decoder->getPalette()[i] >> 2;
 }
 

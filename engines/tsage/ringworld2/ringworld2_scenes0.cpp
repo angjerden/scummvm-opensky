@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -66,7 +65,8 @@ void Scene50::postInit(SceneObjectList *OwnerList) {
 }
 
 void Scene50::process(Event &event) {
-	if ((event.eventType != EVENT_BUTTON_DOWN) && (event.eventType != EVENT_KEYPRESS) && (event.eventType == EVENT_UNK27)) {
+	if ((event.eventType != EVENT_BUTTON_DOWN) && (event.eventType == EVENT_CUSTOM_ACTIONSTART)
+			&& (event.eventType != EVENT_KEYPRESS) && (event.eventType == EVENT_UNK27)) {
 		event.handled = true;
 		g_globals->_events.setCursor(CURSOR_ARROW);
 		HelpDialog::show();
@@ -1326,7 +1326,7 @@ void Scene160::Action1::signal() {
 		scene->_yChange = 1;
 		scene->_lineNum = 0;
 		++_actionIndex;
-		// Deliberate fall-through
+		// fall through
 
 	case 1:
 		setDelay(5);
@@ -1422,6 +1422,9 @@ void Scene160::Action1::signal() {
 		HelpDialog::show();
 		setDelay(4);
 		break;
+
+	default:
+		break;
 	}
 }
 
@@ -1475,7 +1478,7 @@ void Scene160::remove() {
 }
 
 void Scene160::process(Event &event) {
-	if ((event.eventType == EVENT_KEYPRESS) && (event.kbd.keycode == Common::KEYCODE_ESCAPE)) {
+	if ((event.eventType == EVENT_CUSTOM_ACTIONSTART) && (event.customType == kActionEscape)) {
 		event.handled = true;
 		HelpDialog::show();
 	}
@@ -1505,6 +1508,8 @@ void Scene180::Action1::signal() {
 		scene->_shipDisplay.setFrame(1);
 		scene->_shipDisplay.animate(ANIM_MODE_5, this);
 		_actionIndex = 0;
+		break;
+	default:
 		break;
 	}
 }
@@ -1613,7 +1618,7 @@ void Scene180::signal() {
 	case 43:
 	case 47:
 		_helpEnabled = false;
-		R2_GLOBALS._screenSurface.fillRect(Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT), 0);
+		R2_GLOBALS._screen.fillRect(Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT), 0);
 		_palette.loadPalette(0);
 		_palette.loadPalette(9998);
 		R2_GLOBALS._scenePalette.addFader(_palette._palette, 256, 8, this);
@@ -1659,6 +1664,7 @@ void Scene180::signal() {
 	case 10:
 		loadScene(4002);
 		R2_GLOBALS._scenePalette.loadPalette(0);
+		R2_GLOBALS._interfaceY = SCREEN_HEIGHT;
 		setSceneDelay(6);
 		break;
 
@@ -1815,7 +1821,7 @@ void Scene180::signal() {
 		_shipDisplay.remove();
 
 		_backSurface.fillRect(Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT), 0);
-		R2_GLOBALS._screenSurface.fillRect(Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT), 0);
+		R2_GLOBALS._screen.fillRect(Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT), 0);
 		R2_GLOBALS._sound2.fadeOut2(NULL);
 		R2_GLOBALS._sound1.fadeOut2(this);
 		break;
@@ -1880,7 +1886,7 @@ void Scene180::signal() {
 		R2_GLOBALS._paneRefreshFlag[0] = 3;
 
 		_backSurface.fillRect(Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT), 0);
-		R2_GLOBALS._screenSurface.fillRect(Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT), 0);
+		R2_GLOBALS._screen.fillRect(Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT), 0);
 
 		setSceneDelay(1);
 		break;
@@ -1894,6 +1900,9 @@ void Scene180::signal() {
 		// a closeup of Quinn in the floatation bed first
 		R2_GLOBALS._sceneManager.changeScene(50);
 		break;
+
+	default:
+		break;
 	}
 }
 
@@ -1903,7 +1912,7 @@ void Scene180::setSceneDelay(int v) {
 }
 
 void Scene180::process(Event &event) {
-	if ((event.eventType == EVENT_KEYPRESS) && (event.kbd.keycode == Common::KEYCODE_ESCAPE)) {
+	if ((event.eventType == EVENT_CUSTOM_ACTIONSTART) && (event.customType == kActionEscape)) {
 		event.handled = true;
 		if (_helpEnabled) {
 			if (R2_GLOBALS._scenePalette._listeners.size() == 0)
@@ -2400,7 +2409,7 @@ void Scene205::remove() {
 }
 
 void Scene205::process(Event &event) {
-	if ((event.eventType == EVENT_KEYPRESS) && (event.kbd.keycode == Common::KEYCODE_ESCAPE)) {
+	if ((event.eventType == EVENT_CUSTOM_ACTIONSTART) && (event.customType == kActionEscape)) {
 		event.handled = true;
 		R2_GLOBALS._sceneManager.changeScene(R2_GLOBALS._sceneManager._previousScene);
 	} else {
@@ -2576,7 +2585,7 @@ void Scene205Demo::remove() {
 }
 
 void Scene205Demo::process(Event &event) {
-	if ((event.eventType == EVENT_KEYPRESS) && (event.kbd.keycode == Common::KEYCODE_ESCAPE)) {
+	if ((event.eventType == EVENT_CUSTOM_ACTIONSTART) && (event.customType == kActionEscape)) {
 		event.handled = true;
 		leaveScene();
 	} else {
@@ -3638,7 +3647,7 @@ void Scene300::signal() {
 			break;
 		case 181:
 			R2_GLOBALS._player.setStrip(6);
-			// Deliberate fall-through
+			// fall through
 		default:
 			R2_GLOBALS._player.enableControl(CURSOR_TALK);
 
@@ -3744,7 +3753,7 @@ void Scene300::signal() {
 
 	case 310:
 		R2_GLOBALS._player.setStrip(5);
-		// Deliberate fall-through
+		// fall through
 	case 309:
 		signal309();
 		R2_GLOBALS._events.setCursor(CURSOR_ARROW);
@@ -7093,7 +7102,7 @@ void Scene825::Button::setText(int textId) {
 	_lookLineNum = textId;
 
 	_sceneText.remove();
-	if (_buttonId != 0) {
+	if (textId != 0) {
 		Scene825 *scene = (Scene825 *)R2_GLOBALS._sceneManager._scene;
 		_sceneText.setup(scene->_autodocItems[textId - 1]);
 	}
@@ -7870,7 +7879,7 @@ void Scene900::signal() {
 		break;
 	case 5:
 		_sceneMode = 0;
-	// No break on purpose
+		// fall through
 	default:
 		R2_GLOBALS._player.enableControl();
 		R2_GLOBALS._player._canWalk = false;

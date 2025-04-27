@@ -7,19 +7,18 @@
  * Additional copyright for this file:
  * Copyright (C) 1995-1997 Presto Studios, Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
-
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -41,7 +40,7 @@ public:
 
 	// If the interaction is open (_isInteracting == true), it's too late to do anything
 	// about it here.
-	virtual ~GameInteraction() {}
+	~GameInteraction() override {}
 
 	// startInteraction and stopInteraction are called by the outside world to
 	// start and stop the interaction sequence.
@@ -70,10 +69,10 @@ public:
 	bool isInteracting() const { return _isInteracting; }
 	Neighborhood *getOwner() const { return _owner; }
 
-	virtual Common::String getBriefingMovie() { return ""; }
-	virtual Common::String getEnvScanMovie() { return ""; }
+	virtual Common::Path getBriefingMovie() { return Common::Path(); }
+	virtual Common::Path getEnvScanMovie() { return Common::Path(); }
 	virtual long getNumHints() { return 0; }
-	virtual Common::String getHintMovie(uint) { return ""; }
+	virtual Common::Path getHintMovie(uint) { return Common::Path(); }
 	virtual bool canSolve() { return false; }
 
 	virtual void setSoundFXLevel(const uint16) {}

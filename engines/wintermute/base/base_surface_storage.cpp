@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -158,49 +157,51 @@ bool BaseSurfaceStorage::restoreAll() {
 bool BaseSurfaceStorage::persist(BasePersistenceManager *persistMgr)
 {
 
-    if (!persistMgr->getIsSaving()) cleanup(false);
+	if (!persistMgr->getIsSaving()) cleanup(false);
 
-    persistMgr->transfer(TMEMBER(_gameRef));
+	persistMgr->transfer(TMEMBER(_gameRef));
 
-    //_surfaces.persist(persistMgr);
+	//_surfaces.persist(persistMgr);
 
-    return STATUS_OK;
+	return STATUS_OK;
 }
 */
 
 
 //////////////////////////////////////////////////////////////////////////
 bool BaseSurfaceStorage::sortSurfaces() {
-	Common::sort(_surfaces.begin(), _surfaces.end(), surfaceSortCB);
+	qsort(_surfaces.data(), _surfaces.size(), sizeof(BaseSurface *), surfaceSortCB);
 	return STATUS_OK;
 }
 
 
 //////////////////////////////////////////////////////////////////////////
-bool BaseSurfaceStorage::surfaceSortCB(const BaseSurface *s1, const BaseSurface *s2) {
+int BaseSurfaceStorage::surfaceSortCB(const void *arg1, const void *arg2) {
+	void *o1 = const_cast<void *>(arg1);
+	void *o2 = const_cast<void *>(arg2);
+	BaseSurface *s1 = *((BaseSurface **)o1);
+	BaseSurface *s2 = *((BaseSurface **)o2);
+
 	// sort by life time
-	if (s1->_lifeTime <= 0 && s2->_lifeTime > 0) {
-		return false;
-	} else if (s1->_lifeTime > 0 && s2->_lifeTime <= 0) {
-		return true;
-	}
+	if (s1->_lifeTime <= 0 && s2->_lifeTime > 0)
+		return 1;
+	else if (s1->_lifeTime > 0 && s2->_lifeTime <= 0)
+		return -1;
 
 
 	// sort by validity
-	if (s1->_valid && !s2->_valid) {
-		return true;
-	} else if (!s1->_valid && s2->_valid) {
-		return false;
-	}
+	if (s1->_valid && !s2->_valid)
+		return -1;
+	else if (!s1->_valid && s2->_valid)
+		return 1;
 
 	// sort by time
-	else if (s1->_lastUsedTime > s2->_lastUsedTime) {
-		return false;
-	} else if (s1->_lastUsedTime < s2->_lastUsedTime) {
-		return true;
-	} else {
-		return false;
-	}
+	else if (s1->_lastUsedTime > s2->_lastUsedTime)
+		return 1;
+	else if (s1->_lastUsedTime < s2->_lastUsedTime)
+		return -1;
+	else
+		return 0;
 }
 
 } // End of namespace Wintermute

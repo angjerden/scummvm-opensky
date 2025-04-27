@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,28 +15,28 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 /*
  * This code is based on original Sfinx source code
- * Copyright (c) 1994-1997 Janus B. Wisniewski and L.K. Avalon
+ * Copyright (c) 1994-1997 Janusz B. Wisniewski and L.K. Avalon
  */
 
-#ifndef CGE2_H
-#define CGE2_H
+#ifndef CGE2_CGE2_H
+#define CGE2_CGE2_H
 
 #include "common/random.h"
 #include "common/savefile.h"
 #include "common/serializer.h"
 #include "engines/engine.h"
-#include "engines/advancedDetector.h"
 #include "common/system.h"
 #include "cge2/fileio.h"
 #include "cge2/console.h"
 #include "audio/mixer.h"
+
+struct ADGameDescription;
 
 namespace CGE2 {
 
@@ -105,18 +105,28 @@ struct SavegameHeader;
 #define kQuitText         201
 #define kNoQuitText       202
 
-#define kSavegameVersion    1
+#define kSavegameVersion    2
 #define kSavegameStrSize   12
 #define kSavegameStr       "SCUMMVM_CGE2"
 
 #define kColorNum           6
 
+enum CGEAction {
+	kActionNone,
+	kActionInfo,
+	kActionEscape,
+	kActionSave,
+	kActionLoad,
+	kActionQuit
+};
+
 struct SavegameHeader {
 	uint8 version;
 	Common::String saveName;
 	Graphics::Surface *thumbnail;
-	int saveYear, saveMonth, saveDay;
-	int saveHour, saveMinutes;
+	int16 saveYear, saveMonth, saveDay;
+	int16 saveHour, saveMinutes;
+	uint32 playTime;
 };
 
 enum ColorBank { kCBRel, kCBStd, kCBSay, kCBInf, kCBMnu, kCBWar };
@@ -125,7 +135,7 @@ enum GamePhase { kPhaseInGame, kPhaseIntro, kPhaseOver };
 
 // our engine debug channels
 enum {
-	kCGE2DebugOpcode = 1 << 0
+	kCGE2DebugOpcode = 1,
 };
 
 enum CallbackType {
@@ -141,11 +151,9 @@ private:
 	uint32 _lastFrame, _lastTick;
 	void tick();
 
-	CGE2Console *_console;
 	void init();
 	void deinit();
 
-	Common::String generateSaveName(int slot);
 	void writeSavegameHeader(Common::OutSaveFile *out, SavegameHeader &header);
 	void saveGame(int slotNumber, const Common::String &desc);
 	bool loadGame(int slotNumber);
@@ -154,18 +162,15 @@ private:
 	void resetGame();
 public:
 	CGE2Engine(OSystem *syst, const ADGameDescription *gameDescription);
-	virtual bool hasFeature(EngineFeature f) const;
-	virtual bool canSaveGameStateCurrently();
-	virtual bool canLoadGameStateCurrently();
-	virtual Common::Error saveGameState(int slot, const Common::String &desc);
-	virtual Common::Error loadGameState(int slot);
-	virtual Common::Error run();
+	bool hasFeature(EngineFeature f) const override;
+	bool canSaveGameStateCurrently(Common::U32String *msg = nullptr) override;
+	bool canLoadGameStateCurrently(Common::U32String *msg = nullptr) override;
+	Common::Language getLanguage() const;
+	Common::Error saveGameState(int slot, const Common::String &desc, bool isAutosave = false) override;
+	Common::Error loadGameState(int slot) override;
+	Common::Error run() override;
 
-	static bool readSavegameHeader(Common::InSaveFile *in, SavegameHeader &header);
-
-	GUI::Debugger *getDebugger() {
-		return _console;
-	}
+	WARN_UNUSED_RESULT static bool readSavegameHeader(Common::InSaveFile *in, SavegameHeader &header, bool skipThumbnail = true);
 
 	bool showTitle(const char *name);
 	void cge2_main();
@@ -235,7 +240,7 @@ public:
 	int number(char *s);
 	char *token(char *s);
 	char *tail(char *s);
-	int takeEnum(const char **tab, const char *text);
+	int takeEnum(const char *const *tab, const char *text);
 	ID ident(const char *s);
 	bool testBool(char *s);
 
@@ -335,4 +340,4 @@ public:
 
 } // End of namespace CGE2
 
-#endif // CGE2_H
+#endif // CGE2_CGE2_H

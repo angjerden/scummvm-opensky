@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  * This is a utility for extracting needed resource data from different language
  * version of the Lure of the Temptress lure.exe executable files into a new file
@@ -27,12 +26,6 @@
 // Disable symbol overrides so that we can use system headers.
 #define FORBIDDEN_SYMBOL_ALLOW_ALL
 
-// HACK to allow building with the SDL backend on MinGW
-// see bug #1800764 "TOOLS: MinGW tools building broken"
-#ifdef main
-#undef main
-#endif // main
-
 #include "common/endian.h"
 #include "create_mortdat.h"
 #include "enginetext.h"
@@ -42,12 +35,12 @@
 
 bool File::open(const char *filename, AccessMode mode) {
 	f = fopen(filename, (mode == kFileReadMode) ? "rb" : "wb");
-	return (f != NULL);
+	return (f != nullptr);
 }
 
 void File::close() {
 	fclose(f);
-	f = NULL;
+	f = nullptr;
 }
 
 int File::seek(int32 offset, int whence) {
@@ -113,7 +106,7 @@ void openOutputFile(const char *outFilename) {
 }
 
 /**
- * Write out the data for the font 
+ * Write out the data for the font
  */
 void writeFontBlock() {
 	const int knownAddr[3] = {0x30cd, 0x36b0, 0x36c0};
@@ -149,7 +142,7 @@ void writeFontBlock() {
 }
 
 void writeStaticStrings(const char **strings, DataType dataType, int languageId) {
-	// Write out a section header 
+	// Write out a section header
 	const char sStaticStrings[4] = { 'S', 'S', 'T', 'R' };
 	const char sGameStrings[4] = { 'G', 'S', 'T', 'R' };
 
@@ -227,6 +220,7 @@ void writeMenuData(const char *menuData, int languageId) {
 
 void writeMenuBlock() {
 	writeMenuData(menuDataEn, 1);
+	writeMenuData(menuDataFr, 0);
 	writeMenuData(menuDataDe, 2);
 }
 

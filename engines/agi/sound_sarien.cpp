@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,14 +15,12 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "common/random.h"
-
-#include "audio/mididrv.h"
+#include "audio/mixer.h"
 
 #include "agi/agi.h"
 
@@ -40,7 +38,7 @@ static const int16 waveformRamp[WAVEFORM_SIZE] = {
 	0, -248, -240, -232, -224, -216, -208, -200,
 	-192, -184, -176, -168, -160, -152, -144, -136,
 	-128, -120, -112, -104, -96, -88, -80, -72,
-	-64, -56, -48, -40, -32, -24, -16, -8	// Ramp up
+	-64, -56, -48, -40, -32, -24, -16, -8   // Ramp up
 };
 
 static const int16 waveformSquare[WAVEFORM_SIZE] = {
@@ -51,7 +49,7 @@ static const int16 waveformSquare[WAVEFORM_SIZE] = {
 	-255, -230, -220, -220, -220, -220, -220, -220,
 	-220, -220, -220, -220, -220, -220, -220, -220,
 	-220, -220, -220, -220, -220, -220, -220, -220,
-	-220, -220, -220, -110, 0, 0, 0, 0	// Square
+	-220, -220, -220, -110, 0, 0, 0, 0  // Square
 };
 
 static const int16 waveformMac[WAVEFORM_SIZE] = {
@@ -65,6 +63,25 @@ static const int16 waveformMac[WAVEFORM_SIZE] = {
 	-175, -172, -165, -159, -137, -114, -67, -19
 };
 
+/**
+ * AGI sound note structure.
+ */
+struct AgiNote {
+	uint16 duration;    ///< Note duration
+	uint16 freqDiv;     ///< Note frequency divisor (10-bit)
+	uint8  attenuation; ///< Note volume attenuation (4-bit)
+
+	/** Reads an AgiNote through the given pointer. */
+	void read(const uint8 *ptr) {
+		duration = READ_LE_UINT16(ptr);
+		uint16 freqByte0 = *(ptr + 2); // Bits 4-9 of the frequency divisor
+		uint16 freqByte1 = *(ptr + 3); // Bits 0-3 of the frequency divisor
+		// Merge the frequency divisor's bits together into a single variable
+		freqDiv = ((freqByte0 & 0x3F) << 4) | (freqByte1 & 0x0F);
+		attenuation = *(ptr + 4) & 0x0F;
+	}
+};
+
 SoundGenSarien::SoundGenSarien(AgiBase *vm, Audio::Mixer *pMixer) : SoundGen(vm, pMixer), _chn() {
 	_sndBuffer = (int16 *)calloc(2, BUFFER_SIZE);
 
@@ -72,9 +89,10 @@ SoundGenSarien::SoundGenSarien(AgiBase *vm, Audio::Mixer *pMixer) : SoundGen(vm,
 	_env = false;
 	_playingSound = -1;
 	_playing = false;
-	_useChorus = true;	// FIXME: Currently always true?
+	_useChorus = true;  // FIXME: Currently always true?
 
 	switch (_vm->_soundemu) {
+	default:
 	case SOUND_EMU_NONE:
 		_waveform = waveformRamp;
 		_env = true;
@@ -94,25 +112,27 @@ SoundGenSarien::SoundGenSarien(AgiBase *vm, Audio::Mixer *pMixer) : SoundGen(vm,
 		debug(0, "Initializing sound: envelopes disabled");
 	}
 
-	_mixer->playStream(Audio::Mixer::kMusicSoundType, &_soundHandle, this, -1, Audio::Mixer::kMaxChannelVolume, 0, DisposeAfterUse::NO, true);
+	_mixer->playStream(Audio::Mixer::kMusicSoundType, _soundHandle, this, -1, Audio::Mixer::kMaxChannelVolume, 0, DisposeAfterUse::NO, true);
 }
 
 SoundGenSarien::~SoundGenSarien() {
-	_mixer->stopHandle(_soundHandle);
+	_mixer->stopHandle(*_soundHandle);
 
 	free(_sndBuffer);
 }
 
 int SoundGenSarien::readBuffer(int16 *buffer, const int numSamples) {
+	Common::StackLock lock(_mutex);
+
 	fillAudio(buffer, numSamples / 2);
 
 	return numSamples;
 }
 
 void SoundGenSarien::play(int resnum) {
-	AgiSoundEmuType type;
+	Common::StackLock lock(_mutex);
 
-	type = (AgiSoundEmuType)_vm->_game.sounds[resnum]->type();
+	AgiSoundEmuType type = (AgiSoundEmuType)_vm->_game.sounds[resnum]->type();
 
 	assert(type == AGI_SOUND_4CHN);
 
@@ -142,6 +162,8 @@ void SoundGenSarien::play(int resnum) {
 }
 
 void SoundGenSarien::stop() {
+	Common::StackLock lock(_mutex);
+
 	_playingSound = -1;
 
 	for (int i = 0; i < NUM_CHANNELS; i++)
@@ -154,14 +176,14 @@ void SoundGenSarien::stopNote(int i) {
 	if (_useChorus) {
 		// Stop chorus ;)
 		if (_chn[i].type == AGI_SOUND_4CHN &&
-			_vm->_soundemu == SOUND_EMU_NONE && i < 3) {
+		        _vm->_soundemu == SOUND_EMU_NONE && i < 3) {
 			stopNote(i + 4);
 		}
 	}
 }
 
 void SoundGenSarien::playNote(int i, int freq, int vol) {
-	if (!_vm->getflag(fSoundOn))
+	if (!_vm->getFlag(VM_FLAG_SOUND_ON))
 		vol = 0;
 	else if (vol && _vm->_soundemu == SOUND_EMU_PC)
 		vol = 160;
@@ -175,7 +197,7 @@ void SoundGenSarien::playNote(int i, int freq, int vol) {
 	if (_useChorus) {
 		// Add chorus ;)
 		if (_chn[i].type == AGI_SOUND_4CHN &&
-			_vm->_soundemu == SOUND_EMU_NONE && i < 3) {
+		        _vm->_soundemu == SOUND_EMU_NONE && i < 3) {
 
 			int newfreq = freq * 1007 / 1000;
 
@@ -237,7 +259,7 @@ void SoundGenSarien::playSound() {
 }
 
 uint32 SoundGenSarien::mixSound() {
-	register int i, p;
+	int i, p;
 	const int16 *src;
 	int c, b, m;
 
@@ -265,7 +287,7 @@ uint32 SoundGenSarien::mixSound() {
 #endif
 				_sndBuffer[i] += (b * m) >> 4;
 
-				p += (uint32) 118600 *4 / _chn[c].freq;
+				p += (uint32) 118600 * 4 / _chn[c].freq;
 
 				// FIXME: Fingolfin asks: why is there a FIXME here? Please either clarify what
 				// needs fixing, or remove it!
@@ -311,6 +333,9 @@ uint32 SoundGenSarien::mixSound() {
 			} else {
 				_chn[c].env = 0;
 			}
+			break;
+		default:
+			break;
 		}
 	}
 

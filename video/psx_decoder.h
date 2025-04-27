@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,14 +15,14 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #ifndef VIDEO_PSX_DECODER_H
 #define VIDEO_PSX_DECODER_H
 
+#include "common/bitstream.h"
 #include "common/endian.h"
 #include "common/rational.h"
 #include "common/rect.h"
@@ -35,9 +35,8 @@ class QueuingAudioStream;
 }
 
 namespace Common {
-class BitStream;
+template <class BITSTREAM>
 class Huffman;
-class SeekableReadStream;
 }
 
 namespace Graphics {
@@ -66,35 +65,44 @@ public:
 	};
 
 	PSXStreamDecoder(CDSpeed speed, uint32 frameCount = 0);
-	virtual ~PSXStreamDecoder();
+	virtual ~PSXStreamDecoder() override;
 
-	bool loadStream(Common::SeekableReadStream *stream);
-	void close();
+	bool loadStream(Common::SeekableReadStream *stream) override;
+	void close() override;
 
 protected:
-	void readNextPacket();
-	bool useAudioSync() const;
+	void readNextPacket() override;
+	bool useAudioSync() const override;
 
 private:
 	class PSXVideoTrack : public VideoTrack {
 	public:
 		PSXVideoTrack(Common::SeekableReadStream *firstSector, CDSpeed speed, int frameCount);
-		~PSXVideoTrack();
+		~PSXVideoTrack() override;
 
-		uint16 getWidth() const { return _surface->w; }
-		uint16 getHeight() const { return _surface->h; }
-		Graphics::PixelFormat getPixelFormat() const { return _surface->format; }
-		bool endOfTrack() const { return _endOfTrack; }
-		int getCurFrame() const { return _curFrame; }
-		int getFrameCount() const { return _frameCount; }
-		uint32 getNextFrameStartTime() const;
-		const Graphics::Surface *decodeNextFrame();
+		uint16 getWidth() const override { return _width; }
+		uint16 getHeight() const override { return _height; }
+		Graphics::PixelFormat getPixelFormat() const override { return _pixelFormat; }
+		bool setOutputPixelFormat(const Graphics::PixelFormat &format) override {
+			if (format.bytesPerPixel != 2 && format.bytesPerPixel != 4)
+				return false;
+			_pixelFormat = format;
+			return true;
+		}
+		bool endOfTrack() const override { return _endOfTrack; }
+		int getCurFrame() const override { return _curFrame; }
+		int getFrameCount() const override { return _frameCount; }
+		uint32 getNextFrameStartTime() const override;
+		const Graphics::Surface *decodeNextFrame() override;
 
 		void setEndOfTrack() { _endOfTrack = true; }
-		void decodeFrame(Common::SeekableReadStream *frame, uint sectorCount);
+		void decodeFrame(Common::BitStreamMemoryStream *frame, uint sectorCount);
 
 	private:
 		Graphics::Surface *_surface;
+		Graphics::PixelFormat _pixelFormat;
+		uint16 _width;
+		uint16 _height;
 		uint32 _frameCount;
 		Audio::Timestamp _nextFrameStartTime;
 		bool _endOfTrack;
@@ -106,43 +114,43 @@ private:
 			kPlaneV = 2
 		};
 
+		typedef Common::Huffman<Common::BitStreamMemory16LEMSB> HuffmanDecoder;
+
 		uint16 _macroBlocksW, _macroBlocksH;
 		byte *_yBuffer, *_cbBuffer, *_crBuffer;
-		void decodeMacroBlock(Common::BitStream *bits, int mbX, int mbY, uint16 scale, uint16 version);
-		void decodeBlock(Common::BitStream *bits, byte *block, int pitch, uint16 scale, uint16 version, PlaneType plane);
+		void decodeMacroBlock(Common::BitStreamMemory16LEMSB *bits, int mbX, int mbY, uint16 scale, uint16 version);
+		void decodeBlock(Common::BitStreamMemory16LEMSB *bits, byte *block, int pitch, uint16 scale, uint16 version, PlaneType plane);
 
-		void readAC(Common::BitStream *bits, int *block);
-		Common::Huffman *_acHuffman;
+		void readAC(Common::BitStreamMemory16LEMSB *bits, int *block);
+		HuffmanDecoder *_acHuffman;
 
-		int readDC(Common::BitStream *bits, uint16 version, PlaneType plane);
-		Common::Huffman *_dcHuffmanLuma, *_dcHuffmanChroma;
+		int readDC(Common::BitStreamMemory16LEMSB *bits, uint16 version, PlaneType plane);
+		HuffmanDecoder *_dcHuffmanLuma, *_dcHuffmanChroma;
 		int _lastDC[3];
 
 		void dequantizeBlock(int *coefficients, float *block, uint16 scale);
 		void idct(float *dequantData, float *result);
-		int readSignedCoefficient(Common::BitStream *bits);
+		int readSignedCoefficient(Common::BitStreamMemory16LEMSB *bits);
 	};
 
 	class PSXAudioTrack : public AudioTrack {
 	public:
-		PSXAudioTrack(Common::SeekableReadStream *sector);
-		~PSXAudioTrack();
+		PSXAudioTrack(Common::SeekableReadStream *sector, Audio::Mixer::SoundType soundType);
+		~PSXAudioTrack() override;
 
-		bool endOfTrack() const;
+		bool endOfTrack() const override;
 
 		void setEndOfTrack() { _endOfTrack = true; }
 		void queueAudioFromSector(Common::SeekableReadStream *sector);
 
 	private:
-		Audio::AudioStream *getAudioStream() const;
+		Audio::AudioStream *getAudioStream() const override;
 
 		Audio::QueuingAudioStream *_audStream;
 
-		struct ADPCMStatus {
-			int16 sample[2];
-		} _adpcmStatus[2];
-
 		bool _endOfTrack;
+		bool _stereo;
+		uint _rate;
 	};
 
 	CDSpeed _speed;

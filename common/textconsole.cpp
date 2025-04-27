@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -28,13 +27,23 @@
 
 namespace Common {
 
-static OutputFormatter s_errorOutputFormatter = 0;
+static OutputFormatter s_errorOutputFormatter = nullptr;
 
 void setErrorOutputFormatter(OutputFormatter f) {
 	s_errorOutputFormatter = f;
 }
 
-static ErrorHandler s_errorHandler = 0;
+static LogWatcher s_logWatcher = nullptr;
+
+void setLogWatcher(LogWatcher f) {
+	s_logWatcher = f;
+}
+
+LogWatcher getLogWatcher() {
+	return s_logWatcher;
+}
+
+static ErrorHandler s_errorHandler = nullptr;
 
 void setErrorHandler(ErrorHandler handler) {
 	s_errorHandler = handler;
@@ -53,6 +62,9 @@ void warning(const char *s, ...) {
 	va_start(va, s);
 	output = Common::String::vformat(s, va);
 	va_end(va);
+
+	if (Common::s_logWatcher)
+   		(*Common::s_logWatcher)(LogMessageType::kWarning, 0, 0, output.c_str());
 
 	output = "WARNING: " + output + "!\n";
 
@@ -88,7 +100,10 @@ void NORETURN_PRE error(const char *s, ...) {
 	buf_output[STRINGBUFLEN - 3] = '\0';
 	buf_output[STRINGBUFLEN - 2] = '\0';
 	buf_output[STRINGBUFLEN - 1] = '\0';
-	strcat(buf_output, "!\n");
+	Common::strcat_s(buf_output, "!\n");
+
+	if (Common::s_logWatcher)
+   		(*Common::s_logWatcher)(LogMessageType::kError, 0, 0, buf_output);
 
 	if (g_system)
 		g_system->logMessage(LogMessageType::kError, buf_output);
@@ -96,8 +111,12 @@ void NORETURN_PRE error(const char *s, ...) {
 	// any OSystem yet.
 
 	// If there is an error handler, invoke it now
+	bool handled = false;
 	if (Common::s_errorHandler)
-		(*Common::s_errorHandler)(buf_output);
+		handled = (*Common::s_errorHandler)(buf_output);
+
+	if (!handled && g_system)
+		g_system->messageBox(LogMessageType::kError, buf_output);
 
 	if (g_system)
 		g_system->fatalError();

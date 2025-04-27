@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -45,6 +44,23 @@ enum Facing {
 	FACING_NONE = 5, FACING_DUMMY = 0
 };
 
+struct StopWalkerEntry {
+	int _stack;
+	int _trigger;
+
+	StopWalkerEntry() : _stack(0), _trigger(0) {}
+	StopWalkerEntry(int stack, int trigger) : _stack(stack), _trigger(trigger) {}
+
+	void synchronize(Common::Serializer &s);
+};
+
+class StopWalkers : public Common::FixedStack<StopWalkerEntry, 12> {
+public:
+	StopWalkers() : Common::FixedStack<StopWalkerEntry, 12>() {}
+
+	void synchronize(Common::Serializer &s);
+};
+
 class Player {
 private:
 	static const int _directionListIndexes[32];
@@ -58,8 +74,6 @@ private:
 	int _distAccum;
 	int _pixelAccum;
 	int _deltaDistance;
-	int _stopWalkerList[12];
-	int _stopWalkerTrigger[12];
 	int _totalDistance;
 
 	void clearStopList();
@@ -95,6 +109,8 @@ private:
 	void startMovement();
 
 	void changeFacing();
+
+	void activateTrigger();
 public:
 	MADSAction *_action;
 
@@ -131,13 +147,20 @@ public:
 	int _trigger;
 	bool _scalingVelocity;
 	bool _forceRefresh;
+	bool _forcePrefix;
 	bool _needToWalk;
 	bool _readyToWalk;
-	int _stopWalkerIndex;
+	bool _commandsAllowed;
+	bool _enableAtTarget;
 	int _centerOfGravity;
 	int _currentDepth;
 	int _currentScale;
 	Common::String _spritesPrefix;
+
+	int _walkTrigger;
+	TriggerMode _walkTriggerDest;
+	ActionDetails _walkTriggerAction;
+	StopWalkers _stopWalkers;
 public:
 	Player(MADSEngine *vm);
 
@@ -158,7 +181,7 @@ public:
 	void cancelWalk();
 
 	/**
-	 * Cancels any oustanding player action
+	 * Cancels any outstanding player action
 	 */
 	void cancelCommand();
 
@@ -221,6 +244,13 @@ public:
 	}
 
 	void removePlayerSprites();
+
+	void firstWalk(Common::Point fromPos, Facing fromFacing, Common::Point destPos, Facing destFacing, bool enableFl);
+
+	void setWalkTrigger(int val);
+
+	void resetFacing(Facing facing);
+
 };
 
 } // End of namespace MADS

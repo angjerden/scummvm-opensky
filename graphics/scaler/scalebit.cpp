@@ -1,11 +1,12 @@
-/*
- * This file is part of the Scale2x project.
+/* ScummVM - Graphic Adventure Engine
  *
- * Copyright (C) 2003 Andrea Mazzoleni
+ * ScummVM is the legal property of its developers, whose names
+ * are too numerous to list here. Please refer to the COPYRIGHT
+ * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or modify
+ * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
+ * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
@@ -14,17 +15,17 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
  */
 
 /*
  * This file contains an example implementation of the Scale effect
- * applyed to a generic bitmap.
+ * applied to a generic bitmap.
  *
- * You can find an high level description of the effect at :
+ * You can find a high-level description of the effect at:
  *
- * http://scale2x.sourceforge.net/
+ * https://www.scale2x.it
  *
  * Alternatively at the previous license terms, you are allowed to use this
  * code in your program with these conditions:
@@ -37,6 +38,7 @@
 
 #include "graphics/scaler/scale2x.h"
 #include "graphics/scaler/scale3x.h"
+#include "graphics/scaler/scalebit.h"
 
 #define DST(bits, num)	(scale2x_uint ## bits *)dst ## num
 #define SRC(bits, num)	(const scale2x_uint ## bits *)src ## num
@@ -47,18 +49,19 @@
 static inline void stage_scale2x(void* dst0, void* dst1, const void* src0, const void* src1, const void* src2, unsigned pixel, unsigned pixel_per_row) {
 	switch (pixel) {
 #if defined(__GNUC__) && (defined(__i386__) || defined(__x86_64__))
-	case 1 : scale2x_8_mmx(DST(8,0), DST(8,1), SRC(8,0), SRC(8,1), SRC(8,2), pixel_per_row); break;
-	case 2 : scale2x_16_mmx(DST(16,0), DST(16,1), SRC(16,0), SRC(16,1), SRC(16,2), pixel_per_row); break;
-	case 4 : scale2x_32_mmx(DST(32,0), DST(32,1), SRC(32,0), SRC(32,1), SRC(32,2), pixel_per_row); break;
+	case 1: scale2x_8_mmx( DST( 8,0), DST( 8,1), SRC( 8,0), SRC( 8,1), SRC( 8,2), pixel_per_row); break;
+	case 2: scale2x_16_mmx(DST(16,0), DST(16,1), SRC(16,0), SRC(16,1), SRC(16,2), pixel_per_row); break;
+	case 4: scale2x_32_mmx(DST(32,0), DST(32,1), SRC(32,0), SRC(32,1), SRC(32,2), pixel_per_row); break;
 #elif defined(USE_ARM_SCALER_ASM)
-	case 1 : scale2x_8_arm(DST(8,0), DST(8,1), SRC(8,0), SRC(8,1), SRC(8,2), pixel_per_row); break;
-	case 2 : scale2x_16_arm(DST(16,0), DST(16,1), SRC(16,0), SRC(16,1), SRC(16,2), pixel_per_row); break;
-	case 4 : scale2x_32_arm(DST(32,0), DST(32,1), SRC(32,0), SRC(32,1), SRC(32,2), pixel_per_row); break;
+	case 1: scale2x_8_arm( DST( 8,0), DST( 8,1), SRC( 8,0), SRC( 8,1), SRC( 8,2), pixel_per_row); break;
+	case 2: scale2x_16_arm(DST(16,0), DST(16,1), SRC(16,0), SRC(16,1), SRC(16,2), pixel_per_row); break;
+	case 4: scale2x_32_arm(DST(32,0), DST(32,1), SRC(32,0), SRC(32,1), SRC(32,2), pixel_per_row); break;
 #else
-	case 1 : scale2x_8_def(DST(8,0), DST(8,1), SRC(8,0), SRC(8,1), SRC(8,2), pixel_per_row); break;
-	case 2 : scale2x_16_def(DST(16,0), DST(16,1), SRC(16,0), SRC(16,1), SRC(16,2), pixel_per_row); break;
-	case 4 : scale2x_32_def(DST(32,0), DST(32,1), SRC(32,0), SRC(32,1), SRC(32,2), pixel_per_row); break;
+	case 1: scale2x_8_def( DST( 8,0), DST( 8,1), SRC( 8,0), SRC( 8,1), SRC( 8,2), pixel_per_row); break;
+	case 2: scale2x_16_def(DST(16,0), DST(16,1), SRC(16,0), SRC(16,1), SRC(16,2), pixel_per_row); break;
+	case 4: scale2x_32_def(DST(32,0), DST(32,1), SRC(32,0), SRC(32,1), SRC(32,2), pixel_per_row); break;
 #endif
+	default: break;
 	}
 }
 
@@ -67,9 +70,10 @@ static inline void stage_scale2x(void* dst0, void* dst1, const void* src0, const
  */
 static inline void stage_scale3x(void* dst0, void* dst1, void* dst2, const void* src0, const void* src1, const void* src2, unsigned pixel, unsigned pixel_per_row) {
 	switch (pixel) {
-	case 1 : scale3x_8_def(DST(8,0), DST(8,1), DST(8,2), SRC(8,0), SRC(8,1), SRC(8,2), pixel_per_row); break;
-	case 2 : scale3x_16_def(DST(16,0), DST(16,1), DST(16,2), SRC(16,0), SRC(16,1), SRC(16,2), pixel_per_row); break;
-	case 4 : scale3x_32_def(DST(32,0), DST(32,1), DST(32,2), SRC(32,0), SRC(32,1), SRC(32,2), pixel_per_row); break;
+	case 1: scale3x_8_def( DST( 8,0), DST( 8,1), DST( 8,2), SRC( 8,0), SRC( 8,1), SRC( 8,2), pixel_per_row); break;
+	case 2: scale3x_16_def(DST(16,0), DST(16,1), DST(16,2), SRC(16,0), SRC(16,1), SRC(16,2), pixel_per_row); break;
+	case 4: scale3x_32_def(DST(32,0), DST(32,1), DST(32,2), SRC(32,0), SRC(32,1), SRC(32,2), pixel_per_row); break;
+	default: break;
 	}
 }
 
@@ -162,7 +166,7 @@ static void scale3x(void* void_dst, unsigned dst_slice, const void* void_src, un
  * The destination bitmap must be manually allocated before calling the function,
  * note that the resulting size is exactly 4x4 times the size of the source bitmap.
  * \note This function requires also a small buffer bitmap used internally to store
- * intermediate results. This bitmap must have at least an horizontal size in bytes of 2*width*pixel,
+ * intermediate results. This bitmap must have at least a horizontal size in bytes of 2*width*pixel,
  * and a vertical size of 6 rows. The memory of this buffer must not be allocated
  * in video memory because it's also read and not only written. Generally
  * a heap (malloc) or a stack (alloca) buffer is the best choices.
@@ -194,6 +198,8 @@ static void scale4x_buf(void* void_dst, unsigned dst_slice, void* void_mid, unsi
 	mid[4] = mid[3] + mid_slice;
 	mid[5] = mid[4] + mid_slice;
 
+	stage_scale2x(SCMID(0), SCMID(1), SCSRC(0), SCSRC(1), SCSRC(2), pixel, width);
+	stage_scale2x(SCMID(2), SCMID(3), SCSRC(1), SCSRC(2), SCSRC(3), pixel, width);
 	while (count) {
 		unsigned char* tmp;
 
@@ -281,29 +287,33 @@ int scale_precondition(unsigned scale, unsigned pixel, unsigned width, unsigned 
 		return -1;
 
 	switch (scale) {
-	case 2 :
-	case 3 :
+	case 2:
+	case 3:
 		if (height < 2)
 			return -1;
 		break;
-	case 4 :
+	case 4:
 		if (height < 4)
 			return -1;
+		break;
+	default:
 		break;
 	}
 
 #if defined(__GNUC__) && (defined(__i386__) || defined(__x86_64__))
 	switch (scale) {
-	case 2 :
-	case 4 :
+	case 2:
+	case 4:
 		if (width < (16 / pixel))
 			return -1;
 		if (width % (8 / pixel) != 0)
 			return -1;
 		break;
-	case 3 :
+	case 3:
 		if (width < 2)
 			return -1;
+		break;
+	default:
 		break;
 	}
 #else
@@ -329,14 +339,69 @@ int scale_precondition(unsigned scale, unsigned pixel, unsigned width, unsigned 
 void scale(unsigned scale, void* void_dst, unsigned dst_slice, const void* void_src, unsigned src_slice, unsigned pixel, unsigned width, unsigned height)
 {
 	switch (scale) {
-	case 2 :
+	case 2:
 		scale2x(void_dst, dst_slice, void_src, src_slice, pixel, width, height);
 		break;
-	case 3 :
+	case 3:
 		scale3x(void_dst, dst_slice, void_src, src_slice, pixel, width, height);
 		break;
-	case 4 :
+	case 4:
 		scale4x(void_dst, dst_slice, void_src, src_slice, pixel, width, height);
+		break;
+	default:
 		break;
 	}
 }
+
+void AdvMameScaler::scaleIntern(const uint8 *srcPtr, uint32 srcPitch,
+							uint8 *dstPtr, uint32 dstPitch, int width, int height, int x, int y) {
+	if (_factor != 4)
+		::scale(_factor, dstPtr, dstPitch, srcPtr - srcPitch, srcPitch, _format.bytesPerPixel, width, height);
+	else
+		::scale(_factor, dstPtr, dstPitch, srcPtr - srcPitch * 2, srcPitch, _format.bytesPerPixel, width, height);
+}
+
+uint AdvMameScaler::increaseFactor() {
+	if (_factor < 4)
+		setFactor(_factor + 1);
+	return _factor;
+}
+
+uint AdvMameScaler::decreaseFactor() {
+	if (_factor > 2)
+		setFactor(_factor - 1);
+	return _factor;
+}
+
+
+class AdvMamePlugin final : public ScalerPluginObject {
+public:
+	AdvMamePlugin();
+
+	Scaler *createInstance(const Graphics::PixelFormat &format) const override;
+
+	bool canDrawCursor() const override { return true; }
+	uint extraPixels() const override { return 4; }
+	const char *getName() const override;
+	const char *getPrettyName() const override;
+};
+
+AdvMamePlugin::AdvMamePlugin() {
+	_factors.push_back(2);
+	_factors.push_back(3);
+	_factors.push_back(4);
+}
+
+Scaler *AdvMamePlugin::createInstance(const Graphics::PixelFormat &format) const {
+	return new AdvMameScaler(format);
+}
+
+const char *AdvMamePlugin::getName() const {
+	return "advmame";
+}
+
+const char *AdvMamePlugin::getPrettyName() const {
+	return "AdvMame";
+}
+
+REGISTER_PLUGIN_STATIC(ADVMAME, PLUGIN_TYPE_SCALER, AdvMamePlugin);

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -162,6 +161,7 @@ Animation::Animation(MADSEngine *vm, Scene *scene) : _vm(vm), _scene(scene) {
 	_flags = 0;
 	_font = nullptr;
 	_resetFlag = false;
+	_canChangeView = false;
 	_messageCtr = 0;
 	_skipLoad = false;
 	_freeFlag = false;
@@ -177,6 +177,7 @@ Animation::Animation(MADSEngine *vm, Scene *scene) : _vm(vm), _scene(scene) {
 	_oldFrameEntry = 0;
 	_rgbResult = -1;
 	_palIndex1 = _palIndex2 = -1;
+	_dynamicHotspotIndex = -1;
 }
 
 Animation::~Animation() {
@@ -192,11 +193,11 @@ Animation::~Animation() {
 }
 
 void Animation::load(MSurface &backSurface, DepthSurface &depthSurface,
-		const Common::String &resName, int flags, Common::Array<PaletteCycle> *palCycles,
+		const Common::Path &resName, int flags, Common::Array<PaletteCycle> *palCycles,
 		SceneInfo *sceneInfo) {
-	Common::String resourceName = resName;
-	if (!resourceName.contains("."))
-		resourceName += ".AA";
+	Common::Path resourceName = resName;
+	if (!resourceName.baseName().contains("."))
+		resourceName.appendInPlace(".AA");
 
 	File f(resourceName);
 	MadsPack madsPack(&f);
@@ -296,14 +297,14 @@ void Animation::load(MSurface &backSurface, DepthSurface &depthSurface,
 			// Skip over field, since it's manually loaded
 			_spriteSets[i] = nullptr;
 		} else {
-			_spriteSets[i] = new SpriteAsset(_vm, _header._spriteSetNames[i], flags);
+			_spriteSets[i] = new SpriteAsset(_vm, Common::Path(_header._spriteSetNames[i]), flags);
 			_spriteListIndexes[i] = _vm->_game->_scene._sprites.add(_spriteSets[i]);
 		}
 	}
 
 	if (_header._manualFlag) {
 		Common::String assetResName = "*" + _header._spriteSetNames[_header._spritesIndex];
-		SpriteAsset *sprites = new SpriteAsset(_vm, assetResName, flags);
+		SpriteAsset *sprites = new SpriteAsset(_vm, Common::Path(assetResName), flags);
 		_spriteSets[_header._spritesIndex] = sprites;
 
 		_spriteListIndexes[_header._spritesIndex] = _scene->_sprites.add(sprites);
@@ -327,7 +328,7 @@ void Animation::load(MSurface &backSurface, DepthSurface &depthSurface,
 	f.close();
 }
 
-void Animation::preLoad(const Common::String &resName, int level) {
+void Animation::preLoad(const Common::Path &resName, int level) {
 	// No implementation in ScummVM, since access is fast enough that data
 	// doesn't need to be preloaded
 }
@@ -375,6 +376,7 @@ void Animation::loadFrame(int frameNumber) {
 		pt.x = _unkList[_unkIndex].x;
 		pt.y = _unkList[_unkIndex].y;
 		_unkIndex = 1 - _unkIndex;
+		warning("LoadFrame - Using unknown array");
 	}
 
 	if (drawFrame(spriteSet, pt, frameNumber))
@@ -389,6 +391,11 @@ void Animation::loadBackground(MSurface &backSurface, DepthSurface &depthSurface
 		AAHeader &header, int flags, Common::Array<PaletteCycle> *palCycles, SceneInfo *sceneInfo) {
 	_scene->_depthStyle = 0;
 	if (header._bgType <= ANIMBG_FULL_SIZE) {
+		if (!sceneInfo) {
+			// Sanity check - should never happen, but happens in Forest
+			warning("Animation::loadBackground(): requested to load a background with empty sceneInfo");
+			return;
+		}
 		_vm->_palette->_paletteUsage.setEmpty();
 		sceneInfo->load(header._roomNumber, 0, header._backgroundFile, flags, depthSurface, backSurface);
 		_scene->_depthStyle = sceneInfo->_depthStyle == 2 ? 1 : 0;
@@ -399,7 +406,7 @@ void Animation::loadBackground(MSurface &backSurface, DepthSurface &depthSurface
 		}
 	} else if (header._bgType == ANIMBG_INTERFACE) {
 		// Load a scene interface
-		Common::String resourceName = "*" + header._backgroundFile;
+		Common::Path resourceName = Common::Path("*").appendInPlace(header._backgroundFile);
 		backSurface.load(resourceName);
 
 		if (palCycles)
@@ -463,21 +470,25 @@ void Animation::update() {
 		scene._spriteSlots.fullRefresh();
 	}
 
-	// Handle any offset adjustment for sprites as of this frame
-	bool paChanged = false;
-	if (scene._posAdjust.x != misc._posAdjust.x) {
-		scene._posAdjust.x = misc._posAdjust.x;
-		paChanged = true;
-	}
-	if (scene._posAdjust.y != misc._posAdjust.y) {
-		scene._posAdjust.y = misc._posAdjust.y;
-		paChanged = true;
-	}
+	bool isV2 = (_vm->getGameID() != GType_RexNebular);
+	if (isV2 && _canChangeView) {
+		// Handle any offset adjustment for sprites as of this frame
+		bool paChanged = false;
+		if (getFramePosAdjust(_currentFrame).x != scene._posAdjust.x) {
+			scene._posAdjust.x = getFramePosAdjust(_currentFrame).x;
+			paChanged = true;
+		}
 
-	if (paChanged) {
-		int newIndex = scene._spriteSlots.add();
-		scene._spriteSlots[newIndex]._seqIndex = -1;
-		scene._spriteSlots[newIndex]._flags = IMG_REFRESH;
+		if (getFramePosAdjust(_currentFrame).y != scene._posAdjust.y) {
+			scene._posAdjust.y = getFramePosAdjust(_currentFrame).y;
+			paChanged = true;
+		}
+
+		if (paChanged) {
+			int newIndex = scene._spriteSlots.add();
+			scene._spriteSlots[newIndex]._seqIndex = -1;
+			scene._spriteSlots[newIndex]._flags = IMG_REFRESH;
+		}
 	}
 
 	// Main frame animation loop - frames get animated by being placed, as necessary, into the
@@ -598,8 +609,8 @@ void Animation::setCurrentFrame(int frameNumber) {
 	_freeFlag = false;
 }
 
-void Animation::setNextFrameTimer(int frameNumber) {
-	_nextFrameTimer = frameNumber;
+void Animation::setNextFrameTimer(uint32 newTimer) {
+	_nextFrameTimer = newTimer;
 }
 
 void Animation::eraseSprites() {
@@ -611,4 +622,9 @@ void Animation::eraseSprites() {
 	}
 }
 
+Common::Point Animation::getFramePosAdjust(int idx) {
+	warning("TODO: Implement getFramePosAdjust");
+
+	return Common::Point(0, 0);
+}
 } // End of namespace MADS

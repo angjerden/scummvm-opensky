@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,13 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ *
+ * This file is dual-licensed.
+ * In addition to the GPLv3 license mentioned above, this code is also
+ * licensed under LGPL 2.1. See LICENSES/COPYING.LGPL file for the
+ * full text of the license.
  *
  */
 
@@ -28,8 +33,8 @@
 
 namespace Gob {
 
-ADLPlayer::ADLPlayer(Audio::Mixer &mixer) : AdLib(mixer),
-	_songData(0), _songDataSize(0), _playPos(0) {
+ADLPlayer::ADLPlayer() : AdLib(1000),
+	_songData(nullptr), _songDataSize(0), _playPos(nullptr) {
 
 }
 
@@ -44,10 +49,10 @@ void ADLPlayer::unload() {
 
 	delete[] _songData;
 
-	_songData     = 0;
+	_songData     = nullptr;
 	_songDataSize = 0;
 
-	_playPos = 0;
+	_playPos = nullptr;
 }
 
 uint32 ADLPlayer::pollMusic(bool first) {
@@ -135,14 +140,7 @@ uint32 ADLPlayer::pollMusic(bool first) {
 	if (delay & 0x80)
 		delay = ((delay & 3) << 8) | *_playPos++;
 
-	return getSampleDelay(delay);
-}
-
-uint32 ADLPlayer::getSampleDelay(uint16 delay) const {
-	if (delay == 0)
-		return 0;
-
-	return ((uint32)delay * getSamplesPerSecond()) / 1000;
+	return delay;
 }
 
 void ADLPlayer::rewind() {
@@ -191,7 +189,7 @@ bool ADLPlayer::load(Common::SeekableReadStream &adl) {
 bool ADLPlayer::readHeader(Common::SeekableReadStream &adl, int &timbreCount) {
 	// Sanity check
 	if (adl.size() < 60) {
-		warning("ADLPlayer::readHeader(): File too small (%d)", adl.size());
+		warning("ADLPlayer::readHeader(): File too small (%d)", (int)adl.size());
 		return false;
 	}
 
@@ -205,9 +203,9 @@ bool ADLPlayer::readHeader(Common::SeekableReadStream &adl, int &timbreCount) {
 
 bool ADLPlayer::readTimbres(Common::SeekableReadStream &adl, int timbreCount) {
 	_timbres.resize(timbreCount);
-	for (Common::Array<Timbre>::iterator t = _timbres.begin(); t != _timbres.end(); ++t) {
+	for (auto &timbre : _timbres) {
 		for (int i = 0; i < (kOperatorsPerVoice * kParamCount); i++)
-			t->startParams[i] = adl.readUint16LE();
+			timbre.startParams[i] = adl.readUint16LE();
 	}
 
 	if (adl.err()) {

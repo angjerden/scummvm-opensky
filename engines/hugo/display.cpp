@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -33,10 +32,11 @@
 #include "common/system.h"
 #include "common/textconsole.h"
 #include "graphics/cursorman.h"
-#include "graphics/palette.h"
+#include "graphics/paletteman.h"
 
 #include "hugo/hugo.h"
 #include "hugo/display.h"
+#include "hugo/file.h"
 #include "hugo/inventory.h"
 #include "hugo/util.h"
 #include "hugo/object.h"
@@ -188,7 +188,7 @@ void Screen::displayRect(const int16 x, const int16 y, const int16 dx, const int
 
 /**
  * Change a color by remapping supplied palette index with new index in main palette.
- * Alse save the new color in the current palette.
+ * Also save the new color in the current palette.
  */
 void Screen::remapPal(const uint16 oldIndex, const uint16 newIndex) {
 	debugC(1, kDebugDisplay, "RemapPal(%d, %d)", oldIndex, newIndex);
@@ -331,7 +331,7 @@ int16 Screen::mergeLists(Rect *list, Rect *blist, const int16 len, int16 blen) {
  * Process the display list
  * Trailing args are int16 x,y,dx,dy for the D_ADD operation
  */
-void Screen::displayList(Dupdate update, ...) {
+void Screen::displayList(int update, ...) {
 	debugC(6, kDebugDisplay, "displayList()");
 
 	int16         blitLength = 0;                   // Length of blit list
@@ -383,6 +383,8 @@ void Screen::displayList(Dupdate update, ...) {
 			moveImage(_backBuffer, p->_x, p->_y, p->_dx, p->_dy, kXPix, _frontBuffer, p->_x, p->_y, kXPix);
 		}
 		_dlAddIndex = 0;                            // Reset add-list
+		break;
+	default:
 		break;
 	}
 }
@@ -660,10 +662,10 @@ void Screen::drawBoundaries() {
 	for (int i = 0; i < _vm->_object->_numObj; i++) {
 		Object *obj = &_vm->_object->_objects[i]; // Get pointer to object
 		if (obj->_screenIndex == *_vm->_screenPtr) {
-			if ((obj->_currImagePtr != 0) && (obj->_cycling != kCycleInvisible))
+			if ((obj->_currImagePtr != nullptr) && (obj->_cycling != kCycleInvisible))
 				drawRectangle(false, obj->_x + obj->_currImagePtr->_x1, obj->_y + obj->_currImagePtr->_y1,
 				                     obj->_x + obj->_currImagePtr->_x2, obj->_y + obj->_currImagePtr->_y2, _TLIGHTGREEN);
-			else if ((obj->_currImagePtr == 0) && (obj->_vxPath != 0) && !obj->_carriedFl)
+			else if ((obj->_currImagePtr == nullptr) && (obj->_vxPath != 0) && !obj->_carriedFl)
 				drawRectangle(false, obj->_oldx, obj->_oldy, obj->_oldx + obj->_vxPath, obj->_oldy + obj->_vyPath, _TBRIGHTWHITE);
 		}
 	}

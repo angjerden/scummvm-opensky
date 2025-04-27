@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -57,7 +56,7 @@ bool SaveLoadManager::save(const Common::String &file, const void *buf, size_t n
 
 bool SaveLoadManager::saveExists(const Common::String &file) {
 	Common::InSaveFile *savefile = g_system->getSavefileManager()->openForLoading(file);
-	bool result = savefile != NULL;
+	bool result = savefile != nullptr;
 	delete savefile;
 	return result;
 }
@@ -69,7 +68,7 @@ bool SaveLoadManager::saveFile(const Common::String &file, const void *buf, size
 
 void SaveLoadManager::load(const Common::String &file, byte *buf) {
 	Common::InSaveFile *savefile = g_system->getSavefileManager()->openForLoading(file);
-	if (savefile == NULL)
+	if (savefile == nullptr)
 		error("Error opening file - %s", file.c_str());
 
 	int32 filesize = savefile->size();
@@ -77,9 +76,8 @@ void SaveLoadManager::load(const Common::String &file, byte *buf) {
 	delete savefile;
 }
 
-bool SaveLoadManager::readSavegameHeader(Common::InSaveFile *in, hopkinsSavegameHeader &header) {
+WARN_UNUSED_RESULT bool SaveLoadManager::readSavegameHeader(Common::InSaveFile *in, hopkinsSavegameHeader &header, bool skipThumbnail) {
 	char saveIdentBuffer[SAVEGAME_STR_SIZE + 1];
-	header._thumbnail = NULL;
 
 	// Validate the header Id
 	in->read(saveIdentBuffer, SAVEGAME_STR_SIZE + 1);
@@ -96,9 +94,9 @@ bool SaveLoadManager::readSavegameHeader(Common::InSaveFile *in, hopkinsSavegame
 	while ((ch = (char)in->readByte()) != '\0') header._saveName += ch;
 
 	// Get the thumbnail
-	header._thumbnail = Graphics::loadThumbnail(*in);
-	if (!header._thumbnail)
+	if (!Graphics::loadThumbnail(*in, header._thumbnail, skipThumbnail)) {
 		return false;
+	}
 
 	// Read in save date/time
 	header._year = in->readSint16LE();
@@ -151,12 +149,13 @@ Common::Error SaveLoadManager::saveGame(int slot, const Common::String &saveName
 	_vm->_globals->_saveData->_mapCarPosY = _vm->_objectsMan->_mapCarPosY;
 
 	/* Create the savegame */
-	Common::OutSaveFile *savefile = g_system->getSavefileManager()->openForSaving(_vm->generateSaveName(slot));
+	Common::OutSaveFile *savefile = g_system->getSavefileManager()->openForSaving(
+		_vm->getSaveStateName(slot));
 	if (!savefile)
 		return Common::kCreatingFileFailed;
 
 	// Set up the serializer
-	Common::Serializer serializer(NULL, savefile);
+	Common::Serializer serializer(nullptr, savefile);
 
 	// Write out the savegame header
 	hopkinsSavegameHeader header;
@@ -177,19 +176,19 @@ Common::Error SaveLoadManager::saveGame(int slot, const Common::String &saveName
 Common::Error SaveLoadManager::loadGame(int slot) {
 	// Try and open the save file for reading
 	Common::InSaveFile *savefile = g_system->getSavefileManager()->openForLoading(
-		_vm->generateSaveName(slot));
+		_vm->getSaveStateName(slot));
 	if (!savefile)
 		return Common::kReadingFailed;
 
 	// Set up the serializer
-	Common::Serializer serializer(savefile, NULL);
+	Common::Serializer serializer(savefile, nullptr);
 
 	// Read in the savegame header
 	hopkinsSavegameHeader header;
-	readSavegameHeader(savefile, header);
-	if (header._thumbnail)
-		header._thumbnail->free();
-	delete header._thumbnail;
+	if (!readSavegameHeader(savefile, header)) {
+		delete savefile;
+		return Common::kReadingFailed;
+	}
 
 	// Read in the savegame data
 	syncSavegameData(serializer, header._version);
@@ -212,14 +211,14 @@ Common::Error SaveLoadManager::loadGame(int slot) {
 	return Common::kNoError;
 }
 
-bool SaveLoadManager::readSavegameHeader(int slot, hopkinsSavegameHeader &header) {
+WARN_UNUSED_RESULT bool SaveLoadManager::readSavegameHeader(int slot, hopkinsSavegameHeader &header, bool skipThumbnail) {
 	// Try and open the save file for reading
 	Common::InSaveFile *savefile = g_system->getSavefileManager()->openForLoading(
-		_vm->generateSaveName(slot));
+		_vm->getSaveStateName(slot));
 	if (!savefile)
 		return false;
 
-	bool result = readSavegameHeader(savefile, header);
+	bool result = readSavegameHeader(savefile, header, skipThumbnail);
 	delete savefile;
 	return result;
 }

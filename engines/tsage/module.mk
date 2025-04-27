@@ -1,6 +1,26 @@
 MODULE := engines/tsage
 
 MODULE_OBJS := \
+	converse.o \
+	core.o \
+	debugger.o \
+	dialogs.o \
+	events.o \
+	globals.o \
+	graphics.o \
+	metaengine.o \
+	resources.o \
+	saveload.o \
+	scenes.o \
+	screen.o \
+	sherlock/sherlock_logo.o \
+	sound.o \
+	staticres.o \
+	tsage.o \
+	user_interface.o
+
+ifdef ENABLE_BLUEFORCE
+MODULE_OBJS += \
 	blue_force/blueforce_dialogs.o \
 	blue_force/blueforce_logic.o \
 	blue_force/blueforce_scenes0.o \
@@ -13,16 +33,11 @@ MODULE_OBJS := \
 	blue_force/blueforce_scenes7.o \
 	blue_force/blueforce_scenes8.o \
 	blue_force/blueforce_scenes9.o \
-	blue_force/blueforce_speakers.o \
-	converse.o \
-	core.o \
-	debugger.o \
-	detection.o \
-	dialogs.o \
-	events.o \
-	globals.o \
-	graphics.o \
-	resources.o \
+	blue_force/blueforce_speakers.o
+endif
+
+ifdef ENABLE_RINGWORLD
+MODULE_OBJS += \
 	ringworld/ringworld_demo.o \
 	ringworld/ringworld_dialogs.o \
 	ringworld/ringworld_logic.o \
@@ -34,7 +49,11 @@ MODULE_OBJS := \
 	ringworld/ringworld_scenes6.o \
 	ringworld/ringworld_scenes8.o \
 	ringworld/ringworld_scenes10.o \
-	ringworld/ringworld_speakers.o \
+	ringworld/ringworld_speakers.o
+endif
+
+ifdef ENABLE_RINGWORLD2
+MODULE_OBJS += \
 	ringworld2/ringworld2_airduct.o \
 	ringworld2/ringworld2_dialogs.o \
 	ringworld2/ringworld2_logic.o \
@@ -44,13 +63,8 @@ MODULE_OBJS := \
 	ringworld2/ringworld2_scenes2.o \
 	ringworld2/ringworld2_scenes3.o \
 	ringworld2/ringworld2_speakers.o \
-	ringworld2/ringworld2_vampire.o \
-	saveload.o \
-	scenes.o \
-	sound.o \
-	staticres.o \
-	tsage.o \
-	user_interface.o
+	ringworld2/ringworld2_vampire.o
+endif
 
 # This module can be built as a plugin
 ifeq ($(ENABLE_TSAGE), DYNAMIC_PLUGIN)
@@ -59,3 +73,6 @@ endif
 
 # Include common rules
 include $(srcdir)/rules.mk
+
+# Detection objects
+DETECT_OBJS += $(MODULE)/detection.o

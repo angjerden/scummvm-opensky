@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -24,6 +23,8 @@
 #include "common/config-manager.h"
 #include "common/util.h"
 #include "common/translation.h"
+
+#include "backends/keymapper/keymapper.h"
 
 #include "gui/saveload.h"
 
@@ -82,11 +83,14 @@ bool DialogsNebular::show(int messageId, int objectId) {
 						if (centerFlag) {
 							crFlag = true;
 						} else {
-							if (objectId == -1) {
+							if (dialog)
+								delete dialog;
+
+							if (objectId == -1)
 								dialog = new TextDialog(_vm, FONT_INTERFACE, _defaultPosition, _dialogWidth);
-							} else {
+							else
 								dialog = new PictureDialog(_vm, _defaultPosition, _dialogWidth, objectId);
-							}
+
 							dialog->wordWrap(dialogText);
 							dialog->incNumLines();
 						}
@@ -146,11 +150,10 @@ bool DialogsNebular::show(int messageId, int objectId) {
 		}
 
 		if (!dialog) {
-			if (objectId == -1) {
+			if (objectId == -1)
 				dialog = new TextDialog(_vm, FONT_INTERFACE, _defaultPosition, _dialogWidth);
-			} else {
+			else
 				dialog = new PictureDialog(_vm, _defaultPosition, _dialogWidth, objectId);
-			}
 		}
 
 		if (centerFlag) {
@@ -169,11 +172,11 @@ bool DialogsNebular::show(int messageId, int objectId) {
 		crFlag = false;
 	}
 
-	if (!centerFlag)
-		dialog->incNumLines();
-
 	if (!dialog)
 		error("DialogsNebular::show - Uninitialized dialog");
+
+	if (!centerFlag)
+		dialog->incNumLines();
 
 	// Show the dialog
 	_vm->_events->setCursor(CURSOR_ARROW);
@@ -285,6 +288,13 @@ void DialogsNebular::showDialog() {
 		DialogId dialogId = _pendingDialog;
 		_pendingDialog = DIALOG_NONE;
 
+		Common::Keymapper *keymapper = _vm->getEventManager()->getKeymapper();
+		if (dialogId == MADS::DIALOG_MAIN_MENU) {
+			keymapper->getKeymap("menu-shortcuts")->setEnabled(true);
+		} else {
+			keymapper->getKeymap("menu-shortcuts")->setEnabled(false);
+		}
+
 		switch (dialogId) {
 		case DIALOG_MAIN_MENU: {
 			MainMenu *menu = new MainMenu(_vm);
@@ -366,6 +376,8 @@ void DialogsNebular::showScummVMSaveDialog() {
 
 	// Flag for scene loading that we're returning from a dialog
 	scene._currentSceneId = RETURNING_FROM_DIALOG;
+
+	delete dialog;
 }
 
 void DialogsNebular::showScummVMRestoreDialog() {
@@ -382,6 +394,8 @@ void DialogsNebular::showScummVMRestoreDialog() {
 		// Flag for scene loading that we're returning from a dialog
 		scene._currentSceneId = RETURNING_FROM_DIALOG;
 	}
+
+	delete dialog;
 }
 
 /*------------------------------------------------------------------------*/
@@ -432,11 +446,10 @@ void CopyProtectionDialog::show() {
 	Common::KeyState curKey;
 	const Common::Rect inputArea(110, 165, 210, 175);
 	MSurface *origInput = new MSurface(inputArea.width(), inputArea.height());
-	_vm->_screen.frameRect(inputArea, TEXTDIALOG_BLACK);
-	_vm->_screen.copyTo(origInput, inputArea, Common::Point(0, 0));
-	_font->setColors(TEXTDIALOG_FE, TEXTDIALOG_FE, TEXTDIALOG_FE, TEXTDIALOG_FE);
-	_vm->_screen.copyRectToScreen(inputArea);
-	_vm->_screen.updateScreen();
+	_vm->_screen->frameRect(inputArea, TEXTDIALOG_BLACK);
+	origInput->blitFrom(*_vm->_screen, inputArea, Common::Point(0, 0));
+		_font->setColors(TEXTDIALOG_FE, TEXTDIALOG_FE, TEXTDIALOG_FE, TEXTDIALOG_FE);
+	_vm->_screen->update();
 
 	bool firstTime = true;
 
@@ -464,11 +477,10 @@ void CopyProtectionDialog::show() {
 			_textInput = _hogEntry._word[0];
 		}
 
-		_vm->_screen.copyFrom(origInput, Common::Rect(0, 0, inputArea.width(), inputArea.height()), Common::Point(inputArea.left, inputArea.top));
-		_font->writeString(&_vm->_screen, _textInput,
+		_vm->_screen->blitFrom(*origInput, Common::Point(inputArea.left, inputArea.top));
+		_font->writeString(_vm->_screen, _textInput,
 			Common::Point(inputArea.left + 2, inputArea.top + 1), 1);
-		_vm->_screen.copyRectToScreen(inputArea);
-		_vm->_screen.updateScreen();
+		_vm->_screen->update();
 	}
 
 	origInput->free();
@@ -531,7 +543,7 @@ void PictureDialog::save() {
 
 	// Save the entire screen
 	_savedSurface = new MSurface(MADS_SCREEN_WIDTH, MADS_SCREEN_HEIGHT);
-	_vm->_screen.copyTo(_savedSurface);
+	_savedSurface->blitFrom(*_vm->_screen);
 
 	// Save palette information
 	Common::copy(&palette._mainPalette[0], &palette._mainPalette[PALETTE_SIZE], &_palette[0]);
@@ -562,23 +574,22 @@ void PictureDialog::save() {
 
 	// Remap the greyed out screen to use the small greyscale range
 	// at the top end of the palette
-	_vm->_screen.translate(map);
+	_vm->_screen->translate(map);
 
 	// Load the inventory picture
-	Common::String setName = Common::String::format("*OB%.3d.SS", _objectId);
+	Common::Path setName(Common::String::format("*OB%.3d.SS", _objectId));
 	SpriteAsset *asset = new SpriteAsset(_vm, setName, 0x8000);
 	palette.setFullPalette(palette._mainPalette);
 
 	// Get the inventory frame, and adjust the dialog position to allow for it
 	MSprite *frame = asset->getFrame(0);
 	_position.y = frame->h + 12;
-	if ((_position.y + _height) > _vm->_screen.getHeight())
-		_position.y -= (_position.y + _height) - _vm->_screen.getHeight();
+	if ((_position.y + _height) > _vm->_screen->h)
+		_position.y -= (_position.y + _height) - _vm->_screen->h;
 
 	// Draw the inventory picture
-	frame->copyTo(&_vm->_screen, Common::Point(160 - frame->w / 2, 6),
+	_vm->_screen->transBlitFrom(*frame, Common::Point(160 - frame->w / 2, 6),
 		frame->getTransparencyIndex());
-	_vm->_screen.copyRectToScreen(_vm->_screen.getBounds());
 
 	// Adjust the dialog colors to use
 	TEXTDIALOG_CONTENT1 -= 10;
@@ -592,12 +603,10 @@ void PictureDialog::save() {
 
 void PictureDialog::restore() {
 	if (_savedSurface) {
-		_savedSurface->copyTo(&_vm->_screen);
+		_vm->_screen->blitFrom(*_savedSurface);
 		_savedSurface->free();
 		delete _savedSurface;
 		_savedSurface = nullptr;
-
-		_vm->_screen.copyRectToScreen(_vm->_screen.getBounds());
 
 		// Restore palette information
 		Palette &palette = *_vm->_palette;
@@ -685,7 +694,6 @@ void GameDialog::display() {
 }
 
 GameDialog::~GameDialog() {
-	_vm->_screen.resetClipBounds();
 	_vm->_game->_scene._currentSceneId = RETURNING_FROM_DIALOG;
 }
 
@@ -886,9 +894,9 @@ void GameDialog::handleEvents() {
 	// Process pending events
 	events.pollEvents();
 
-	if (events.isKeyPressed()) {
-		switch (events.getKey().keycode) {
-		case Common::KEYCODE_ESCAPE:
+	if (events.isActionTriggered()) {
+		switch (events.getAction()) {
+		case kActionEscape:
 			_selectedLine = 0;
 			break;
 		default:

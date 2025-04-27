@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,16 +15,15 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #ifndef MADS_ASSETS_H
 #define MADS_ASSETS_H
 
-#include "common/scummsys.h"
 #include "common/array.h"
+#include "common/path.h"
 #include "mads/palette.h"
 
 namespace MADS {
@@ -77,14 +76,15 @@ private:
 	 * Load the data for the asset
 	 */
 	void load(Common::SeekableReadStream *stream, int flags);
+
 public:
 	SpriteSetCharInfo *_charInfo;
 	int _usageIndex;
-public:
+
 	/**
 	 * Constructor
 	 */
-	SpriteAsset(MADSEngine *vm, const Common::String &resourceName, int flags);
+	SpriteAsset(MADSEngine *vm, const Common::Path &resourceName, int flags);
 
 	/**
 	 * Constructor
@@ -99,8 +99,9 @@ public:
 	int getCount() { return _frameCount; }
 	int getFrameRate() const { return _frameRate; }
 	int getPixelSpeed() const { return _pixelSpeed; }
-	int getFrameWidth(int index);
-	int getFrameHeight(int index);
+	Common::Point getFramePos(int index) { assert (index < _frameCount); return Common::Point(_frames[index]._bounds.left, _frames[index]._bounds.top); }
+	int getFrameWidth(int index) { assert (index < _frameCount); return _frames[index]._bounds.width(); }
+	int getFrameHeight(int index) { assert (index < _frameCount); return _frames[index]._bounds.height(); }
 	int getMaxFrameWidth() const { return _maxWidth; }
 	int getMaxFrameHeight() const { return _maxHeight; }
 	MSprite *getFrame(int frameIndex);

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,14 +15,13 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "graphics/thumbnail.h"
 #include "graphics/scaler.h"
-#include "graphics/colormasks.h"
+#include "graphics/pixelformat.h"
 #include "common/endian.h"
 #include "common/algorithm.h"
 #include "common/system.h"
@@ -67,7 +66,7 @@ HeaderState loadHeader(Common::SeekableReadStream &in, ThumbnailHeader &header, 
 	header.size = in.readUint32BE();
 	header.version = in.readByte();
 
-	// Do a check whether any read errors had occured. If so we cannot use the
+	// Do a check whether any read errors had occurred. If so we cannot use the
 	// values obtained for size and version because they might be bad.
 	if (in.err() || in.eos()) {
 		// TODO: We fake that there is no header. This is actually not quite
@@ -123,7 +122,7 @@ bool checkThumbnailHeader(Common::SeekableReadStream &in) {
 	// TODO: It is not clear whether this is the best semantics. Now
 	// checkThumbnailHeader will return true even when the thumbnail header
 	// found is actually not usable. However, most engines seem to use this
-	// to detect the presence of any header and if there is none it wont even
+	// to detect the presence of any header and if there is none it won't even
 	// try to skip it. Thus, this looks like the best solution for now...
 	bool hasHeader = (loadHeader(in, header, false) != kHeaderNone);
 
@@ -147,7 +146,12 @@ bool skipThumbnail(Common::SeekableReadStream &in) {
 	return true;
 }
 
-Graphics::Surface *loadThumbnail(Common::SeekableReadStream &in) {
+bool loadThumbnail(Common::SeekableReadStream &in, Graphics::Surface *&thumbnail, bool skipThumbnail) {
+	if (skipThumbnail) {
+		thumbnail = nullptr;
+		return Graphics::skipThumbnail(in);
+	}
+
 	const uint32 position = in.pos();
 	ThumbnailHeader header;
 	HeaderState headerState = loadHeader(in, header, true);
@@ -160,32 +164,32 @@ Graphics::Surface *loadThumbnail(Common::SeekableReadStream &in) {
 	// stream at this point then.
 	if (headerState == kHeaderNone) {
 		in.seek(position, SEEK_SET);
-		return 0;
+		return false;
 	} else if (headerState == kHeaderUnsupported) {
 		in.seek(header.size - (in.pos() - position), SEEK_CUR);
-		return 0;
+		return false;
 	}
 
 	if (header.format.bytesPerPixel != 2 && header.format.bytesPerPixel != 4) {
 		warning("trying to load thumbnail with unsupported bit depth %d", header.format.bytesPerPixel);
-		return 0;
+		return false;
 	}
 
-	Graphics::Surface *const to = new Graphics::Surface();
-	to->create(header.width, header.height, header.format);
+	thumbnail = new Graphics::Surface();
+	thumbnail->create(header.width, header.height, header.format);
 
-	for (int y = 0; y < to->h; ++y) {
+	for (int y = 0; y < thumbnail->h; ++y) {
 		switch (header.format.bytesPerPixel) {
 		case 2: {
-			uint16 *pixels = (uint16 *)to->getBasePtr(0, y);
-			for (uint x = 0; x < to->w; ++x) {
+			uint16 *pixels = (uint16 *)thumbnail->getBasePtr(0, y);
+			for (int x = 0; x < thumbnail->w; ++x) {
 				*pixels++ = in.readUint16BE();
 			}
 			} break;
 
 		case 4: {
-			uint32 *pixels = (uint32 *)to->getBasePtr(0, y);
-			for (uint x = 0; x < to->w; ++x) {
+			uint32 *pixels = (uint32 *)thumbnail->getBasePtr(0, y);
+			for (int x = 0; x < thumbnail->w; ++x) {
 				*pixels++ = in.readUint32BE();
 			}
 			} break;
@@ -194,7 +198,19 @@ Graphics::Surface *loadThumbnail(Common::SeekableReadStream &in) {
 			assert(0);
 		}
 	}
-	return to;
+	return true;
+}
+
+bool createThumbnail(Graphics::Surface &thumb) {
+	if (thumb.getPixels())
+		thumb.free();
+
+	if (!createThumbnailFromScreen(&thumb)) {
+		warning("Couldn't create thumbnail from screen, aborting thumbnail save");
+		return false;
+	}
+
+	return true;
 }
 
 bool saveThumbnail(Common::WriteStream &out) {
@@ -242,18 +258,18 @@ bool saveThumbnail(Common::WriteStream &out, const Graphics::Surface &thumb) {
 	out.writeByte(thumb.format.aShift);
 
 	// Serialize the pixel data
-	for (uint y = 0; y < thumb.h; ++y) {
+	for (int y = 0; y < thumb.h; ++y) {
 		switch (thumb.format.bytesPerPixel) {
 		case 2: {
 			const uint16 *pixels = (const uint16 *)thumb.getBasePtr(0, y);
-			for (uint x = 0; x < thumb.w; ++x) {
+			for (int x = 0; x < thumb.w; ++x) {
 				out.writeUint16BE(*pixels++);
 			}
 			} break;
 
 		case 4: {
 			const uint32 *pixels = (const uint32 *)thumb.getBasePtr(0, y);
-			for (uint x = 0; x < thumb.w; ++x) {
+			for (int x = 0; x < thumb.w; ++x) {
 				out.writeUint32BE(*pixels++);
 			}
 			} break;
@@ -275,7 +291,7 @@ int *scaleLine(int size, int srcSize) {
 	int scale = 100 * size / srcSize;
 	assert(scale > 0);
 	int *v = new int[size];
-	Common::fill(v, &v[size], 0);
+	Common::fill(v, v + size, 0);
 
 	int distCtr = 0;
 	int *destP = v;

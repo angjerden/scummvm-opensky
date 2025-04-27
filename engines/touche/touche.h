@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,13 +15,12 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
-#ifndef TOUCHE_ENGINE_H
-#define TOUCHE_ENGINE_H
+#ifndef TOUCHE_TOUCHE_H
+#define TOUCHE_TOUCHE_H
 
 #include "common/array.h"
 #include "common/endian.h"
@@ -31,7 +30,6 @@
 #include "common/util.h"
 
 #include "audio/mixer.h"
-#include "audio/audiostream.h"
 
 #include "engines/engine.h"
 
@@ -43,9 +41,21 @@
  * Status of this engine: ???
  *
  * Games using this engine:
- * - Touche: The Adventures of the Fifth Musketeer
+ * - Touché: The Adventures of the Fifth Musketeer
  */
 namespace Touche {
+
+enum TOUCHEAction {
+	kToucheActionNone,
+	kToucheActionYes,
+	kToucheActionSkipOrQuit,
+	kToucheActionOpenOptions,
+	kToucheActionEnableFastWalk,
+	kToucheActionDisableFastWalk,
+	kToucheActionToggleFastMode,
+	kToucheActionToggleTalkTextMode,
+	kToucheActionSkipDialogue
+};
 
 struct Area {
 	Common::Rect r;
@@ -102,7 +112,7 @@ struct KeyChar {
 	int16 zPosPrev;
 	int16 prevWalkDataNum;
 	uint16 textColor;
-	int16 inventoryItems[5];
+	int16 inventoryItems[4];
 	int16 money;
 	int16 pointsDataNum;
 	int16 currentWalkBox;
@@ -193,6 +203,20 @@ struct AnimationEntry {
 	int16 delayCounter;
 	int16 displayCounter;
 	Common::Rect displayRect;
+
+	void clear() {
+		num = 0;
+		x = 0;
+		y = 0;
+		dx = 0;
+		dy = 0;
+		posNum = 0;
+		delayCounter = 0;
+		displayRect.top = 0;
+		displayRect.left = 0;
+		displayRect.bottom = 0;
+		displayRect.right = 0;
+	}
 };
 
 struct SequenceEntry {
@@ -274,12 +298,12 @@ struct ProgramConversationData {
 };
 
 enum {
-	kDebugEngine   = 1 << 0,
-	kDebugGraphics = 1 << 1,
-	kDebugResource = 1 << 2,
-	kDebugOpcodes  = 1 << 3,
-	kDebugMenu     = 1 << 4,
-	kDebugCharset  = 1 << 5
+	kDebugEngine = 1,
+	kDebugGraphics,
+	kDebugResource,
+	kDebugOpcodes,
+	kDebugMenu,
+	kDebugCharset,
 };
 
 enum ResourceType {
@@ -331,6 +355,7 @@ enum {
 	kScreenHeight = 400,
 	kRoomHeight = 352,
 	kStartupEpisode = 90,
+	// TODO: If the following truncation is intentional (it probably is) it should be clearly marked as such
 	kCycleDelay = 1000 / (1193180 / 32768),
 	kIconWidth = 58,
 	kIconHeight = 42,
@@ -469,13 +494,12 @@ public:
 	typedef void (ToucheEngine::*OpcodeProc)();
 
 	ToucheEngine(OSystem *system, Common::Language language);
-	virtual ~ToucheEngine();
+	~ToucheEngine() override;
 
 	// Engine APIs
-	virtual Common::Error run();
-	virtual bool hasFeature(EngineFeature f) const;
-	virtual void syncSoundSettings();
-	GUI::Debugger *getDebugger() { return _console; }
+	Common::Error run() override;
+	bool hasFeature(EngineFeature f) const override;
+	void syncSoundSettings() override;
 
 protected:
 
@@ -605,12 +629,13 @@ protected:
 
 	void saveGameStateData(Common::WriteStream *stream);
 	void loadGameStateData(Common::ReadStream *stream);
-	virtual Common::Error saveGameState(int num, const Common::String &description);
-	virtual Common::Error loadGameState(int num);
-	virtual bool canLoadGameStateCurrently();
-	virtual bool canSaveGameStateCurrently();
-
-	ToucheConsole *_console;
+	Common::Error saveGameState(int num, const Common::String &description, bool isAutosave = false) override;
+	Common::Error loadGameState(int num) override;
+	bool canLoadGameStateCurrently(Common::U32String *msg = nullptr) override;
+	bool canSaveGameStateCurrently(Common::U32String *msg = nullptr) override;
+	Common::String getSaveStateName(int slot) const override {
+		return Common::String::format("%s.%d", _targetName.c_str(), slot);
+	}
 
 	void setupOpcodes();
 	void op_nop();

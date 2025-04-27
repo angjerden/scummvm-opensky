@@ -7,10 +7,10 @@
  * Additional copyright for this file:
  * Copyright (C) 1994-1998 Revolution Software Ltd.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -18,8 +18,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 // One feature still missing is the original's DipMusic() function which, as
@@ -35,10 +34,11 @@
 #include "common/system.h"
 #include "common/textconsole.h"
 
+#include "audio/audiostream.h"
+#include "audio/mixer.h"
 #include "audio/decoders/mp3.h"
 #include "audio/decoders/vorbis.h"
 #include "audio/decoders/flac.h"
-#include "audio/decoders/wave.h"
 #include "audio/decoders/xa.h"
 #include "audio/rate.h"
 
@@ -79,13 +79,13 @@ static Audio::AudioStream *getAudioStream(SoundFileHandle *fh, const char *base,
 		char filename[20];
 
 		for (int i = 0; i < ARRAYSIZE(file_types); i++) {
-			sprintf(filename, "%s%d.%s", base, cd, file_types[i].ext);
+			Common::sprintf_s(filename, "%s%d.%s", base, cd, file_types[i].ext);
 			if (Common::File::exists(filename)) {
 				soundMode = file_types[i].mode;
 				break;
 			}
 
-			sprintf(filename, "%s.%s", base, file_types[i].ext);
+			Common::sprintf_s(filename, "%s.%s", base, file_types[i].ext);
 			if (Common::File::exists(filename)) {
 				soundMode = file_types[i].mode;
 				break;
@@ -93,17 +93,17 @@ static Audio::AudioStream *getAudioStream(SoundFileHandle *fh, const char *base,
 		}
 
 		if (soundMode == 0)
-			return NULL;
+			return nullptr;
 
 		fh->file.open(filename);
 		fh->fileType = soundMode;
 		if (!fh->file.isOpen()) {
 			warning("BS2 getAudioStream: Failed opening file '%s'", filename);
-			return NULL;
+			return nullptr;
 		}
 		if (fh->fileSize != fh->file.size()) {
 			free(fh->idxTab);
-			fh->idxTab = NULL;
+			fh->idxTab = nullptr;
 		}
 	} else
 		alreadyOpen = true;
@@ -147,7 +147,7 @@ static Audio::AudioStream *getAudioStream(SoundFileHandle *fh, const char *base,
 		warning("getAudioStream: Could not find %s ID %d! Possibly the wrong file", base, id);
 		if (!alreadyOpen)
 			fh->file.close();
-		return NULL;
+		return nullptr;
 	}
 
 	fh->file.seek(pos, SEEK_SET);
@@ -177,7 +177,7 @@ static Audio::AudioStream *getAudioStream(SoundFileHandle *fh, const char *base,
 		}
 #endif
 	default:
-		return NULL;
+		return nullptr;
 	}
 }
 
@@ -224,7 +224,7 @@ void CLUInputStream::refill() {
 
 	_file->seek(_file_pos, SEEK_SET);
 
-	uint len_left = _file->read(in, MIN((uint32)BUFFER_SIZE, _end_pos - _file->pos()));
+	uint len_left = _file->read(in, MIN((uint32)BUFFER_SIZE, _end_pos - (uint32)_file->pos()));
 
 	_file_pos = _file->pos();
 
@@ -301,7 +301,7 @@ MusicInputStream::MusicInputStream(int cd, SoundFileHandle *fh, uint32 musicId, 
 
 MusicInputStream::~MusicInputStream() {
 	delete _decoder;
-	_decoder = NULL;
+	_decoder = nullptr;
 }
 
 int MusicInputStream::readBuffer(int16 *buffer, const int numSamples) {
@@ -455,7 +455,7 @@ int Sound::readBuffer(int16 *buffer, const int numSamples) {
 	for (i = 0; i < MAXMUS; i++) {
 		if (_music[i] && _music[i]->readyToRemove()) {
 			delete _music[i];
-			_music[i] = NULL;
+			_music[i] = nullptr;
 		}
 	}
 
@@ -558,7 +558,7 @@ void Sound::stopMusic(bool immediately) {
 		if (_music[i]) {
 			if (immediately) {
 				delete _music[i];
-				_music[i] = NULL;
+				_music[i] = nullptr;
 			} else
 				_music[i]->fadeDown();
 		}
@@ -610,7 +610,7 @@ int32 Sound::streamCompMusic(uint32 musicId, bool loop) {
 		}
 
 		delete _music[primary];
-		_music[primary] = NULL;
+		_music[primary] = nullptr;
 	}
 
 	// Pick the available music stream. If no music is playing it doesn't
@@ -757,7 +757,7 @@ int32 Sound::playCompSpeech(uint32 speechId, uint8 vol, int8 pan) {
 	int cd = _vm->_resman->getCD();
 	SoundFileHandle *fh = (cd == 1) ? &_speechFile[0] : &_speechFile[1];
 
-	Audio::AudioStream *input = getAudioStream(fh, "speech", cd, speechId, NULL);
+	Audio::AudioStream *input = getAudioStream(fh, "speech", cd, speechId, nullptr);
 
 	if (!input)
 		return RDERR_INVALIDID;

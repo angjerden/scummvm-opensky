@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -24,9 +23,6 @@
 #include "common/system.h"
 
 #ifdef USE_MT32EMU
-
-#include "audio/softsynth/mt32/mt32emu.h"
-#include "audio/softsynth/mt32/ROMInfo.h"
 
 #include "audio/softsynth/emumidi.h"
 #include "audio/musicplugin.h"
@@ -42,88 +38,106 @@
 #include "common/archive.h"
 #include "common/textconsole.h"
 #include "common/translation.h"
+#include "common/osd_message_queue.h"
 
 #include "graphics/fontman.h"
 #include "graphics/surface.h"
 #include "graphics/pixelformat.h"
-#include "graphics/palette.h"
 #include "graphics/font.h"
 
 #include "gui/message.h"
 
+// prevents load of unused FileStream API because it includes a standard library
+// include, per _sev
+#define MT32EMU_FILE_STREAM_H
+
+#include "audio/softsynth/mt32/c_interface/cpp_interface.h"
+
 namespace MT32Emu {
 
-class ReportHandlerScummVM : public ReportHandler {
-friend class Synth;
-
+class ScummVMReportHandler : public MT32Emu::IReportHandler {
 public:
-	virtual ~ReportHandlerScummVM() {}
-
-protected:
-
 	// Callback for debug messages, in vprintf() format
-	void printDebug(const char *fmt, va_list list) {
+	void printDebug(const char *fmt, va_list list) override {
 		Common::String out = Common::String::vformat(fmt, list);
 		debug(4, "%s", out.c_str());
 	}
 
 	// Callbacks for reporting various errors and information
-	void onErrorControlROM() {
-		GUI::MessageDialog dialog("MT32emu: Init Error - Missing or invalid Control ROM image", "OK");
+	void onErrorControlROM() override {
+		GUI::MessageDialog dialog("MT32Emu: Init Error - Missing or invalid Control ROM image", "OK");
 		dialog.runModal();
 		error("MT32emu: Init Error - Missing or invalid Control ROM image");
 	}
-	void onErrorPCMROM() {
-		GUI::MessageDialog dialog("MT32emu: Init Error - Missing PCM ROM image", "OK");
+	void onErrorPCMROM() override {
+		GUI::MessageDialog dialog("MT32Emu: Init Error - Missing PCM ROM image", "OK");
 		dialog.runModal();
 		error("MT32emu: Init Error - Missing PCM ROM image");
 	}
-	void showLCDMessage(const char *message) {
-		g_system->displayMessageOnOSD(message);
+	void showLCDMessage(const char *message) override {
+		// Don't show messages that are only spaces, e.g. the first
+		// message in Operation Stealth.
+		for (const char *ptr = message; *ptr; ptr++) {
+			if (*ptr != ' ') {
+				Common::OSDMessageQueue::instance().addMessage(Common::U32String(message));
+				break;
+			}
+		}
 	}
+
+	// Unused callbacks
+	void onMIDIMessagePlayed() override {}
+	bool onMIDIQueueOverflow() override { return false; }
+	void onMIDISystemRealtime(Bit8u /* system_realtime */) override {}
+	void onDeviceReset() override {}
+	void onDeviceReconfig() override {}
+	void onNewReverbMode(Bit8u /* mode */) override {}
+	void onNewReverbTime(Bit8u /* time */) override {}
+	void onNewReverbLevel(Bit8u /* level */) override {}
+	void onPolyStateChanged(Bit8u /* part_num */) override {}
+	void onProgramChanged(Bit8u /* part_num */, const char * /* sound_group_name */, const char * /* patch_name */) override {}
+
+	virtual ~ScummVMReportHandler() {}
 };
 
 }	// end of namespace MT32Emu
 
 class MidiChannel_MT32 : public MidiChannel_MPU401 {
-	void effectLevel(byte value) { }
-	void chorusLevel(byte value) { }
+	void effectLevel(byte value) override { }
+	void chorusLevel(byte value) override { }
 };
 
 class MidiDriver_MT32 : public MidiDriver_Emulated {
 private:
 	MidiChannel_MT32 _midiChannels[16];
 	uint16 _channelMask;
-	MT32Emu::Synth *_synth;
-	MT32Emu::ReportHandlerScummVM *_reportHandler;
-	const MT32Emu::ROMImage *_controlROM, *_pcmROM;
-	Common::File *_controlFile, *_pcmFile;
-	void deleteMuntStructures();
+	MT32Emu::Service _service;
+	MT32Emu::ScummVMReportHandler _reportHandler;
+	byte *_controlData, *_pcmData;
+	Common::Mutex _mutex;
 
 	int _outputRate;
 
 protected:
-	void generateSamples(int16 *buf, int len);
+	void generateSamples(int16 *buf, int len) override;
 
 public:
-	bool _initializing;
-
 	MidiDriver_MT32(Audio::Mixer *mixer);
 	virtual ~MidiDriver_MT32();
 
-	int open();
-	void close();
-	void send(uint32 b);
-	void setPitchBendRange (byte channel, uint range);
-	void sysEx(const byte *msg, uint16 length);
+	int open() override;
+	void close() override;
+	void send(uint32 b) override;
+	void setPitchBendRange(byte channel, uint range) override;
+	void sysEx(const byte *msg, uint16 length) override;
 
-	uint32 property(int prop, uint32 param);
-	MidiChannel *allocateChannel();
-	MidiChannel *getPercussionChannel();
+	uint32 property(int prop, uint32 param) override;
+	MidiChannel *allocateChannel() override;
+	MidiChannel *getPercussionChannel() override;
 
 	// AudioStream API
-	bool isStereo() const { return true; }
-	int getRate() const { return _outputRate; }
+	bool isStereo() const override { return true; }
+	int getRate() const override { return _outputRate; }
 };
 
 ////////////////////////////////////////
@@ -138,89 +152,73 @@ MidiDriver_MT32::MidiDriver_MT32(Audio::Mixer *mixer) : MidiDriver_Emulated(mixe
 	for (i = 0; i < ARRAYSIZE(_midiChannels); ++i) {
 		_midiChannels[i].init(this, i);
 	}
-	_reportHandler = NULL;
-	_synth = NULL;
-	// Unfortunately bugs in the emulator cause inaccurate tuning
-	// at rates other than 32KHz, thus we produce data at 32KHz and
-	// rely on Mixer to convert.
-	_outputRate = 32000; //_mixer->getOutputRate();
-	_initializing = false;
-
-	// Initialized in open()
-	_controlROM = NULL;
-	_pcmROM = NULL;
-	_controlFile = NULL;
-	_pcmFile = NULL;
+	_outputRate = 0;
+	_controlData = nullptr;
+	_pcmData = nullptr;
 }
 
 MidiDriver_MT32::~MidiDriver_MT32() {
-	deleteMuntStructures();
-}
-
-void MidiDriver_MT32::deleteMuntStructures() {
-	delete _synth;
-	_synth = NULL;
-	delete _reportHandler;
-	_reportHandler = NULL;
-
-	if (_controlROM)
-		MT32Emu::ROMImage::freeROMImage(_controlROM);
-	_controlROM = NULL;
-	if (_pcmROM)
-		MT32Emu::ROMImage::freeROMImage(_pcmROM);
-	_pcmROM = NULL;
-
-	delete _controlFile;
-	_controlFile = NULL;
-	delete _pcmFile;
-	_pcmFile = NULL;
+	close();
 }
 
 int MidiDriver_MT32::open() {
 	if (_isOpen)
 		return MERR_ALREADY_OPEN;
 
-	MidiDriver_Emulated::open();
-	_reportHandler = new MT32Emu::ReportHandlerScummVM();
-	_synth = new MT32Emu::Synth(_reportHandler);
+	debug(4, _s("Initializing MT-32 Emulator"));
 
-	Graphics::PixelFormat screenFormat = g_system->getScreenFormat();
+	Common::File controlFile;
+	Common::File pcmFile;
+	if (!controlFile.open("CM32L_CONTROL.ROM") || !pcmFile.open("CM32L_PCM.ROM")) {
+		controlFile.close();
+		pcmFile.close();
+		debug("Unable to open CM32L_CONTROL.ROM / CM32L_PCM.ROM. Falling back to MT32");
 
-	if (screenFormat.bytesPerPixel == 1) {
-		const byte dummy_palette[] = {
-			0, 0, 0,		// background
-			0, 171, 0,	// border, font
-			171, 0, 0	// fill
-		};
-
-		g_system->getPaletteManager()->setPalette(dummy_palette, 0, 3);
+		if (!controlFile.open("MT32_CONTROL.ROM") || !pcmFile.open("MT32_PCM.ROM")) {
+			controlFile.close();
+			pcmFile.close();
+			error("Error opening (CM32L_CONTROL.ROM / CM32L_PCM.ROM) or (MT32_CONTROL.ROM / MT32_PCM.ROM). Check that your Extra Path in Paths settings is set to the correct directory");
+		}
 	}
 
-	_initializing = true;
-	debug(4, _s("Initializing MT-32 Emulator"));
-	_controlFile = new Common::File();
-	if (!_controlFile->open("MT32_CONTROL.ROM") && !_controlFile->open("CM32L_CONTROL.ROM"))
-		error("Error opening MT32_CONTROL.ROM / CM32L_CONTROL.ROM");
-	_pcmFile = new Common::File();
-	if (!_pcmFile->open("MT32_PCM.ROM") && !_pcmFile->open("CM32L_PCM.ROM"))
-		error("Error opening MT32_PCM.ROM / CM32L_PCM.ROM");
-	_controlROM = MT32Emu::ROMImage::makeROMImage(_controlFile);
-	_pcmROM = MT32Emu::ROMImage::makeROMImage(_pcmFile);
-	if (!_synth->open(*_controlROM, *_pcmROM))
+	_controlData = new byte[controlFile.size()];
+	controlFile.read(_controlData, controlFile.size());
+	_pcmData = new byte[pcmFile.size()];
+	pcmFile.read(_pcmData, pcmFile.size());
+
+	_service.createContext(_reportHandler);
+
+	if (_service.addROMData(_controlData, controlFile.size()) != MT32EMU_RC_ADDED_CONTROL_ROM) {
+		error("Adding control ROM failed. Check that your control ROM is valid");
+	}
+
+	controlFile.close();
+
+	if (_service.addROMData(_pcmData, pcmFile.size()) != MT32EMU_RC_ADDED_PCM_ROM) {
+		error("Adding PCM ROM failed. Check that your PCM ROM is valid");
+	}
+
+	pcmFile.close();
+
+	if (_service.openSynth() != MT32EMU_RC_OK)
 		return MERR_DEVICE_NOT_AVAILABLE;
 
 	double gain = (double)ConfMan.getInt("midi_gain") / 100.0;
-	_synth->setOutputGain(1.0f * gain);
-	_synth->setReverbOutputGain(0.68f * gain);
+	_service.setOutputGain(1.0f * gain);
+	_service.setReverbOutputGain(1.0f * gain);
+	// We let the synthesizer play MIDI messages immediately. Our MIDI
+	// handling is synchronous to sample generation. This makes delaying MIDI
+	// events result in odd sound output in some cases. For example, the
+	// shattering window in the Indiana Jones and the Fate of Atlantis intro
+	// will sound like a bell if we use any delay here.
+	// Bug #6242 "AUDIO: Built-In MT-32 MUNT Produces Wrong Sounds".
+	_service.setMIDIDelayMode(MT32Emu::MIDIDelayMode_IMMEDIATE);
 
-	_initializing = false;
+	// We need to report the sample rate MUNT renders at as sample rate of our
+	// AudioStream.
+	_outputRate = _service.getActualStereoOutputSamplerate();
 
-	if (screenFormat.bytesPerPixel > 1)
-		g_system->fillScreen(screenFormat.RGBToColor(0, 0, 0));
-	else
-		g_system->fillScreen(0);
-
-	g_system->updateScreen();
+	MidiDriver_Emulated::open();
 
 	_mixer->playStream(Audio::Mixer::kPlainSoundType, &_mixerSoundHandle, this, -1, Audio::Mixer::kMaxChannelVolume, 0, DisposeAfterUse::NO, true);
 
@@ -228,31 +226,40 @@ int MidiDriver_MT32::open() {
 }
 
 void MidiDriver_MT32::send(uint32 b) {
-	_synth->playMsg(b);
+	midiDriverCommonSend(b);
+
+	Common::StackLock lock(_mutex);
+	_service.playMsg(b);
 }
 
+// Indiana Jones and the Fate of Atlantis (including the demo) uses
+// setPitchBendRange, if you need a game for testing purposes
 void MidiDriver_MT32::setPitchBendRange(byte channel, uint range) {
 	if (range > 24) {
 		warning("setPitchBendRange() called with range > 24: %d", range);
 	}
-	byte benderRangeSysex[9];
-	benderRangeSysex[0] = 0x41; // Roland
-	benderRangeSysex[1] = channel;
-	benderRangeSysex[2] = 0x16; // MT-32
-	benderRangeSysex[3] = 0x12; // Write
-	benderRangeSysex[4] = 0x00;
-	benderRangeSysex[5] = 0x00;
-	benderRangeSysex[6] = 0x04;
-	benderRangeSysex[7] = (byte)range;
-	benderRangeSysex[8] = MT32Emu::Synth::calcSysexChecksum(&benderRangeSysex[4], 4, 0);
-	sysEx(benderRangeSysex, 9);
+	byte benderRangeSysex[4] = { 0, 0, 4, (uint8)range };
+	Common::StackLock lock(_mutex);
+	_service.writeSysex(channel, benderRangeSysex, 4);
 }
 
 void MidiDriver_MT32::sysEx(const byte *msg, uint16 length) {
+	midiDriverCommonSysEx(msg, length);
 	if (msg[0] == 0xf0) {
-		_synth->playSysex(msg, length);
+		Common::StackLock lock(_mutex);
+		_service.playSysex(msg, length);
 	} else {
-		_synth->playSysexWithoutFraming(msg, length);
+		enum {
+			SYSEX_CMD_DT1 = 0x12,
+			SYSEX_CMD_DAT = 0x42
+		};
+
+		if (msg[3] == SYSEX_CMD_DT1 || msg[3] == SYSEX_CMD_DAT) {
+			Common::StackLock lock(_mutex);
+			_service.writeSysex(msg[1], msg + 4, length - 5);
+		} else {
+			warning("Unused sysEx command %d", msg[3]);
+		}
 	}
 }
 
@@ -262,16 +269,22 @@ void MidiDriver_MT32::close() {
 	_isOpen = false;
 
 	// Detach the player callback handler
-	setTimerCallback(NULL, NULL);
+	setTimerCallback(nullptr, nullptr);
 	// Detach the mixer callback handler
 	_mixer->stopHandle(_mixerSoundHandle);
 
-	_synth->close();
-	deleteMuntStructures();
+	Common::StackLock lock(_mutex);
+	_service.closeSynth();
+	_service.freeContext();
+	delete[] _controlData;
+	_controlData = nullptr;
+	delete[] _pcmData;
+	_pcmData = nullptr;
 }
 
 void MidiDriver_MT32::generateSamples(int16 *data, int len) {
-	_synth->render(data, len);
+	Common::StackLock lock(_mutex);
+	_service.renderBit16s(data, len);
 }
 
 uint32 MidiDriver_MT32::property(int prop, uint32 param) {
@@ -279,6 +292,8 @@ uint32 MidiDriver_MT32::property(int prop, uint32 param) {
 	case PROP_CHANNEL_MASK:
 		_channelMask = param & 0xFFFF;
 		return 1;
+	default:
+		break;
 	}
 
 	return 0;
@@ -296,7 +311,7 @@ MidiChannel *MidiDriver_MT32::allocateChannel() {
 			return chan;
 		}
 	}
-	return NULL;
+	return nullptr;
 }
 
 MidiChannel *MidiDriver_MT32::getPercussionChannel() {
@@ -422,17 +437,17 @@ void MidiDriver_ThreadedMT32::onTimer() {
 
 class MT32EmuMusicPlugin : public MusicPluginObject {
 public:
-	const char *getName() const {
-		return _s("MT-32 Emulator");
+	const char *getName() const override {
+		return _s("MT-32 emulator");
 	}
 
-	const char *getId() const {
+	const char *getId() const override {
 		return "mt32";
 	}
 
-	MusicDevices getDevices() const;
-	bool checkDevice(MidiDriver::DeviceHandle) const;
-	Common::Error createInstance(MidiDriver **mididriver, MidiDriver::DeviceHandle = 0) const;
+	MusicDevices getDevices() const override;
+	bool checkDevice(MidiDriver::DeviceHandle, int flags, bool quiet) const override;
+	Common::Error createInstance(MidiDriver **mididriver, MidiDriver::DeviceHandle = 0) const override;
 };
 
 MusicDevices MT32EmuMusicPlugin::getDevices() const {
@@ -441,10 +456,11 @@ MusicDevices MT32EmuMusicPlugin::getDevices() const {
 	return devices;
 }
 
-bool MT32EmuMusicPlugin::checkDevice(MidiDriver::DeviceHandle) const {
+bool MT32EmuMusicPlugin::checkDevice(MidiDriver::DeviceHandle, int flags, bool quiet) const {
 	if (!((Common::File::exists("MT32_CONTROL.ROM") && Common::File::exists("MT32_PCM.ROM")) ||
 		(Common::File::exists("CM32L_CONTROL.ROM") && Common::File::exists("CM32L_PCM.ROM")))) {
-			warning("The MT-32 emulator requires one of the two following file sets (not bundled with ScummVM):\n Either 'MT32_CONTROL.ROM' and 'MT32_PCM.ROM' or 'CM32L_CONTROL.ROM' and 'CM32L_PCM.ROM'");
+			if (!quiet)
+				warning("The MT-32 emulator requires one of the two following file sets (not bundled with ScummVM):\n Either 'MT32_CONTROL.ROM' and 'MT32_PCM.ROM' or 'CM32L_CONTROL.ROM' and 'CM32L_PCM.ROM'");
 			return false;
 	}
 

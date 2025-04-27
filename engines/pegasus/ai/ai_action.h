@@ -7,19 +7,18 @@
  * Additional copyright for this file:
  * Copyright (C) 1995-1997 Presto Studios, Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
-
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -63,11 +62,11 @@ typedef Common::List<AIAction *> AIActionList;
 class AICompoundAction : public AIAction {
 public:
 	AICompoundAction() {}
-	virtual ~AICompoundAction();
+	~AICompoundAction() override;
 
 	void addAction(AIAction *action) { _compoundActions.push_back(action); }
 
-	virtual void performAIAction(AIRule *);
+	void performAIAction(AIRule *) override;
 
 protected:
 	AIActionList _compoundActions;
@@ -79,12 +78,12 @@ protected:
 
 class AIPlayMessageAction : public AIAction {
 public:
-	AIPlayMessageAction(const Common::String &movieName, bool keepLastFrame, const InputBits = kWarningInterruption);
+	AIPlayMessageAction(const Common::Path &movieName, bool keepLastFrame, const InputBits = kWarningInterruption);
 
-	virtual void performAIAction(AIRule *);
+	void performAIAction(AIRule *) override;
 
 protected:
-	Common::String _movieName;
+	Common::Path _movieName;
 	InputBits _interruptionFilter;
 	bool _keepLastFrame;
 };
@@ -97,7 +96,7 @@ class AIStartTimerAction : public AIAction {
 public:
 	AIStartTimerAction(AITimerCondition *);
 
-	virtual void performAIAction(AIRule *);
+	void performAIAction(AIRule *) override;
 
 protected:
 	AITimerCondition *_timerCondition;
@@ -111,7 +110,7 @@ class AIActivateRuleAction : public AIAction {
 public:
 	AIActivateRuleAction(AIRule *);
 
-	virtual void performAIAction(AIRule *);
+	void performAIAction(AIRule *) override;
 
 protected:
 	AIRule *_rule;
@@ -125,7 +124,7 @@ class AIDeactivateRuleAction : public AIAction {
 public:
 	AIDeactivateRuleAction(AIRule *rule);
 
-	virtual void performAIAction(AIRule *);
+	void performAIAction(AIRule *) override;
 
 protected:
 	AIRule *_rule;

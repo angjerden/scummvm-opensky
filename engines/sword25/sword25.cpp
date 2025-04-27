@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -65,16 +64,10 @@ Sword25Engine::Sword25Engine(OSystem *syst, const ADGameDescription *gameDesc):
 	// Setup mixer
 	syncSoundSettings();
 
-	DebugMan.addDebugChannel(kDebugScript, "Script", "Script debug level");
-	DebugMan.addDebugChannel(kDebugScript, "Scripts", "Script debug level");
-	DebugMan.addDebugChannel(kDebugSound, "Sound", "Sound debug level");
-
-	_console = new Sword25Console(this);
+	setDebugger(new Sword25Console(this));
 }
 
 Sword25Engine::~Sword25Engine() {
-	DebugMan.clearAllDebugChannels();
-	delete _console;
 }
 
 Common::Error Sword25Engine::run() {
@@ -95,9 +88,9 @@ Common::Error Sword25Engine::run() {
 }
 
 Common::Error Sword25Engine::appStart() {
-	// Initialize the graphics mode to ARGB8888
+	// Initialize the graphics mode to RGBA8888
 	Graphics::PixelFormat format = Graphics::PixelFormat(4, 8, 8, 8, 8, 24, 16, 8, 0);
-	initGraphics(800, 600, true, &format);
+	initGraphics(800, 600, &format);
 	if (format != g_system->getScreenFormat())
 		return Common::kUnsupportedColorMode;
 
@@ -110,7 +103,9 @@ Common::Error Sword25Engine::appStart() {
 	// Load packages
 	PackageManager *packageManagerPtr = Kernel::getInstance()->getPackage();
 	if (getGameFlags() & GF_EXTRACTED) {
-		if (!packageManagerPtr->loadDirectoryAsPackage(ConfMan.get("path"), "/"))
+		Common::Path gameDirectory = ConfMan.getPath("path");
+		packageManagerPtr->setRunWithExtractedFiles(gameDirectory);
+		if (!packageManagerPtr->loadDirectoryAsPackage(gameDirectory, "/"))
 			return Common::kUnknownError;
 	} else {
 		if (!loadPackages())
@@ -120,7 +115,7 @@ Common::Error Sword25Engine::appStart() {
 	// Pass the command line to the script engine.
 	ScriptEngine *scriptPtr = Kernel::getInstance()->getScript();
 	if (!scriptPtr) {
-		error("Script intialization failed.");
+		error("Script initialization failed.");
 		return Common::kUnknownError;
 	}
 
@@ -162,7 +157,7 @@ bool Sword25Engine::loadPackages() {
 		return false;
 
 	// Get the contents of the main program directory and sort them alphabetically
-	Common::FSNode dir(ConfMan.get("path"));
+	Common::FSNode dir(ConfMan.getPath("path"));
 	Common::FSList files;
 	if (!dir.isDirectory() || !dir.getChildren(files, Common::FSNode::kListAll)) {
 		warning("Game data path does not exist or is not a directory");
@@ -179,7 +174,7 @@ bool Sword25Engine::loadPackages() {
 	// existing files in the virtual file system, if they include files with the same name.
 	for (Common::FSList::const_iterator it = files.begin(); it != files.end(); ++it) {
 		if (it->getName().matchString("patch???.b25c", true))
-			if (!packageManagerPtr->loadPackage(it->getName(), "/"))
+			if (!packageManagerPtr->loadPackage(it->getPathInArchive(), "/"))
 				return false;
 	}
 
@@ -187,7 +182,7 @@ bool Sword25Engine::loadPackages() {
 	// The filename of the packages have the form lang_*.b25c (eg. lang_de.b25c)
 	for (Common::FSList::const_iterator it = files.begin(); it != files.end(); ++it) {
 		if (it->getName().matchString("lang_*.b25c", true))
-			if (!packageManagerPtr->loadPackage(it->getName(), "/"))
+			if (!packageManagerPtr->loadPackage(it->getPathInArchive(), "/"))
 				return false;
 	}
 
@@ -196,12 +191,12 @@ bool Sword25Engine::loadPackages() {
 
 bool Sword25Engine::hasFeature(EngineFeature f) const {
 	return
-		(f == kSupportsRTL);
+		(f == kSupportsReturnToLauncher);
 	// TODO: Implement more of these features?!
 #if 0
 	return
 		(f == kSupportsSubtitleOptions) ||
-		(f == kSupportsRTL) ||
+		(f == kSupportsReturnToLauncher) ||
 		(f == kSupportsLoadingDuringRuntime) ||
 		(f == kSupportsSavingDuringRuntime);
 #endif

@@ -7,10 +7,10 @@
  * Additional copyright for this file:
  * Copyright (C) 1994-1998 Revolution Software Ltd.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -18,8 +18,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 
@@ -246,10 +245,12 @@ void Screen::plotPoint(int x, int y, uint8 color) {
 	}
 }
 
-static void plot(int x, int y, int color, void *data) {
-	Screen *screen = (Screen *)data;
-	screen->plotPoint(x, y, (uint8) color);
-}
+class ScreenPrimitives : public Graphics::Primitives {
+	void drawPoint(int x, int y, uint32 color, void *data) override {
+		Screen *screen = (Screen *)data;
+		screen->plotPoint(x, y, (uint8) color);
+	}
+};
 
 /**
  * Draws a line from one point to another. This is only used for debugging.
@@ -261,7 +262,7 @@ static void plot(int x, int y, int color, void *data) {
  */
 
 void Screen::drawLine(int x0, int y0, int x1, int y1, uint8 color) {
-	Graphics::drawLine(x0, y0, x1, y1, color, &plot, this);
+	ScreenPrimitives().drawLine(x0, y0, x1, y1, color, this);
 }
 
 /**
@@ -437,7 +438,7 @@ bool Screen::endRenderCycle() {
 
 #ifdef LIMIT_FRAME_RATE
 	// Give the other threads some breathing space. This apparently helps
-	// against bug #875683, though I was never able to reproduce it for
+	// against bug #1386, though I was never able to reproduce it for
 	// myself.
 	_vm->_system->delayMillis(10);
 #endif
@@ -572,7 +573,7 @@ int32 Screen::initializeBackgroundLayer(byte *parallax) {
 			_blockSurfaces[_layer][i]->transparent = block_is_transparent;
 
 		} else
-			_blockSurfaces[_layer][i] = NULL;
+			_blockSurfaces[_layer][i] = nullptr;
 	}
 
 	free(memchunk);
@@ -677,7 +678,7 @@ int32 Screen::initializePsxBackgroundLayer(byte *parallax) {
 			_blockSurfaces[_layer][tileIndex]->transparent = block_is_transparent;
 
 		} else
-			_blockSurfaces[_layer][tileIndex] = NULL;
+			_blockSurfaces[_layer][tileIndex] = nullptr;
 
 		if (posY == _yBlocks[_layer] - 1) {
 			stripeNumber++;
@@ -823,7 +824,7 @@ int32 Screen::initializePsxParallaxLayer(byte *parallax) {
 
 			_blockSurfaces[_layer][tileIndex]->transparent = block_is_transparent;
 		} else
-			_blockSurfaces[_layer][tileIndex] = NULL;
+			_blockSurfaces[_layer][tileIndex] = nullptr;
 	}
 
 	_layer++;
@@ -847,7 +848,7 @@ void Screen::closeBackgroundLayer() {
 				if (_blockSurfaces[i][j])
 					free(_blockSurfaces[i][j]);
 			free(_blockSurfaces[i]);
-			_blockSurfaces[i] = NULL;
+			_blockSurfaces[i] = nullptr;
 		}
 	}
 

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,14 +15,13 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "common/scummsys.h"
 #include "engines/util.h"
-#include "graphics/palette.h"
+#include "graphics/paletteman.h"
 #include "mads/mads.h"
 #include "mads/msurface.h"
 #include "mads/staticres.h"
@@ -497,7 +496,7 @@ void Fader::fadeIn(byte palette[PALETTE_SIZE], byte destPalette[PALETTE_SIZE],
 	int baseColor, int numColors, int baseGrey, int numGreys,
 	int tickDelay, int steps) {
 	GreyEntry map[PALETTE_COUNT];
-	byte tempPal[PALETTE_SIZE];;
+	byte tempPal[PALETTE_SIZE];
 	int8 signs[PALETTE_COUNT][3];
 	byte palIndex[PALETTE_COUNT][3];
 	int intensity;
@@ -665,15 +664,15 @@ void Fader::insertionSort(int size, byte *id, byte *value) {
 
 				int moveCount = size - arrIndex - 1;
 				if (moveCount > 0) {
-					Common::copy(idP + 1, idP + moveCount + 2, idP);
-					Common::copy(valueP + 1, valueP + moveCount + 2, valueP);
+					Common::copy(idP + 1, idP + moveCount + 1, idP);
+					Common::copy(valueP + 1, valueP + moveCount + 1, valueP);
 				}
 
 				// Scan for insert spot
 				int idx = 0;
 				if (endIndex > 0) {
 					bool breakFlag = false;
-					for (; idx <= endIndex && !breakFlag; ++idx) {
+					for (; idx <= endIndex - 1 && !breakFlag; ++idx) {
 						breakFlag = savedId < id[idx];
 					}
 				}
@@ -724,7 +723,7 @@ uint8 Palette::palIndexFromRgb(byte r, byte g, byte b, byte *paletteData) {
 	int32 minDist = 0x7fffffff;
 	byte palData[PALETTE_SIZE];
 
-	if (paletteData == NULL) {
+	if (paletteData == nullptr) {
 		g_system->getPaletteManager()->grabPalette(palData, 0, PALETTE_COUNT);
 		paletteData = &palData[0];
 	}

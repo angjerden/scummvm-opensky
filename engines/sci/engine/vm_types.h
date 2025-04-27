@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -24,11 +23,18 @@
 #define SCI_ENGINE_VM_TYPES_H
 
 #include "common/scummsys.h"
+#include "sci/version.h"
 
 namespace Sci {
 
 // Segment ID type
 typedef uint16 SegmentId;
+
+enum {
+	kUninitializedSegment = 0x1FFF,
+	kSegmentMask = 0x1FFF,
+	kOffsetMask = 0x7FFFF
+};
 
 struct reg_t {
 	// Segment and offset. These should never be accessed directly
@@ -37,10 +43,29 @@ struct reg_t {
 
 	SegmentId getSegment() const;
 	void setSegment(SegmentId segment);
-	uint32 getOffset() const;
-	void setOffset(uint32 offset);
 
-	inline void incOffset(int16 offset) {
+	// speed optimization: inline due to frequent calling
+	uint32 getOffset() const {
+		if (getSciVersion() < SCI_VERSION_3) {
+			return _offset;
+		} else {
+			// Return the lower 16 bits from the offset, and the 17th and 18th bits from the segment
+			return ((_segment & 0xC000) << 2) | _offset;
+		}
+	}
+
+	// speed optimization: inline due to frequent calling
+	void setOffset(uint32 offset) {
+		if (getSciVersion() < SCI_VERSION_3) {
+			_offset = offset;
+		} else {
+			// Store the lower 16 bits in the offset, and the 17th and 18th bits in the segment
+			_offset = offset & 0xFFFF;
+			_segment = ((offset & 0x30000) >> 2) | (_segment & 0x3FFF);
+		}
+	}
+
+	inline void incOffset(int32 offset) {
 		setOffset(getOffset() + offset);
 	}
 
@@ -61,14 +86,14 @@ struct reg_t {
 	}
 
 	bool isPointer() const {
-		return getSegment() != 0 && getSegment() != 0xFFFF;
+		return getSegment() != 0 && getSegment() != kUninitializedSegment;
 	}
 
 	uint16 requireUint16() const;
 	int16 requireSint16() const;
 
 	inline bool isInitialized() const {
-		return getSegment() != 0xFFFF;
+		return getSegment() != kUninitializedSegment;
 	}
 
 	// Comparison operators
@@ -136,6 +161,19 @@ struct reg_t {
 	reg_t operator|(const reg_t right) const;
 	reg_t operator^(const reg_t right) const;
 
+#ifdef ENABLE_SCI32
+	reg_t operator&(int16 right) const;
+	reg_t operator|(int16 right) const;
+	reg_t operator^(int16 right) const;
+
+	void operator&=(const reg_t &right) { *this = *this & right; }
+	void operator|=(const reg_t &right) { *this = *this | right; }
+	void operator^=(const reg_t &right) { *this = *this ^ right; }
+	void operator&=(int16 right) { *this = *this & right; }
+	void operator|=(int16 right) { *this = *this | right; }
+	void operator^=(int16 right) { *this = *this ^ right; }
+#endif
+
 private:
 	/**
 	 * Compares two reg_t's.
@@ -147,6 +185,10 @@ private:
 	int cmp(const reg_t right, bool treatAsUnsigned) const;
 	reg_t lookForWorkaround(const reg_t right, const char *operation) const;
 	bool pointerComparisonWithInteger(const reg_t right) const;
+
+#ifdef ENABLE_SCI32
+	int sci32Comparison(const reg_t right) const;
+#endif
 };
 
 static inline reg_t make_reg(SegmentId segment, uint16 offset) {
@@ -156,50 +198,14 @@ static inline reg_t make_reg(SegmentId segment, uint16 offset) {
 	return r;
 }
 
-#define PRINT_REG(r) (0xffff) & (unsigned) (r).getSegment(), (unsigned) (r).getOffset()
-
-// A true 32-bit reg_t
-struct reg32_t {
-	// Segment and offset. These should never be accessed directly
-	SegmentId _segment;
-	uint32 _offset;
-
-	inline SegmentId getSegment() const {
-		return _segment;
-	}
-
-	inline void setSegment(SegmentId segment) {
-		_segment = segment;
-	}
-
-	inline uint32 getOffset() const {
-		return _offset;
-	}
-
-	inline void setOffset(uint32 offset) {
-		_offset = offset;
-	}
-
-	inline void incOffset(int32 offset) {
-		setOffset(getOffset() + offset);
-	}
-
-	// Comparison operators
-	bool operator==(const reg32_t &x) const {
-		return (getOffset() == x.getOffset()) && (getSegment() == x.getSegment());
-	}
-
-	bool operator!=(const reg32_t &x) const {
-		return (getOffset() != x.getOffset()) || (getSegment() != x.getSegment());
-	}
-};
-
-static inline reg32_t make_reg32(SegmentId segment, uint32 offset) {
-	reg32_t r;
+static inline reg_t make_reg32(SegmentId segment, uint32 offset) {
+	reg_t r;
 	r.setSegment(segment);
 	r.setOffset(offset);
 	return r;
 }
+
+#define PRINT_REG(r) (kSegmentMask) & (unsigned) (r).getSegment(), (unsigned) (r).getOffset()
 
 // Stack pointer type
 typedef reg_t *StackPtr;

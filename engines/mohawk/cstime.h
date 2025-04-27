@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -35,6 +34,7 @@ namespace Mohawk {
 class CSTimeCase;
 class CSTimeInterface;
 class CSTimeView;
+class VideoManager;
 
 enum {
 	kCSTimeEventNothing = 0xffff,
@@ -111,7 +111,7 @@ enum {
 };
 
 struct CSTimeEvent {
-	CSTimeEvent() { }
+	CSTimeEvent() : type(0), param1(0), param2(0) { }
 	CSTimeEvent(uint16 t, uint16 p1, uint16 p2) : type(t), param1(p1), param2(p2) { }
 
 	uint16 type;
@@ -128,23 +128,24 @@ enum CSTimeState {
 
 class MohawkEngine_CSTime : public MohawkEngine {
 protected:
-	Common::Error run();
+	Common::Error run() override;
 
 public:
 	MohawkEngine_CSTime(OSystem *syst, const MohawkGameDescription *gamedesc);
-	virtual ~MohawkEngine_CSTime();
+	~MohawkEngine_CSTime() override;
 
 	Common::RandomSource *_rnd;
 
+	VideoManager *_video;
+	Sound *_sound;
 	CSTimeGraphics *_gfx;
 	bool _needsUpdate;
 
-	GUI::Debugger *getDebugger() { return _console; }
 	CSTimeView *getView() { return _view; }
 	CSTimeCase *getCase() { return _case; }
 	CSTimeInterface *getInterface() { return _interface; }
 
-	void loadResourceFile(Common::String name);
+	void loadResourceFile(const Common::Path &name);
 
 	void addEvent(const CSTimeEvent &event);
 	void addEventList(const Common::Array<CSTimeEvent> &list);
@@ -160,7 +161,6 @@ public:
 
 private:
 	CSTimeCase *_case;
-	CSTimeConsole *_console;
 	CSTimeInterface *_interface;
 	CSTimeView *_view;
 
@@ -180,6 +180,8 @@ private:
 
 	Common::List<CSTimeEvent> _events;
 	void triggerEvent(CSTimeEvent &event);
+
+	void pauseEngineIntern(bool) override;
 };
 
 } // End of namespace Mohawk

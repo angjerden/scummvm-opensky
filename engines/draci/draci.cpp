@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -72,57 +71,38 @@ const uint kDubbingFrequency = 22050;
 DraciEngine::DraciEngine(OSystem *syst, const ADGameDescription *gameDesc)
  : Engine(syst), _rnd("draci") {
 
-	// Put your engine in a sane state, but do nothing big yet;
-	// in particular, do not load data from files; rather, if you
-	// need to do such things, do them from init().
+	setDebugger(new DraciConsole(this));
 
-	// Do not initialize graphics here
-
-	// However this is the place to specify all default directories
-	//const Common::FSNode gameDataDir(ConfMan.get("path"));
-	//SearchMan.addSubDirectoryMatching(gameDataDir, "sound");
-
-	// Here is the right place to set up the engine specific debug levels
-	DebugMan.addDebugChannel(kDraciGeneralDebugLevel, "general", "Draci general debug info");
-	DebugMan.addDebugChannel(kDraciBytecodeDebugLevel, "bytecode", "GPL bytecode instructions");
-	DebugMan.addDebugChannel(kDraciArchiverDebugLevel, "archiver", "BAR archiver debug info");
-	DebugMan.addDebugChannel(kDraciLogicDebugLevel, "logic", "Game logic debug info");
-	DebugMan.addDebugChannel(kDraciAnimationDebugLevel, "animation", "Animation debug info");
-	DebugMan.addDebugChannel(kDraciSoundDebugLevel, "sound", "Sound debug info");
-	DebugMan.addDebugChannel(kDraciWalkingDebugLevel, "walking", "Walking debug info");
-
-	_console = new DraciConsole(this);
-
-	_screen = 0;
-	_mouse = 0;
-	_game = 0;
-	_script = 0;
-	_anims = 0;
-	_sound = 0;
-	_music = 0;
-	_smallFont = 0;
-	_bigFont = 0;
-	_iconsArchive = 0;
-	_objectsArchive = 0;
-	_spritesArchive = 0;
-	_paletteArchive = 0;
-	_roomsArchive = 0;
-	_overlaysArchive = 0;
-	_animationsArchive = 0;
-	_walkingMapsArchive = 0;
-	_itemsArchive = 0;
-	_itemImagesArchive = 0;
-	_initArchive = 0;
-	_stringsArchive = 0;
-	_soundsArchive = 0;
-	_dubbingArchive = 0;
+	_screen = nullptr;
+	_mouse = nullptr;
+	_game = nullptr;
+	_script = nullptr;
+	_anims = nullptr;
+	_sound = nullptr;
+	_music = nullptr;
+	_smallFont = nullptr;
+	_bigFont = nullptr;
+	_iconsArchive = nullptr;
+	_objectsArchive = nullptr;
+	_spritesArchive = nullptr;
+	_paletteArchive = nullptr;
+	_roomsArchive = nullptr;
+	_overlaysArchive = nullptr;
+	_animationsArchive = nullptr;
+	_walkingMapsArchive = nullptr;
+	_itemsArchive = nullptr;
+	_itemImagesArchive = nullptr;
+	_initArchive = nullptr;
+	_stringsArchive = nullptr;
+	_soundsArchive = nullptr;
+	_dubbingArchive = nullptr;
 	_showWalkingMap = 0;
 	_pauseStartTime = 0;
 }
 
 bool DraciEngine::hasFeature(EngineFeature f) const {
 	return (f == kSupportsSubtitleOptions) ||
-		(f == kSupportsRTL) ||
+		(f == kSupportsReturnToLauncher) ||
 		(f == kSupportsLoadingDuringRuntime) ||
 		(f == kSupportsSavingDuringRuntime);
 }
@@ -162,7 +142,7 @@ static SoundArchive* openAnyPossibleDubbing() {
 
 int DraciEngine::init() {
 	// Initialize graphics using following:
-	initGraphics(kScreenWidth, kScreenHeight, false);
+	initGraphics(kScreenWidth, kScreenHeight);
 
 	// Open game's archives
 	_initArchive = new BArchive(initPath);
@@ -250,7 +230,7 @@ int DraciEngine::init() {
 
 	// Basic archive test
 	debugC(2, kDraciGeneralDebugLevel, "Running archive tests...");
-	Common::String path("INIT.DFW");
+	Common::Path path("INIT.DFW");
 	BArchive ar(path);
 	const BAFile *f;
 	debugC(3, kDraciGeneralDebugLevel, "Number of file streams in archive: %d", ar.size());
@@ -287,7 +267,13 @@ void DraciEngine::handleEvents() {
 					_game->scheduleEnteringRoomUsingGate(_game->prevRoomNum(), 0);
 				}
 				break;
-			case Common::KEYCODE_ESCAPE: {
+			default:
+				break;
+			}
+			break;
+		case Common::EVENT_CUSTOM_ENGINE_ACTION_START:
+			switch (event.customType) {
+			case kActionEscape: {
 				if (_game->getLoopStatus() == kStatusInventory &&
 				   _game->getLoopSubstatus() == kOuterLoop) {
 					_game->inventoryDone();
@@ -319,22 +305,22 @@ void DraciEngine::handleEvents() {
 				}
 				break;
 			}
-			case Common::KEYCODE_m:
+			case kActionMap:
 				if (_game->getLoopStatus() == kStatusOrdinary) {
 					const int new_room = _game->getRoomNum() != _game->getMapRoom()
 						? _game->getMapRoom() : _game->getPreviousRoomNum();
 					_game->scheduleEnteringRoomUsingGate(new_room, 0);
 				}
 				break;
-			case Common::KEYCODE_w:
+			case kActionShowWalkMap:
 				// Show walking map toggle
 				_showWalkingMap = !_showWalkingMap;
 				_game->switchWalkingAnimations(_showWalkingMap);
 				break;
-			case Common::KEYCODE_q:
+			case kActionToggleWalkSpeed:
 				_game->setWantQuickHero(!_game->getWantQuickHero());
 				break;
-			case Common::KEYCODE_i:
+			case kActionInventory:
 				if (_game->getRoomNum() == _game->getMapRoom() ||
 				    _game->getLoopSubstatus() != kOuterLoop) {
 					break;
@@ -345,25 +331,19 @@ void DraciEngine::handleEvents() {
 					_game->inventoryInit();
 				}
 				break;
-			case Common::KEYCODE_F5:
+			case kActionOpenMainMenu:
 				if (event.kbd.hasFlags(0)) {
 					openMainMenuDialog();
 				}
 				break;
-			case Common::KEYCODE_COMMA:
-			case Common::KEYCODE_PERIOD:
-			case Common::KEYCODE_SLASH:
+			case kActionTogglePointerItem:
+			case kActionInvRotatePrevious:
+			case kActionInvRotateNext:
 				if ((_game->getLoopStatus() == kStatusOrdinary ||
 				    _game->getLoopStatus() == kStatusInventory) &&
 				   _game->getLoopSubstatus() == kOuterLoop &&
 				   _game->getRoomNum() != _game->getMapRoom()) {
-					_game->inventorySwitch(event.kbd.keycode);
-				}
-				break;
-			case Common::KEYCODE_d:
-				if (event.kbd.hasFlags(Common::KBD_CTRL)) {
-					this->getDebugger()->attach();
-					this->getDebugger()->onFrame();
+					_game->inventorySwitch(event.customType);
 				}
 				break;
 			default:
@@ -375,7 +355,7 @@ void DraciEngine::handleEvents() {
 		}
 	}
 
-	// Handle EVENT_QUIT and EVENT_RTL.
+	// Handle EVENT_QUIT and EVENT_RETURN_TO_LAUNCHER.
 	if (shouldQuit()) {
 		_game->setQuit(true);
 		_script->endCurrentProgram(true);
@@ -416,11 +396,6 @@ DraciEngine::~DraciEngine() {
 	delete _music;
 	delete _soundsArchive;
 	delete _dubbingArchive;
-
-	// Remove all of our debug levels here
-	DebugMan.clearAllDebugChannels();
-
-	delete _console;
 }
 
 Common::Error DraciEngine::run() {
@@ -483,16 +458,16 @@ Common::Error DraciEngine::loadGameState(int slot) {
 	return loadSavegameData(slot, this);
 }
 
-bool DraciEngine::canLoadGameStateCurrently() {
+bool DraciEngine::canLoadGameStateCurrently(Common::U32String *msg) {
 	return (_game->getLoopStatus() == kStatusOrdinary) &&
 		(_game->getLoopSubstatus() == kOuterLoop);
 }
 
-Common::Error DraciEngine::saveGameState(int slot, const Common::String &desc) {
+Common::Error DraciEngine::saveGameState(int slot, const Common::String &desc, bool isAutosave) {
 	return saveSavegameData(slot, desc, *this);
 }
 
-bool DraciEngine::canSaveGameStateCurrently() {
+bool DraciEngine::canSaveGameStateCurrently(Common::U32String *msg) {
 	return (_game->getLoopStatus() == kStatusOrdinary) &&
 		(_game->getLoopSubstatus() == kOuterLoop);
 }

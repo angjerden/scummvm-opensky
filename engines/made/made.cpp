@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -40,36 +39,25 @@
 
 namespace Made {
 
-struct GameSettings {
-	const char *gameid;
-	const char *description;
-	byte id;
-	uint32 features;
-	const char *detectname;
-};
-
-static const GameSettings madeSettings[] = {
-	{"made", "Made game", 0, 0, 0},
-
-	{NULL, NULL, 0, 0, NULL}
-};
-
 MadeEngine::MadeEngine(OSystem *syst, const MadeGameDescription *gameDesc) : Engine(syst), _gameDescription(gameDesc) {
 
-	const GameSettings *g;
-
-	const char *gameid = ConfMan.get("gameid").c_str();
-	for (g = madeSettings; g->gameid; ++g)
-		if (!scumm_stricmp(g->gameid, gameid))
-			_gameId = g->id;
+	_eventNum = 0;
+	_eventMouseX = _eventMouseY = 0;
+	_eventKey = 0;
+	_autoStopSound = false;
+	_soundEnergyIndex = 0;
+	_soundEnergyArray = nullptr;
+	_musicBeatStart = 0;
+	_cdTimeStart = 0;
+	_introMusicDigital = true;
+	if (ConfMan.hasKey("intro_music_digital"))
+		_introMusicDigital = ConfMan.getBool("intro_music_digital");
 
 	_rnd = new Common::RandomSource("made");
 
-	_console = new MadeConsole(this);
+	setDebugger(new MadeConsole(this));
 
-	int cd_num = ConfMan.getInt("cdrom");
-	if (cd_num >= 0)
-		_system->getAudioCDManager()->openCD(cd_num);
+	_system->getAudioCDManager()->open();
 
 	_pmvPlayer = new PmvPlayer(this, _mixer);
 	_res = new ResourceReader();
@@ -87,6 +75,8 @@ MadeEngine::MadeEngine(OSystem *syst, const MadeGameDescription *gameDesc) : Eng
 
 	_music = nullptr;
 
+	_soundRate = 0;
+
 	// Set default sound frequency
 	switch (getGameID()) {
 	case GID_RODNEY:
@@ -99,7 +89,9 @@ MadeEngine::MadeEngine(OSystem *syst, const MadeGameDescription *gameDesc) : Eng
 		_soundRate = 8000;
 		break;
 	case GID_RTZ:
-		// Return to Zork sets it itself via a script funtion
+		// Return to Zork sets it itself via a script function
+		break;
+	default:
 		break;
 	}
 }
@@ -108,7 +100,6 @@ MadeEngine::~MadeEngine() {
 	_system->getAudioCDManager()->stop();
 
 	delete _rnd;
-	delete _console;
 	delete _pmvPlayer;
 	delete _res;
 	delete _screen;
@@ -120,21 +111,11 @@ MadeEngine::~MadeEngine() {
 void MadeEngine::syncSoundSettings() {
 	Engine::syncSoundSettings();
 
-	bool mute = false;
-	if (ConfMan.hasKey("mute"))
-		mute = ConfMan.getBool("mute");
-
-	_music->setVolume(mute ? 0 : ConfMan.getInt("music_volume"));
-	_mixer->setVolumeForSoundType(Audio::Mixer::kPlainSoundType,
-									mute ? 0 : ConfMan.getInt("sfx_volume"));
+	_music->syncSoundSettings();
 }
 
 int16 MadeEngine::getTicks() {
 	return g_system->getMillis() * 30 / 1000;
-}
-
-GUI::Debugger *MadeEngine::getDebugger() {
-	return _console;
 }
 
 int16 MadeEngine::getTimer(int16 timerNum) {
@@ -208,78 +189,71 @@ void MadeEngine::handleEvents() {
 		case Common::EVENT_RBUTTONUP:
 			_eventNum = 3;
 			break;
-
 		case Common::EVENT_KEYDOWN:
 			// Handle any special keys here
-			// Supported keys taken from http://www.allgame.com/game.php?id=13542&tab=controls
-
-			switch (event.kbd.keycode) {
-			case Common::KEYCODE_KP_PLUS:	// action (same as left mouse click)
-				_eventNum = 1;		// left mouse button up
-				break;
-			case Common::KEYCODE_KP_MINUS:	// inventory (same as right mouse click)
-				_eventNum = 3;		// right mouse button up
-				break;
-			case Common::KEYCODE_UP:
-			case Common::KEYCODE_KP8:
+			// Supported keys taken from https://web.archive.org/web/20141114142447/http://www.allgame.com/game.php?id=13542&tab=controls
+			if (event.kbd.keycode == Common::KEYCODE_BACKSPACE) {
+				_eventNum = 5;
+				_eventKey = 9;
+			} else {
+				_eventNum = 5;
+				_eventKey = event.kbd.ascii;
+			}
+			break;
+		case Common::EVENT_CUSTOM_ENGINE_ACTION_START:
+			switch (event.customType) {
+			case kActionCursorUp:
 				_eventMouseY = MAX<int16>(0, _eventMouseY - 1);
 				g_system->warpMouse(_eventMouseX, _eventMouseY);
 				break;
-			case Common::KEYCODE_DOWN:
-			case Common::KEYCODE_KP2:
+			case kActionCursorDown:
 				_eventMouseY = MIN<int16>(199, _eventMouseY + 1);
 				g_system->warpMouse(_eventMouseX, _eventMouseY);
 				break;
-			case Common::KEYCODE_LEFT:
-			case Common::KEYCODE_KP4:
+			case kActionCursorLeft:
 				_eventMouseX = MAX<int16>(0, _eventMouseX - 1);
 				g_system->warpMouse(_eventMouseX, _eventMouseY);
 				break;
-			case Common::KEYCODE_RIGHT:
-			case Common::KEYCODE_KP6:
+			case kActionCursorRight:
 				_eventMouseX = MIN<int16>(319, _eventMouseX + 1);
 				g_system->warpMouse(_eventMouseX, _eventMouseY);
 				break;
-			case Common::KEYCODE_F1:		// menu
-			case Common::KEYCODE_F2:		// save game
-			case Common::KEYCODE_F3:		// load game
-			case Common::KEYCODE_F4:		// repeat last message
+			case kActionMenu:
 				_eventNum = 5;
-				_eventKey = (event.kbd.keycode - Common::KEYCODE_F1) + 21;
+				_eventKey = 21; //KEYCODE F1
 				break;
-			case Common::KEYCODE_BACKSPACE:
+			case kActionSaveGame:
 				_eventNum = 5;
-				_eventKey = 9;
+				_eventKey = 22; //KEYCODE F2
+				break;
+			case kActionLoadGame:
+				_eventNum = 5;
+				_eventKey = 23; //KEYCODE F3
+				break;
+			case kActionRepeatMessage:
+				_eventNum = 5;
+				_eventKey = 24; //KEYCODE F4
 				break;
 			default:
-				_eventNum = 5;
-				_eventKey = event.kbd.ascii;
 				break;
 			}
-
-			// Check for Debugger Activation
-			if (event.kbd.hasFlags(Common::KBD_CTRL) && event.kbd.keycode == Common::KEYCODE_d) {
-				this->getDebugger()->attach();
-				this->getDebugger()->onFrame();
-			}
 			break;
-
 		default:
 			break;
 
 		}
 	}
 
-	_system->getAudioCDManager()->updateCD();
+	_system->getAudioCDManager()->update();
 
 }
 
 Common::Error MadeEngine::run() {
-	_music = new MusicPlayer();
+	_music = new MusicPlayer(this, getGameID() == GID_RTZ);
 	syncSoundSettings();
 
 	// Initialize backend
-	initGraphics(320, 200, false);
+	initGraphics(320, 200);
 
 	resetAllTimers();
 
@@ -317,8 +291,12 @@ Common::Error MadeEngine::run() {
 		error ("Unknown MADE game");
 	}
 
-	if ((getFeatures() & GF_CD) || (getFeatures() & GF_CD_COMPRESSED))
-		checkCD();
+	if ((getFeatures() & GF_CD) || (getFeatures() & GF_CD_COMPRESSED)) {
+		if (!existExtractedCDAudioFiles()
+		    && !isDataAndCDAudioReadFromSameCD()) {
+			warnMissingExtractedCDAudio();
+		}
+	}
 
 	_autoStopSound = false;
 	_eventNum = _eventKey = _eventMouseX = _eventMouseY = 0;
@@ -330,7 +308,21 @@ Common::Error MadeEngine::run() {
 	_script->runScript(_dat->getMainCodeObjectIndex());
 #endif
 
+	_music->close();
+
 	return Common::kNoError;
+}
+
+void MadeEngine::pauseEngineIntern(bool pause) {
+	Engine::pauseEngineIntern(pause);
+
+	if (pause) {
+		if (_music)
+			_music->pause();
+	} else {
+		if (_music)
+			_music->resume();
+	}
 }
 
 } // End of namespace Made

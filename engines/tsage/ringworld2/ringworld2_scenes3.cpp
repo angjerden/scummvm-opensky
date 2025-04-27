@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -359,7 +358,7 @@ void Scene3125::signal() {
 		break;
 	case 3126:
 		R2_GLOBALS.setFlag(79);
-	// No break on purpose
+		// fall through
 	case 3176:
 		R2_GLOBALS._sceneManager.changeScene(3250);
 		break;
@@ -3027,7 +3026,7 @@ void Scene3500::Action1::turnShuttle(bool arg1) {
 	case 4:
 		scene->_shuttle._frameChange = _direction;
 		scene->_shuttle.setFrame(scene->_shuttle.changeFrame());
-	// No break on purpose
+		// fall through
 	case 3:
 		_actionIndex = 10;
 		setDelay(0);
@@ -3050,7 +3049,7 @@ void Scene3500::Action1::turnShuttle(bool arg1) {
 		scene->_shuttle._frameChange = _direction;
 		scene->_shuttle.setFrame(scene->_shuttle.changeFrame());
 		setDelay(1);
-	// No break on purpose
+		// fall through
 	case 8:
 		scene->_tunnelHorzCircle.setStrip(2);
 		_actionIndex = 1;
@@ -3079,7 +3078,7 @@ void Scene3500::Action1::signal() {
 			setDelay(1);
 			return;
 		}
-	// No break on purpose
+		// fall through
 	case 3:
 		scene->_shuttle._frameChange = _direction;
 		scene->_shuttle.setFrame(scene->_shuttle.changeFrame());
@@ -3158,7 +3157,7 @@ void Scene3500::Action1::signal() {
 			break;
 		}
 		}
-	// No break on purpose
+		// fall through
 	case 2: {
 		scene->_tunnelVertCircle.setPosition(Common::Point(160, 73));
 		scene->_tunnelVertCircle._moveDiff.x = 160 - scene->_mazeChangeAmount;
@@ -3792,60 +3791,56 @@ void Scene3500::process(Event &event) {
 	if (!_directionChangesEnabled)
 		return;
 
-	if (event.eventType == EVENT_KEYPRESS) {
-		switch (event.kbd.keycode) {
-		case Common::KEYCODE_KP7:
+	if (event.eventType == EVENT_CUSTOM_ACTIONSTART) {
+		switch (event.customType) {
+		case kActionMaximumSpeed:
 			R2_GLOBALS._sound2.play(338);
 			doMovement(16);
 			event.handled = true;
 			break;
-		case Common::KEYCODE_UP:
-		case Common::KEYCODE_KP8:
+		case kActionMoveUpCrawlNorth:
 			R2_GLOBALS._sound2.play(14, NULL, 63);
 			doMovement(88);
 			event.handled = true;
 			break;
-		case Common::KEYCODE_KP9:
+		case kActionIncreaseSpeed:
 			if (_speed < 16)
 				R2_GLOBALS._sound2.play(338);
 			doMovement(1);
 			event.handled = true;
 			break;
-		case Common::KEYCODE_KP4:
-		case Common::KEYCODE_LEFT:
+		case kActionMoveLeftCrawlWest:
 			R2_GLOBALS._sound2.play(14, NULL, 63);
 			doMovement(112);
 			event.handled = true;
 			break;
-		case Common::KEYCODE_KP6:
-		case Common::KEYCODE_RIGHT:
+		case kActionMoveRightCrawlEast:
 			R2_GLOBALS._sound2.play(14, NULL, 63);
 			doMovement(96);
 			event.handled = true;
 			break;
-		case Common::KEYCODE_KP1:
+		case kActionMinimumSpeed:
 			R2_GLOBALS._sound2.play(338);
 			doMovement(0);
 			event.handled = true;
 			break;
-		case Common::KEYCODE_KP2:
-		case Common::KEYCODE_DOWN:
+		case kActionMoveDownCrawlSouth:
 			R2_GLOBALS._sound2.play(14, NULL, 63);
 			doMovement(104);
 			event.handled = true;
 			break;
-		case Common::KEYCODE_KP3:
+		case kActionDecreaseSpeed:
 			if (_speed != 0)
 				R2_GLOBALS._sound2.play(338);
 			doMovement(-1);
 			event.handled = true;
 			break;
-		case Common::KEYCODE_KP0:
+		case kActionMediumSpeed:
 			R2_GLOBALS._sound2.play(338);
 			doMovement(8);
 			event.handled = true;
 			break;
-		case Common::KEYCODE_KP_PERIOD:
+		case kActionLowSpeed:
 			R2_GLOBALS._sound2.play(338);
 			doMovement(4);
 			event.handled = true;
@@ -4345,7 +4340,7 @@ void Scene3600::Action2::signal() {
 		R2_GLOBALS._player.enableControl();
 		_actionIndex = 3619;
 		scene->_protector._state = 0;
-	// No break on purpose
+		// fall through
 	case 3619: {
 		++_actionIndex;
 		scene->_protector.setup(3127, 2, 1);

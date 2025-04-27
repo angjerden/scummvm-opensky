@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,14 +15,15 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "graphics/cursorman.h"
+#include "math/utils.h"
 
 #include "tsage/scenes.h"
+#include "tsage/dialogs.h"
 #include "tsage/tsage.h"
 #include "tsage/staticres.h"
 #include "tsage/ringworld2/ringworld2_scenes1.h"
@@ -452,6 +453,9 @@ void Scene1000::signal() {
 		R2_GLOBALS._sound2.fadeOut2(NULL);
 		R2_GLOBALS._scenePalette.loadPalette(0);
 		R2_GLOBALS._sceneManager.changeScene(3500);
+		break;
+
+	default:
 		break;
 	}
 }
@@ -1400,7 +1404,7 @@ void Scene1500::signal() {
 	case 0:
 		R2_GLOBALS.setFlag(25);
 		setAction(&_sequenceManager, this, 1, &R2_GLOBALS._player, NULL);
-	// No break on purpose
+		// fall through
 	case 1:
 		if (_starship._yDiff < 50) {
 			_starship.setPosition(Common::Point(289, 239), _starship._yDiff + 1);
@@ -1423,12 +1427,12 @@ void Scene1500::signal() {
 		break;
 	case 13:
 		R2_GLOBALS._player._characterIndex = R2_MIRANDA;
-	// No break on purpose
+		// fall through
 	case 4:
 		R2_GLOBALS._sceneManager.changeScene(300);
 		break;
 	case 10:
-	// No break on purpose
+		// fall through
 	case 20:
 		setAction(&_sequenceManager, this, 1, &R2_GLOBALS._player, NULL);
 		break;
@@ -1473,7 +1477,7 @@ void Scene1500::dispatch() {
 	if (_sceneMode > 10) {
 		float yDiff = sqrt((float) (_smallShip._position.x * _smallShip._position.x) + (_smallShip._position.y * _smallShip._position.y));
 		if (yDiff > 6)
-			_smallShip.setPosition(_smallShip._position, (int) yDiff);
+			_smallShip.setPosition(_smallShip._position, (int)yDiff);
 	}
 
 	Scene::dispatch();
@@ -2224,11 +2228,11 @@ void Scene1550::postInit(SceneObjectList *OwnerList) {
 	switch (R2_GLOBALS._sceneManager._previousScene) {
 	case 1530:
 		R2_GLOBALS._stripModifier = 0;
-	// No break on purpose
+		// fall through
 	case 300:
-	// No break on purpose
+		// fall through
 	case 1500:
-	// No break on purpose
+		// fall through
 	case 3150:
 		R2_GLOBALS._sound1.play(105);
 		break;
@@ -3881,10 +3885,6 @@ void Scene1575::synchronize(Serializer &s) {
 	s.syncAsSint16LE(_field41A);
 }
 
-double hypotenuse(double v1, double v2) {
-	return sqrt(v1 * v1 + v2 * v2);
-}
-
 void Scene1575::postInit(SceneObjectList *OwnerList) {
 	loadScene(1575);
 	R2_GLOBALS._uiElements._active = false;
@@ -3910,8 +3910,8 @@ void Scene1575::postInit(SceneObjectList *OwnerList) {
 		_arrActor[i].postInit();
 		_arrActor[i].setup(1575, 2, k5A7F6[3 * i + 2]);
 
-		double v1 = hypotenuse(2.0, 3 - k5A7F6[3 * i]);
-		v1 += hypotenuse(2.0, 3 - k5A7F6[3 * i + 1]);
+		double v1 = Math::hypotenuse<double>(2.0, 3 - k5A7F6[3 * i]);
+		v1 += Math::hypotenuse<double>(2.0, 3 - k5A7F6[3 * i + 1]);
 		int yp = (int)(sqrt(v1) * 75.0 / 17.0 - 161.0);
 
 		int angle = R2_GLOBALS._gfxManagerInstance.getAngle(
@@ -4717,7 +4717,7 @@ void Scene1625::signal() {
 }
 
 void Scene1625::process(Event &event) {
-	if ((event.eventType == EVENT_KEYPRESS) && (event.kbd.keycode == Common::KEYCODE_ESCAPE))
+	if ((event.eventType == EVENT_CUSTOM_ACTIONSTART) && (event.customType == kActionEscape))
 		event.handled = true;
 	else
 		Scene::process(event);
@@ -7308,7 +7308,7 @@ void Scene1900::signal() {
 		break;
 	case 1904:
 		R2_GLOBALS._scene1925CurrLevel = -3;
-	// No break on purpose
+		// fall through
 	case 1905:
 		R2_GLOBALS._player.disableControl(CURSOR_WALK);
 		R2_GLOBALS._sceneManager.changeScene(1925);
@@ -7322,7 +7322,7 @@ void Scene1900::signal() {
 		break;
 	case 1906:
 		R2_GLOBALS._scene1925CurrLevel = -3;
-	// No break on purpose
+		// fall through
 	default:
 		R2_GLOBALS._player.enableControl();
 		break;
@@ -7516,7 +7516,7 @@ void Scene1925::changeLevel(bool upFlag) {
 		break;
 	case 512:
 		R2_GLOBALS._scene1925CurrLevel = 508;
-	// No break on purpose
+		// fall through
 	default:
 		loadScene(_levelResNum[(R2_GLOBALS._scene1925CurrLevel % 4)]);
 		R2_GLOBALS._sceneItems.remove(&_button);
@@ -7560,10 +7560,10 @@ void Scene1925::postInit(SceneObjectList *OwnerList) {
 	case 3:
 		_door.setDetails(1925, 0, 1, 2, 1, (SceneItem *) NULL);
 		_button.setDetails(Rect(133, 68, 140, 77), 1925, 3, -1, 5, 1, NULL);
-	// No break on purpose
+		// fall through
 	case -3:
 		_westExit.setDetails(Rect(83, 38, 128, 101), EXITCURSOR_W, 1925);
-	// No break on purpose
+		// fall through
 	default:
 		_exitUp.setDetails(Rect(128, 0, 186, 10), EXITCURSOR_N, 1925);
 		_exitDown.setDetails(Rect(128, 160, 190, 167), EXITCURSOR_S, 1925);
@@ -7646,7 +7646,7 @@ void Scene1925::signal() {
 			_newSceneMode = 0;
 			setAction(&_sequenceManager, this, _sceneMode, &R2_GLOBALS._player, NULL);
 		}
-	// No break on purpose
+		// fall through
 	default:
 		R2_GLOBALS._player.enableControl(CURSOR_USE);
 		break;
@@ -7707,7 +7707,7 @@ bool Scene1945::Ice::startAction(CursorType action, Event &event) {
 			else
 				scene->_ice.setDetails(1945, 3, -1, 5, 3, (SceneItem *) NULL);
 		}
-	// No break on purpose
+		// fall through
 	default:
 		return SceneHotspot::startAction(action, event);
 		break;
@@ -7950,7 +7950,7 @@ void Scene1945::signal() {
 		R2_GLOBALS.clearFlag(42);
 		R2_GLOBALS.setFlag(43);
 		_nextSceneMode1 = 1940;
-	// No break on purpose
+		// fall through
 	case 1949:
 		_sceneMode = _nextSceneMode1;
 		if (_nextSceneMode2 == 1943) {

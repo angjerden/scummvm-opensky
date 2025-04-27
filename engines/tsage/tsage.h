@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,41 +15,52 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
-#ifndef TSAGE_H
-#define TSAGE_H
+#ifndef TSAGE_TSAGE_H
+#define TSAGE_TSAGE_H
 
 #include "engines/engine.h"
-#include "common/rect.h"
-#include "audio/mixer.h"
-#include "common/file.h"
 #include "gui/debugger.h"
 
-#include "tsage/core.h"
 #include "tsage/resources.h"
 #include "tsage/debugger.h"
 #include "tsage/events.h"
-#include "tsage/graphics.h"
 #include "tsage/resources.h"
+#include "tsage/detection.h"
 
 
 namespace TsAGE {
 
-enum {
-	GType_Ringworld = 0,
-	GType_BlueForce = 1,
-	GType_Ringworld2 = 2
-};
-
-enum {
-	GF_DEMO = 1 << 0,
-	GF_CD = 1 << 1,
-	GF_FLOPPY = 1 << 2,
-	GF_ALT_REGIONS = 1 << 3
+enum TSAGEAction {
+	kActionNone,
+	kActionEscape,
+	kActionReturn,
+	kActionHelp,
+	kActionSoundOptions,
+	kActionQuitGame,
+	kActionRestartGame,
+	kActionSaveGame,
+	kActionRestoreGame,
+	kActionCredits,
+	kActionPauseGame,
+	kActionWalk,
+	kActionLook,
+	kActionUse,
+	kActionTalk,
+	kActionMoveUpCrawlNorth,
+	kActionMoveDownCrawlSouth,
+	kActionMoveLeftCrawlWest,
+	kActionMoveRightCrawlEast,
+	kActionIncreaseSpeed,
+	kActionDecreaseSpeed,
+	kActionMinimumSpeed,
+	kActionMaximumSpeed,
+	kActionLowSpeed,
+	kActionMediumSpeed,
+	kActionDrawCards
 };
 
 enum {
@@ -59,39 +70,29 @@ enum {
 	ktSageDebugGraphics = 1 << 3
 };
 
-struct tSageGameDescription;
-
-#define SCREEN_WIDTH 320
-#define SCREEN_HEIGHT 200
-#define SCREEN_CENTER_X 160
-#define SCREEN_CENTER_Y 100
-#define UI_INTERFACE_Y 168
-
 class TSageEngine : public Engine {
 private:
 	const tSageGameDescription *_gameDescription;
 public:
 	TSageEngine(OSystem *system, const tSageGameDescription *gameDesc);
-	~TSageEngine();
-	virtual bool hasFeature(EngineFeature f) const;
+	~TSageEngine() override;
+	bool hasFeature(EngineFeature f) const override;
 
 	MemoryManager _memoryManager;
-	Debugger *_debugger;
-	GUI::Debugger *getDebugger() { return _debugger; }
 
 	const char *getGameId() const;
 	uint32 getGameID() const;
 	uint32 getFeatures() const;
-	Common::String getPrimaryFilename() const;
+	Common::Language getLanguage() const;
+	Common::Path getPrimaryFilename() const;
 
 	virtual Common::Error init();
-	virtual Common::Error run();
-	virtual bool canLoadGameStateCurrently();
-	virtual bool canSaveGameStateCurrently();
-	virtual Common::Error loadGameState(int slot);
-	virtual Common::Error saveGameState(int slot, const Common::String &desc);
-	virtual void syncSoundSettings();
-	Common::String generateSaveName(int slot);
+	Common::Error run() override;
+	bool canLoadGameStateCurrently(Common::U32String *msg = nullptr) override;
+	bool canSaveGameStateCurrently(Common::U32String *msg = nullptr) override;
+	Common::Error loadGameState(int slot) override;
+	Common::Error saveGameState(int slot, const Common::String &desc, bool isAutosave = false) override;
+	void syncSoundSettings() override;
 
 	void initialize();
 	void deinitialize();

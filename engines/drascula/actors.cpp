@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -53,17 +52,6 @@ void DrasculaEngine::placeDrascula() {
 		copyRect(drX, 122, drasculaX, drasculaY, 45, 77, drawSurface2, screenSurface);
 	else
 		copyRect(drX, 122, drasculaX, drasculaY, 45, 77, backSurface, screenSurface);
-}
-
-void DrasculaEngine::placeBJ() {
-	int bX = 0;
-
-	if (trackBJ == 3)
-		bX = 10;
-	else if (trackBJ == 0)
-		bX = 37;
-
-	copyRect(bX, 99, bjX, bjY, 26, 76, drawSurface3, screenSurface);
 }
 
 void DrasculaEngine::hiccup(int counter) {
@@ -105,7 +93,7 @@ void DrasculaEngine::hiccup(int counter) {
 }
 
 void DrasculaEngine::startWalking() {
-	characterMoved = 1;
+	_characterMoved = true;
 
 	stepX = STEP_X;
 	stepY = STEP_Y;
@@ -123,6 +111,8 @@ void DrasculaEngine::startWalking() {
 			walkUp();
 		else if (roomY > curY + curHeight)
 			walkDown();
+		else
+			_characterMoved = false;
 	} else {
 		if ((roomX < curX + curWidth / 2 ) && (roomY <= (curY + curHeight)))
 			quadrant_1();
@@ -133,7 +123,7 @@ void DrasculaEngine::startWalking() {
 		else if ((roomX > curX + curWidth / 2) && (roomY > (curY + curHeight)))
 			quadrant_4();
 		else
-			characterMoved = 0;
+			_characterMoved = false;
 	}
 	_startTime = getTime();
 }
@@ -142,16 +132,16 @@ void DrasculaEngine::moveCharacters() {
 	int curPos[6];
 	int r;
 
-	if (characterMoved == 1 && stepX == STEP_X) {
+	if (_characterMoved && stepX == STEP_X) {
 		for (r = 0; r < stepX; r++) {
 			if (currentChapter != 2) {
 				if (trackProtagonist == 0 && roomX - r == curX + curWidth / 2) {
-					characterMoved = 0;
+					_characterMoved = false;
 					stepX = STEP_X;
 					stepY = STEP_Y;
 				}
 				if (trackProtagonist == 1 && roomX + r == curX + curWidth / 2) {
-					characterMoved = 0;
+					_characterMoved = false;
 					stepX = STEP_X;
 					stepY = STEP_Y;
 					curX = roomX - curWidth / 2;
@@ -159,12 +149,12 @@ void DrasculaEngine::moveCharacters() {
 				}
 			} else if (currentChapter == 2) {
 				if (trackProtagonist == 0 && roomX - r == curX) {
-					characterMoved = 0;
+					_characterMoved = false;
 					stepX = STEP_X;
 					stepY = STEP_Y;
 				}
 				if (trackProtagonist == 1 && roomX + r == curX + curWidth) {
-					characterMoved = 0;
+					_characterMoved = false;
 					stepX = STEP_X;
 					stepY = STEP_Y;
 					curX = roomX - curWidth + 4;
@@ -173,15 +163,15 @@ void DrasculaEngine::moveCharacters() {
 			}
 		}
 	}
-	if (characterMoved == 1 && stepY == STEP_Y) {
+	if (_characterMoved && stepY == STEP_Y) {
 		for (r = 0; r < stepY; r++) {
 			if (trackProtagonist == 2 && roomY - r == curY + curHeight) {
-				characterMoved = 0;
+				_characterMoved = false;
 				stepX = STEP_X;
 				stepY = STEP_Y;
 			}
 			if (trackProtagonist == 3 && roomY + r == curY + curHeight) {
-				characterMoved = 0;
+				_characterMoved = false;
 				stepX = STEP_X;
 				stepY = STEP_Y;
 			}
@@ -189,13 +179,13 @@ void DrasculaEngine::moveCharacters() {
 	}
 
 	if (currentChapter != 2 && currentChapter != 3) {
-		if (hare_se_ve == 0) {
+		if (!_characterVisible) {
 			increaseFrameNum();
 			return;
 		}
 	}
 
-	if (characterMoved == 0) {
+	if (!_characterMoved) {
 		curPos[0] = 0;
 		curPos[1] = DIF_MASK_HARE;
 		curPos[2] = curX;
@@ -238,7 +228,7 @@ void DrasculaEngine::moveCharacters() {
 				reduce_hare_chico(curPos[0], curPos[1], curPos[2], curPos[3], curPos[4], curPos[5],
 									factor_red[curY + curHeight], frontSurface, screenSurface);
 		}
-	} else if (characterMoved == 1) {
+	} else if (_characterMoved) {
 		curPos[0] = _frameX[_characterFrame];
 		curPos[1] = frame_y + DIF_MASK_HARE;
 		curPos[2] = curX;
@@ -396,7 +386,7 @@ void DrasculaEngine::increaseFrameNum() {
 		curHeight = (int)newHeight;
 		curWidth = (int)newWidth;
 	}
-	
+
 	// Fix bug #5903 DRASCULA-IT: Crash/graphic glitch at castle towers
 	// Chapter 5 Room 45 is the castle tower part
 	// Fixing the character's coordinate(0,0) in the tower section to prevent out of window coordinates and crash

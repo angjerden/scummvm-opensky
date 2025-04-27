@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -33,6 +32,8 @@ namespace Amazon {
 
 AmazonScripts::AmazonScripts(AccessEngine *vm) : Scripts(vm) {
 	_game = (AmazonEngine *)_vm;
+
+	setOpcodes_v2();
 }
 
 void AmazonScripts::cLoop() {
@@ -378,20 +379,20 @@ void AmazonScripts::executeSpecial(int commandIndex, int param1, int param2) {
 typedef void(AmazonScripts::*AmazonScriptMethodPtr)();
 
 void AmazonScripts::executeCommand(int commandIndex) {
-	static const AmazonScriptMethodPtr COMMAND_LIST[] = {
-		&AmazonScripts::cmdHelp, &AmazonScripts::cmdCycleBack,
+	static const AmazonScriptMethodPtr AMAZON_COMMAND_LIST[] = {
+		&AmazonScripts::cmdHelp_v2, &AmazonScripts::cmdCycleBack,
 		&AmazonScripts::cmdChapter, &AmazonScripts::cmdSetHelp,
 		&AmazonScripts::cmdCenterPanel, &AmazonScripts::cmdMainPanel,
 		&AmazonScripts::CMDRETFLASH
 	};
 
 	if (commandIndex >= 73)
-		(this->*COMMAND_LIST[commandIndex - 73])();
+		(this->*AMAZON_COMMAND_LIST[commandIndex - 73])();
 	else
 		Scripts::executeCommand(commandIndex);
 }
 
-void AmazonScripts::cmdHelp() {
+void AmazonScripts::cmdHelp_v2() {
 	Common::String helpMessage = readString();
 
 	if (_game->_helpLevel == 0) {
@@ -399,10 +400,10 @@ void AmazonScripts::cmdHelp() {
 		_game->_useItem = 0;
 
 		if (_game->_noHints) {
-			printString(NO_HELP_MESSAGE);
+			printString(AMRES.NO_HELP_MESSAGE);
 			return;
 		} else if (_game->_hintLevel == 0) {
-			printString(NO_HINTS_MESSAGE);
+			printString(AMRES.NO_HINTS_MESSAGE);
 			return;
 		}
 	}
@@ -413,14 +414,15 @@ void AmazonScripts::cmdHelp() {
 
 	_game->drawHelp(helpMessage);
 
+	const Common::Rect butn1 = Common::Rect(HELP1COORDS[0][0], HELP1COORDS[0][2], HELP1COORDS[0][1], HELP1COORDS[0][3]);
+	const Common::Rect butn2 = Common::Rect(HELP1COORDS[1][0], HELP1COORDS[1][2], HELP1COORDS[1][1], HELP1COORDS[1][3]);
+
 	while (!_vm->shouldQuit()) {
 		while (!_vm->shouldQuit() && !_vm->_events->_leftButton)
 			_vm->_events->pollEventsAndWait();
 
 		_vm->_events->debounceLeft();
 
-		static const Common::Rect butn1 = Common::Rect(HELP1COORDS[0][0], HELP1COORDS[0][2], HELP1COORDS[0][1], HELP1COORDS[0][3]);
-		static const Common::Rect butn2 = Common::Rect(HELP1COORDS[1][0], HELP1COORDS[1][2], HELP1COORDS[1][1], HELP1COORDS[1][3]);
 		const Common::Point pt = _vm->_events->_mousePos;
 
 		int choice = -1;
@@ -471,12 +473,29 @@ void AmazonScripts::cmdCycleBack() {
 	if (_vm->_startup == -1)
 		_vm->_screen->cyclePaletteBackwards();
 }
+
 void AmazonScripts::cmdChapter() {
+	Resource *activeScript = nullptr;
+
 	if (_vm->isDemo()) {
 		cmdSetHelp();
 	} else {
 		int chapter = _data->readByte();
+
+		if (!_vm->isCD()) {
+			// For floppy version, the current script remains active even
+			// after the end of the chapter start, so we need to save it
+			activeScript = _resource;
+			_resource = nullptr;
+			_data = nullptr;
+		}
+
 		_game->startChapter(chapter);
+
+		if (!_vm->isCD()) {
+			assert(!_resource);
+			setScript(activeScript, false);
+		}
 	}
 }
 

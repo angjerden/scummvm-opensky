@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,13 +15,12 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "common/endian.h"
-#include "graphics/primitives.h"
+#include "graphics/surface.h"
 
 #include "touche/graphics.h"
 
@@ -44,6 +43,11 @@ void Graphics::setupFont(Common::Language language) {
 		_fontOffs = _polFontOffs;
 		_fontSize = _polFontSize;
 		_fontData = _polFontData;
+		break;
+	case Common::RU_RUS:
+		_fontOffs = _rusFontOffs;
+		_fontSize = _rusFontSize;
+		_fontData = _rusFontData;
 		break;
 	case Common::IT_ITA:
 	case Common::EN_ANY:
@@ -125,34 +129,25 @@ void Graphics::fillRect(uint8 *dst, int dstPitch, int x, int y, int w, int h, ui
 }
 
 void Graphics::drawRect(uint8 *dst, int dstPitch, int x, int y, int w, int h, uint8 color1, uint8 color2) {
+	::Graphics::Surface s;
+	s.init(x+w, y+h, dstPitch, dst, ::Graphics::PixelFormat::createFormatCLUT8());
 	const int x1 = x;
 	const int y1 = y;
 	const int x2 = x + w - 1;
 	const int y2 = y + h - 1;
-	drawLine(dst, dstPitch, x1, y1, x2, y1, color1);
-	drawLine(dst, dstPitch, x1, y1, x1, y2, color1);
-	drawLine(dst, dstPitch, x2, y1 + 1, x2, y2, color2);
-	drawLine(dst, dstPitch, x1 + 1, y2, x2, y2, color2);
-}
-
-struct drawLineHelperData {
-	uint8 *dst;
-	int width;
-};
-
-static void drawLineHelper(int x, int y, int c, void *data) {
-	drawLineHelperData *param = (drawLineHelperData *)data;
-	*(param->dst + y * param->width + x) = c;
+	s.hLine(x1, y1, x2, color1);
+	s.vLine(x1, y1, y2, color1);
+	s.vLine(x2, y1 + 1, y2, color2);
+	s.hLine(x1 + 1, y2, x2, color2);
 }
 
 void Graphics::drawLine(uint8 *dst, int dstPitch, int x1, int y1, int x2, int y2, uint8 color) {
 	assert(x1 >= 0 && y1 >= 0 && x2 >= 0 && y2 >= 0);
 
-	drawLineHelperData d;
-	d.dst = dst;
-	d.width = dstPitch;
+	::Graphics::Surface s;
+	s.init(MAX(x1, x2) + 1, MAX(y1, y2) + 1, dstPitch, dst, ::Graphics::PixelFormat::createFormatCLUT8());
 
-	::Graphics::drawLine(x1, y1, x2, y2, color, drawLineHelper, &d);
+	s.drawLine(x1, y1, x2, y2, color);
 }
 
 void Graphics::copyRect(uint8 *dst, int dstPitch, int dstX, int dstY, const uint8 *src, int srcPitch, int srcX, int srcY, int w, int h, int flags) {

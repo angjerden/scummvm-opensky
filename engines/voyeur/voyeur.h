@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -27,7 +26,7 @@
 #include "voyeur/data.h"
 #include "voyeur/events.h"
 #include "voyeur/files.h"
-#include "voyeur/graphics.h"
+#include "voyeur/screen.h"
 #include "voyeur/sound.h"
 #include "common/scummsys.h"
 #include "common/system.h"
@@ -66,7 +65,7 @@ namespace Voyeur {
 #define MANSION_SCROLL_INC_Y 4
 
 enum VoyeurDebugChannels {
-	kDebugScripts	= 1 << 0
+	kDebugScripts = 1,
 };
 
 enum VoyeurArea { AREA_NONE, AREA_APARTMENT, AREA_INTERFACE, AREA_ROOM, AREA_EVIDENCE };
@@ -94,6 +93,8 @@ private:
 	void playStamp();
 	void initStamp();
 	void closeStamp();
+
+	void showLogo8Intro();
 
 	/**
 	 * Shows the game ending title animation
@@ -157,14 +158,14 @@ private:
 	void centerMansionView();
 protected:
 	// Engine APIs
-	virtual Common::Error run();
-	virtual bool hasFeature(EngineFeature f) const;
+	Common::Error run() override;
+	bool hasFeature(EngineFeature f) const override;
 public:
 	BoltFile *_bVoy;
 	Debugger *_debugger;
 	EventsManager *_eventsManager;
 	FilesManager *_filesManager;
-	GraphicsManager *_graphicsManager;
+	Screen *_screen;
 	SoundManager *_soundManager;
 	SVoy *_voy;
 
@@ -195,7 +196,7 @@ public:
 	int _loadGameSlot;
 public:
 	VoyeurEngine(OSystem *syst, const VoyeurGameDescription *gameDesc);
-	virtual ~VoyeurEngine();
+	~VoyeurEngine() override;
 	void GUIError(const Common::String &msg);
 
 	uint32 getFeatures() const;
@@ -205,14 +206,13 @@ public:
 	bool getIsDemo() const;
 
 	int getRandomNumber(int maxNumber);
-	Common::String generateSaveName(int slotNumber);
-	virtual bool canLoadGameStateCurrently();
-	virtual bool canSaveGameStateCurrently();
-	virtual Common::Error loadGameState(int slot);
-	virtual Common::Error saveGameState(int slot, const Common::String &desc);
+	bool canLoadGameStateCurrently(Common::U32String *msg = nullptr) override;
+	bool canSaveGameStateCurrently(Common::U32String *msg = nullptr) override;
+	Common::Error loadGameState(int slot) override;
+	Common::Error saveGameState(int slot, const Common::String &desc, bool isAutosave = false) override;
 	void loadGame(int slot);
 
-	void playRL2Video(const Common::String &filename);
+	void playRL2Video(const Common::Path &filename);
 	void doTransitionCard(const Common::String &time, const Common::String &location);
 
 	/**
@@ -232,10 +232,6 @@ public:
 	 */
 	void playAudio(int audioId);
 
-	/**
-	 * Saves the last time the game was played
-	 */
-	void saveLastInplay();
 	void makeViewFinder();
 	void makeViewFinderP();
 	void initIFace();
@@ -296,7 +292,7 @@ public:
 	void showEndingNews();
 };
 
-#define VOYEUR_SAVEGAME_VERSION 1
+#define VOYEUR_SAVEGAME_VERSION 3
 
 /**
  * Header for Voyeur savegame files
@@ -312,7 +308,7 @@ struct VoyeurSavegameHeader {
 	/**
 	 * Read in the header from the specified file
 	 */
-	bool read(Common::InSaveFile *f);
+	bool read(Common::InSaveFile *f, bool skipThumbnail = true);
 
 	/**
 	 * Write out header information to the specified file

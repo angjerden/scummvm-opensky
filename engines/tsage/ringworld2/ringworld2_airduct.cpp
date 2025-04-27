@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -624,27 +623,23 @@ void Scene1200::process(Event &event) {
 		default:
 			return;
 		}
-	} else if (event.eventType == EVENT_KEYPRESS) {
+	} else if (event.eventType == EVENT_CUSTOM_ACTIONSTART) {
 		if (_field414) {
 			event.handled = false;
 			return;
 		}
 
-		switch (event.kbd.keycode) {
-		case Common::KEYCODE_KP8:
-		case Common::KEYCODE_UP:
+		switch (event.customType) {
+		case kActionMoveUpCrawlNorth:
 			startCrawling(CRAWL_NORTH);
 			break;
-		case Common::KEYCODE_KP4:
-		case Common::KEYCODE_LEFT:
+		case kActionMoveLeftCrawlWest:
 			startCrawling(CRAWL_WEST);
 			break;
-		case Common::KEYCODE_KP6:
-		case Common::KEYCODE_RIGHT:
+		case kActionMoveRightCrawlEast:
 			startCrawling(CRAWL_EAST);
 			break;
-		case Common::KEYCODE_KP2:
-		case Common::KEYCODE_DOWN:
+		case kActionMoveDownCrawlSouth:
 			startCrawling(CRAWL_SOUTH);
 			break;
 		default:

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,13 +15,12 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
-#ifndef QUEEN_H
-#define QUEEN_H
+#ifndef QUEEN_QUEEN_H
+#define QUEEN_QUEEN_H
 
 #include "engines/engine.h"
 #include "common/random.h"
@@ -29,24 +28,6 @@
 namespace Common {
 class SeekableReadStream;
 }
-
-#if defined(_WIN32_WCE) && (_WIN32_WCE <= 300)
-
-#include "common/endian.h"
-
-FORCEINLINE int16 READ_BE_INT16(const void *ptr) {
-	uint16 result;
-	char dummy[2];
-	result = READ_BE_UINT16(ptr);
-	strcpy(dummy, "x"); // Hello, I'm a drunk optimizer. Thanks for helping me.
-	return result;
-}
-
-#else
-
-#define READ_BE_INT16 READ_BE_UINT16
-
-#endif
 
 /**
  * This is the namespace of the Queen engine.
@@ -82,7 +63,7 @@ class QueenEngine : public Engine {
 public:
 
 	QueenEngine(OSystem *syst);
-	virtual ~QueenEngine();
+	~QueenEngine() override;
 
 	BamScene *bam() const { return _bam; }
 	BankManager *bankMan() const { return _bankMan; }
@@ -112,10 +93,12 @@ public:
 	void update(bool checkPlayerInput = false);
 
 	bool canLoadOrSave() const;
-	bool canLoadGameStateCurrently();
-	bool canSaveGameStateCurrently();
-	Common::Error saveGameState(int slot, const Common::String &desc);
-	Common::Error loadGameState(int slot);
+	bool canLoadGameStateCurrently(Common::U32String *msg = nullptr) override;
+	bool canSaveGameStateCurrently(Common::U32String *msg = nullptr) override;
+	Common::Error saveGameState(int slot, const Common::String &desc, bool isAutosave = false) override;
+	Common::Error loadGameState(int slot) override;
+	int getAutosaveSlot() const override { return 99; }
+	Common::String getSaveStateName(int slot) const override;
 	void makeGameStateName(int slot, char *buf) const;
 	int getGameStateSlot(const char *filename) const;
 	void findGameStateDescriptions(char descriptions[100][32]);
@@ -137,16 +120,15 @@ public:
 protected:
 
 	// Engine APIs
-	virtual Common::Error run();
-	virtual GUI::Debugger *getDebugger();
-	virtual bool hasFeature(EngineFeature f) const;
-	virtual void syncSoundSettings();
+	Common::Error run() override;
+	bool hasFeature(EngineFeature f) const override;
+	void syncSoundSettings() override;
 
 
 	int _talkSpeed;
 	bool _subtitles;
-	uint32 _lastSaveTime;
 	uint32 _lastUpdateTime;
+	bool _gameStarted;
 
 	BamScene *_bam;
 	BankManager *_bankMan;

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -59,7 +58,7 @@ public:
 	Common::String Action;
 
 protected:
-	virtual int PreFunctionInvokation(lua_State *L) {
+	int preFunctionInvocation(lua_State *L) override {
 		lua_pushstring(L, Action.c_str());
 		return 1;
 	}
@@ -69,7 +68,7 @@ static LuaCallback *loopPointCallbackPtr = 0;	// FIXME: should be turned into Gr
 static ActionCallback *actionCallbackPtr = 0;	// FIXME: should be turned into GraphicEngine member var
 }
 
-// Die Strings werden als #defines definiert um Stringkomposition zur Compilezeit zu ermöglichen.
+// Die Strings werden als #defines definiert um Stringkomposition zur Compilezeit zu ermÃ¶glichen.
 #define RENDEROBJECT_CLASS_NAME "Gfx.RenderObject"
 #define BITMAP_CLASS_NAME "Gfx.Bitmap"
 #define PANEL_CLASS_NAME "Gfx.Panel"
@@ -198,7 +197,6 @@ static int init(lua_State *L) {
 		lua_pushbooleancpp(L, pGE->init(static_cast<int>(luaL_checknumber(L, 1)), static_cast<int>(luaL_checknumber(L, 2)),
 		                                static_cast<int>(luaL_checknumber(L, 3))));
 		break;
-	case 4:
 	default:
 		lua_pushbooleancpp(L, pGE->init(static_cast<int>(luaL_checknumber(L, 1)), static_cast<int>(luaL_checknumber(L, 2)),
 		                                static_cast<int>(luaL_checknumber(L, 3)), static_cast<int>(luaL_checknumber(L, 4))));
@@ -210,7 +208,7 @@ static int init(lua_State *L) {
 	int __startStackDepth = lua_gettop(L);
 #endif
 
-	// Main-Panel zum Gfx-Modul hinzufügen
+	// Main-Panel zum Gfx-Modul hinzufÃ¼gen
 	RenderObjectPtr<Panel> mainPanelPtr(getGE()->getMainPanel());
 	assert(mainPanelPtr.isValid());
 
@@ -257,6 +255,34 @@ static int endFrame(lua_State *L) {
 	return 1;
 }
 
+static int drawDebugLine(lua_State *L) {
+	GraphicEngine *pGE = getGE();
+
+	Vertex start;
+	Vertex end;
+	Vertex::luaVertexToVertex(L, 1, start);
+	Vertex::luaVertexToVertex(L, 2, end);
+	pGE->drawDebugLine(start, end, GraphicEngine::luaColorToARGBColor(L, 3));
+
+	return 0;
+}
+
+static int getDisplayWidth(lua_State *L) {
+	GraphicEngine *pGE = getGE();
+
+	lua_pushnumber(L, pGE->getDisplayWidth());
+
+	return 1;
+}
+
+static int getDisplayHeight(lua_State *L) {
+	GraphicEngine *pGE = getGE();
+
+	lua_pushnumber(L, pGE->getDisplayHeight());
+
+	return 1;
+}
+
 static int getBitDepth(lua_State *L) {
 	GraphicEngine *pGE = getGE();
 
@@ -277,6 +303,21 @@ static int isVsync(lua_State *L) {
 	GraphicEngine *pGE = getGE();
 
 	lua_pushbooleancpp(L, pGE->getVsync());
+
+	return 1;
+}
+
+static int isWindowed(lua_State *L) {
+	GraphicEngine *pGE = getGE();
+
+	lua_pushbooleancpp(L, pGE->isWindowed());
+
+	return 1;
+}
+
+static int getFPSCount(lua_State *L) {
+	// Used in a debug function
+	lua_pushnumber(L, 0);
 
 	return 1;
 }
@@ -309,15 +350,23 @@ static int getSecondaryFrameDuration(lua_State *L) {
 	return 1;
 }
 
+static int saveScreenshot(lua_State *L) {
+	// This is used by system/debug.lua only. We do not implement this; support
+	// for taking screenshots is a backend feature.
+	lua_pushbooleancpp(L, false);
+
+	return 1;
+}
+
 static int saveThumbnailScreenshot(lua_State *L) {
 	GraphicEngine *pGE = getGE();
 	lua_pushbooleancpp(L, pGE->saveThumbnailScreenshot(luaL_checkstring(L, 1)));
 	return 1;
 }
 
-// Marks a function that should never be used
-static int dummyFuncError(lua_State *L) {
-	error("Dummy function invoked by LUA");
+static int getRepaintedPixels(lua_State *L) {
+	// Used in a debug function.
+	lua_pushnumber(L, 0);
 	return 1;
 }
 
@@ -325,21 +374,21 @@ static const luaL_reg GFX_FUNCTIONS[] = {
 	{"Init", init},
 	{"StartFrame", startFrame},
 	{"EndFrame", endFrame},
-	{"DrawDebugLine", dummyFuncError},
+	{"DrawDebugLine", drawDebugLine},
 	{"SetVsync", setVsync},
-	{"GetDisplayWidth", dummyFuncError},
-	{"GetDisplayHeight", dummyFuncError},
+	{"GetDisplayWidth", getDisplayWidth},
+	{"GetDisplayHeight", getDisplayHeight},
 	{"GetBitDepth", getBitDepth},
 	{"IsVsync", isVsync},
-	{"IsWindowed", dummyFuncError},
-	{"GetFPSCount", dummyFuncError},
+	{"IsWindowed", isWindowed},
+	{"GetFPSCount", getFPSCount},
 	{"GetLastFrameDuration", getLastFrameDuration},
 	{"StopMainTimer", stopMainTimer},
 	{"ResumeMainTimer", resumeMainTimer},
 	{"GetSecondaryFrameDuration", getSecondaryFrameDuration},
-	{"SaveScreenshot", dummyFuncError},
+	{"SaveScreenshot", saveScreenshot},
 	{"NewAnimationTemplate", newAnimationTemplate},
-	{"GetRepaintedPixels", dummyFuncError},
+	{"GetRepaintedPixels", getRepaintedPixels},
 	{"SaveThumbnailScreenshot", saveThumbnailScreenshot},
 	{0, 0}
 };
@@ -735,6 +784,27 @@ static int b_getPixel(lua_State *L) {
 	return 1;
 }
 
+static int b_isScalingAllowed(lua_State *L) {
+	RenderObjectPtr<Bitmap> bitmapPtr = checkBitmap(L);
+	assert(bitmapPtr.isValid());
+	lua_pushbooleancpp(L, bitmapPtr->isScalingAllowed());
+	return 1;
+}
+
+static int b_isAlphaAllowed(lua_State *L) {
+	RenderObjectPtr<Bitmap> bitmapPtr = checkBitmap(L);
+	assert(bitmapPtr.isValid());
+	lua_pushbooleancpp(L, bitmapPtr->isAlphaAllowed());
+	return 1;
+}
+
+static int b_isTintingAllowed(lua_State *L) {
+	RenderObjectPtr<Bitmap> bitmapPtr = checkBitmap(L);
+	assert(bitmapPtr.isValid());
+	lua_pushbooleancpp(L, bitmapPtr->isColorModulationAllowed());
+	return 1;
+}
+
 static int b_remove(lua_State *L) {
 	RenderObjectPtr<RenderObject> roPtr = checkRenderObject(L);
 	assert(roPtr.isValid());
@@ -757,9 +827,9 @@ static const luaL_reg BITMAP_METHODS[] = {
 	{"IsFlipH", b_isFlipH},
 	{"IsFlipV", b_isFlipV},
 	{"GetPixel", b_getPixel},
-	{"IsScalingAllowed", dummyFuncError},
-	{"IsAlphaAllowed", dummyFuncError},
-	{"IsTintingAllowed", dummyFuncError},
+	{"IsScalingAllowed", b_isScalingAllowed},
+	{"IsAlphaAllowed", b_isAlphaAllowed},
+	{"IsTintingAllowed", b_isTintingAllowed},
 	{"Remove", b_remove},
 	{0, 0}
 };

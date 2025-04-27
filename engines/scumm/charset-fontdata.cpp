@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -406,6 +405,14 @@ static const byte russianCharsetDataV2[] = {
 // These replacement character tables have been created using the
 // make-charset-fontdata tool.
 
+// English v1 Zak font with inverted apostrophe.
+// The original interpreter apparently manipulates the character on
+// the fly and kind of mirrors it; we instead opt for a substitution.
+static const byte englishCharsetDataV1[] = {
+	39,
+	2,
+};
+
 // German Zak font.
 static const byte germanCharsetDataV2[] = {
 	36, 0,
@@ -484,6 +491,135 @@ static const byte spanishCharsetDataV2[] = {
 	126, 10,
 };
 
+// Russian MM font.
+static const byte russCharsetDataV2[] = {
+	60, 234,
+	62, 158,
+	65, 128,
+	66, 129,
+	67, 150,
+	68, 132,
+	69, 133,
+	70, 148,
+	71, 131,
+	72, 149,
+	73, 136,
+	74, 137,
+	75, 138,
+	76, 139,
+	77, 140,
+	78, 141,
+	79, 142,
+	80, 143,
+	81, 159,
+	82, 144,
+	83, 145,
+	84, 146,
+	85, 147,
+	86, 134,
+	87, 130,
+	88, 156,
+	89, 155,
+	90, 135,
+	91, 152,
+	92, 157,
+	93, 153,
+	94, 151,
+	96, 238,
+	97, 160,
+	98, 161,
+	99, 230,
+	100, 164,
+	101, 165,
+	102, 228,
+	103, 163,
+	104, 229,
+	105, 168,
+	106, 169,
+	107, 170,
+	108, 171,
+	109, 172,
+	110, 173,
+	111, 174,
+	112, 175,
+	113, 239,
+	114, 224,
+	115, 225,
+	116, 226,
+	117, 227,
+	118, 166,
+	119, 162,
+	120, 236,
+	121, 235,
+	122, 167,
+	123, 232,
+	124, 237,
+	125, 233,
+	126, 231,
+};
+
+// Hebrew Zak and MM font map.
+static const byte hebrewCharsetMapV2[] = {
+		65, 0,
+		66, 1,
+		67, 2,
+		68, 3,
+		69, 4,
+		70, 5,
+		71, 6,
+		72, 7,
+		73, 8,
+		74, 9,
+		75, 10,
+		76, 11,
+		77, 12,
+		78, 13,
+		79, 14,
+		80, 15,
+		81, 16,
+		82, 17,
+		83, 18,
+		84, 19,
+		85, 20,
+		86, 21,
+		87, 22,
+		88, 23,
+		89, 24,
+		90, 25,
+		91, 26,
+};
+
+// Hebrew Zak and MM font data
+static const byte hebrewCharsetDataV2[] = {
+		0x00, 0x84, 0x44, 0x64, 0x98, 0x88, 0x84, 0x00,
+		0x00, 0xf0, 0x08, 0x08, 0x08, 0x08, 0xfc, 0x00,
+		0x00, 0x60, 0x10, 0x10, 0x30, 0x50, 0x90, 0x00,
+		0x00, 0xfc, 0x08, 0x08, 0x08, 0x08, 0x08, 0x00,
+		0x00, 0xf8, 0x04, 0x04, 0x84, 0x84, 0x84, 0x00,
+		0x00, 0xc0, 0x20, 0x20, 0x20, 0x20, 0x20, 0x00,
+		0x00, 0xe0, 0x40, 0x40, 0x20, 0x20, 0x40, 0x00,
+		0x00, 0xf8, 0x84, 0x84, 0x84, 0x84, 0x84, 0x00,
+		0x00, 0x88, 0x94, 0x84, 0x84, 0x84, 0xf8, 0x00,
+		0x00, 0xe0, 0x20, 0x40, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0xfc, 0x04, 0x08, 0x08, 0x08, 0x08, 0x08,
+		0x00, 0xf8, 0x04, 0x04, 0x04, 0x04, 0xf8, 0x00,
+		0x80, 0xf8, 0x04, 0x04, 0x04, 0x08, 0x30, 0x00,
+		0x00, 0xf8, 0x44, 0x84, 0x84, 0x84, 0xfc, 0x00,
+		0x00, 0x9c, 0x64, 0x44, 0x84, 0x84, 0xbc, 0x00,
+		0x00, 0xc0, 0x20, 0x40, 0x40, 0x40, 0x40, 0x40,
+		0x00, 0x60, 0x10, 0x10, 0x10, 0x10, 0xf0, 0x00,
+		0x00, 0xfc, 0x44, 0x84, 0x84, 0x48, 0x30, 0x00,
+		0x00, 0x24, 0x24, 0x24, 0x24, 0x28, 0xf0, 0x00,
+		0x00, 0xf8, 0x44, 0x44, 0x64, 0x04, 0x04, 0x04,
+		0x00, 0xf8, 0x44, 0x44, 0x64, 0x04, 0xfc, 0x00,
+		0x00, 0x84, 0x44, 0x48, 0x30, 0x20, 0x20, 0x20,
+		0x00, 0x84, 0x44, 0x28, 0x10, 0x08, 0xfc, 0x00,
+		0x00, 0xf8, 0x04, 0x44, 0x48, 0x50, 0x40, 0x40,
+		0x00, 0xf8, 0x04, 0x04, 0x04, 0x04, 0x04, 0x00,
+		0x00, 0x92, 0x92, 0x92, 0xa2, 0xc4, 0xf8, 0x00,
+		0x00, 0xf8, 0x44, 0x44, 0x44, 0x44, 0xc4, 0x00,
+};
+
 // Special characters
 static const byte specialCharsetData[] = {
 	0x18, 0x3e, 0x60, 0x3c, 0x06, 0x7c, 0x18, 0x00,
@@ -524,49 +660,70 @@ CharsetRendererV2::CharsetRendererV2(ScummEngine *vm, Common::Language language)
 	_fontHeight = 8;
 	_curId = 0;
 
-	const byte *replacementData = NULL;
+	const byte *replacementMap = nullptr, *replacementData = nullptr;
 	int replacementChars = 0;
 
 	switch (language) {
 	case Common::DE_DEU:
 		if (_vm->_game.version == 0) {
-			replacementData = germanCharsetDataV0;
+			replacementMap = germanCharsetDataV0;
 			replacementChars = sizeof(germanCharsetDataV0) / 2;
 		} else {
-			replacementData = germanCharsetDataV2;
+			replacementMap = germanCharsetDataV2;
 			replacementChars = sizeof(germanCharsetDataV2) / 2;
 		}
+		replacementData = specialCharsetData;
 		break;
 	case Common::FR_FRA:
-		replacementData = frenchCharsetDataV2;
+		replacementMap = frenchCharsetDataV2;
 		replacementChars = sizeof(frenchCharsetDataV2) / 2;
+		replacementData = specialCharsetData;
 		break;
 	case Common::IT_ITA:
-		replacementData = italianCharsetDataV2;
+		replacementMap = italianCharsetDataV2;
 		replacementChars = sizeof(italianCharsetDataV2) / 2;
+		replacementData = specialCharsetData;
 		break;
 	case Common::ES_ESP:
-		replacementData = spanishCharsetDataV2;
+		replacementMap = spanishCharsetDataV2;
 		replacementChars = sizeof(spanishCharsetDataV2) / 2;
+		replacementData = specialCharsetData;
 		break;
 	case Common::RU_RUS:
-		_fontPtr = russianCharsetDataV2;
+		if (((_vm->_game.id == GID_MANIAC) || (_vm->_game.id == GID_ZAK)) && (_vm->_game.version == 2)) {
+			replacementMap = russCharsetDataV2;
+			replacementChars = sizeof(russCharsetDataV2) / 2;
+			replacementData = russianCharsetDataV2;
+		} else {
+			_fontPtr = russianCharsetDataV2;
+		}
+		break;
+	case Common::HE_ISR:
+		replacementMap = hebrewCharsetMapV2;
+		replacementChars = sizeof(hebrewCharsetMapV2) / 2;
+		replacementData = hebrewCharsetDataV2;
 		break;
 	default:
-		_fontPtr = englishCharsetDataV2;
+		if (_vm->_game.version == 1 && !(_vm->_game.features & GF_DEMO)) {
+			replacementMap = englishCharsetDataV1;
+			replacementChars = sizeof(englishCharsetDataV1) / 2;
+			replacementData = specialCharsetData;
+		} else {
+			_fontPtr = englishCharsetDataV2;
+		}
 		break;
 	}
 
-	if (replacementData) {
+	if (replacementMap && replacementData) {
 		_fontPtr = new byte[sizeof(englishCharsetDataV2)];
 		_deleteFontPtr = true;
 		memcpy(const_cast<byte *>(_fontPtr), englishCharsetDataV2, sizeof(englishCharsetDataV2));
 
 		for (int i = 0; i < replacementChars; i++) {
-			int ch1 = replacementData[2 * i];
-			int ch2 = replacementData[2 * i + 1];
+			int ch1 = replacementMap[2 * i];
+			int ch2 = replacementMap[2 * i + 1];
 
-			memcpy(const_cast<byte *>(_fontPtr) + 8 * ch1, specialCharsetData + 8 * ch2, 8);
+			memcpy(const_cast<byte *>(_fontPtr) + 8 * ch1, replacementData + 8 * ch2, 8);
 		}
 	} else
 		_deleteFontPtr = false;

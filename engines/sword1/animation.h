@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -61,15 +60,16 @@ public:
 
 class MoviePlayer {
 public:
-	MoviePlayer(SwordEngine *vm, Text *textMan, ResMan *resMan, OSystem *system, Video::VideoDecoder *decoder, DecoderType decoderType);
+	MoviePlayer(SwordEngine *vm, Text *textMan, ResMan *resMan, Sound *sound, OSystem *system, Video::VideoDecoder *decoder, DecoderType decoderType);
 	virtual ~MoviePlayer();
-	bool load(uint32 id);
+	Common::Error load(uint32 id);
 	void play();
 
 protected:
 	SwordEngine *_vm;
 	Text *_textMan;
 	ResMan *_resMan;
+	Sound *_sound;
 	OSystem *_system;
 	Common::List<MovieText> _movieTexts;
 	int _textX, _textY, _textWidth, _textHeight;
@@ -77,6 +77,7 @@ protected:
 	uint32 _black;
 	uint32 _c1Color, _c2Color, _c3Color, _c4Color;
 	DecoderType _decoderType;
+	bool _modeChange;
 
 	Video::VideoDecoder *_decoder;
 
@@ -89,7 +90,7 @@ protected:
 	void convertColor(byte r, byte g, byte b, float &h, float &s, float &v);
 };
 
-MoviePlayer *makeMoviePlayer(uint32 id, SwordEngine *vm, Text *textMan, ResMan *resMan, OSystem *system);
+MoviePlayer *makeMoviePlayer(uint32 id, SwordEngine *vm, Text *textMan, ResMan *resMan, Sound *sound, OSystem *system);
 
 } // End of namespace Sword1
 

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -24,6 +23,9 @@
 #define ACCESS_AMAZON_RESOURCES_H
 
 #include "common/scummsys.h"
+#include "common/array.h"
+#include "access/resources.h"
+#include "access/font.h"
 
 namespace Access {
 
@@ -42,12 +44,20 @@ struct RiverStruct {
 	int _offsetY;
 };
 
-extern const char *const FILENAMES[];
-extern const char *const FILENAMES_DEMO[];
+extern const int SIDEOFFR[];
+extern const int SIDEOFFL[];
+extern const int SIDEOFFU[];
+extern const int SIDEOFFD[];
+extern const int DIAGOFFURX[];
+extern const int DIAGOFFURY[];
+extern const int DIAGOFFDRX[];
+extern const int DIAGOFFDRY[];
+extern const int DIAGOFFULX[];
+extern const int DIAGOFFULY[];
+extern const int DIAGOFFDLX[];
+extern const int DIAGOFFDLY[];
 
-extern const byte *const CURSORS[10];
-
-extern const int TRAVEL_POS[][2];
+extern const int _travelPos[][2];
 
 extern const int OVEROFFR[];
 extern const int OVEROFFL[];
@@ -61,37 +71,6 @@ extern const int OVEROFFULX[];
 extern const int OVEROFFULY[];
 extern const int OVEROFFDLX[];
 extern const int OVEROFFDLY[];
-
-extern const byte *const ROOM_TABLE[];
-extern const char *const ROOM_DESCR[];
-extern const byte *const ROOM_TABLE_DEMO[];
-extern const int ROOM_NUMB;
-
-extern const byte *const CHARTBL[];
-extern const byte *const CHARTBL_DEMO[];
-
-extern const char *const INVENTORY_NAMES[];
-
-extern const int FONT2_INDEX[];
-
-extern const byte FONT2_DATA[];
-
-extern const int FONT6x6_INDEX[];
-
-extern const byte FONT6x6_DATA[];
-
-extern const char *const NO_HELP_MESSAGE;
-extern const char *const NO_HINTS_MESSAGE;
-extern const char *const RIVER_HIT1;
-extern const char *const RIVER_HIT2;
-extern const char *const BAR_MESSAGE;
-extern const char *const HELPLVLTXT[3];
-extern const char *const IQLABELS[9];
-extern const byte DEATH_SCREENS[58];
-extern const byte DEATH_SCREENS_DEMO[34];
-
-extern const char *const DEATH_TEXT[58];
-extern const char *const DEATH_TEXT_DEMO[34];
 
 extern const int DEATH_CELLS[13][3];
 
@@ -138,11 +117,33 @@ extern const int HELP1COORDS[2][4];
 extern const int RIVER1OBJ[23][4];
 
 extern const int CAST_END_OBJ[26][4];
-
 extern const int CAST_END_OBJ1[4][4];
 
-} // End of namespace Amazon
+extern const int RMOUSE[10][2];
 
+class AmazonResources: public Resources {
+protected:
+	/**
+	 * Load data from the access.dat file
+	 */
+	void load(Common::SeekableReadStream &s) override;
+public:
+	AmazonFont *_font3x5, *_font6x6;
+	Common::String NO_HELP_MESSAGE;
+	Common::String NO_HINTS_MESSAGE;
+	Common::String RIVER_HIT1;
+	Common::String RIVER_HIT2;
+	Common::String BAR_MESSAGE;
+	Common::String HELPLVLTXT[3];
+	Common::String IQLABELS[9];
+public:
+	AmazonResources(AccessEngine *vm) : Resources(vm), _font3x5(nullptr), _font6x6(nullptr) {}
+	~AmazonResources() override;
+};
+
+#define AMRES (*((Amazon::AmazonResources *)_vm->_res))
+
+} // End of namespace Amazon
 } // End of namespace Access
 
 #endif /* ACCESS_AMAZON_RESOURCES_H */

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,11 +15,11 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
+#include "audio/audiostream.h"
 #include "audio/mixer.h"
 #include "audio/decoders/raw.h"
 
@@ -44,7 +44,7 @@ enum ChunkTypes {
 	kChunkStopSubtitles = 8
 };
 
-MoviePlayer::MoviePlayer(ToltecsEngine *vm) : _vm(vm), _isPlaying(false), _lastPrefetchOfs(0), _framesPerSoundChunk(0), _endPos(0) {
+MoviePlayer::MoviePlayer(ToltecsEngine *vm) : _vm(vm), _isPlaying(false), _lastPrefetchOfs(0), _framesPerSoundChunk(0), _endPos(0), _audioStream(0) {
 }
 
 MoviePlayer::~MoviePlayer() {
@@ -178,7 +178,7 @@ void MoviePlayer::playMovie(uint resIndex) {
 			_vm->_screen->finishTalkTextItems();
 			break;
 		default:
-			error("MoviePlayer::playMovie(%04X) Unknown chunk type %d at %08X", resIndex, chunkType, _vm->_arc->pos() - 5 - chunkSize);
+			error("MoviePlayer::playMovie(%04X) Unknown chunk type %d at %08X", resIndex, chunkType, (int)_vm->_arc->pos() - 5 - chunkSize);
 		}
 
 		if (!handleInput())
@@ -271,12 +271,16 @@ bool MoviePlayer::handleInput() {
 	Common::EventManager *eventMan = g_system->getEventManager();
 	while (eventMan->pollEvent(event)) {
 		switch (event.type) {
-		case Common::EVENT_KEYDOWN:
-			if (event.kbd.keycode == Common::KEYCODE_ESCAPE)
+		case Common::EVENT_CUSTOM_ENGINE_ACTION_START:
+			switch (event.customType) {
+			case kActionSkipMovie:
 				return false;
-			if (event.kbd.keycode == Common::KEYCODE_F10) {
+			case kActionMenuOpen:
 				// TODO: The original would bring up a stripped down
 				// main menu dialog, without the save/restore options.
+				break;
+			default:
+				break;
 			}
 			break;
 		case Common::EVENT_LBUTTONDOWN:

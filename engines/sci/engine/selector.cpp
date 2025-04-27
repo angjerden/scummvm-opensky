@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,13 +15,14 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "sci/sci.h"
+#include "sci/engine/features.h"
 #include "sci/engine/kernel.h"
+#include "sci/engine/scriptdebug.h"
 #include "sci/engine/state.h"
 #include "sci/engine/selector.h"
 
@@ -57,11 +58,11 @@ void Kernel::mapSelectors() {
 	FIND_SELECTOR(nsTop);
 	FIND_SELECTOR(nsLeft);
 	FIND_SELECTOR(nsBottom);
+	FIND_SELECTOR(nsRight);
 	FIND_SELECTOR(lsTop);
 	FIND_SELECTOR(lsLeft);
 	FIND_SELECTOR(lsBottom);
 	FIND_SELECTOR(lsRight);
-	FIND_SELECTOR(nsRight);
 	FIND_SELECTOR(signal);
 	FIND_SELECTOR(illegalBits);
 	FIND_SELECTOR(brTop);
@@ -89,6 +90,7 @@ void Kernel::mapSelectors() {
 	FIND_SELECTOR(message);
 	// edit
 	FIND_SELECTOR(play);
+	FIND_SELECTOR(restore);
 	FIND_SELECTOR(number);
 	FIND_SELECTOR(handle);	// nodePtr
 	FIND_SELECTOR(client);
@@ -163,6 +165,16 @@ void Kernel::mapSelectors() {
 	FIND_SELECTOR(vanishingY);
 	FIND_SELECTOR(iconIndex);
 	FIND_SELECTOR(select);
+	FIND_SELECTOR(handsOff);
+	FIND_SELECTOR(setStep);
+	FIND_SELECTOR(setMotion);
+	FIND_SELECTOR(cycleSpeed);
+	FIND_SELECTOR(owner);
+	FIND_SELECTOR(curPos);
+	FIND_SELECTOR(update);
+	FIND_SELECTOR(canInput);
+	FIND_SELECTOR(input);
+	FIND_SELECTOR(controls);
 
 #ifdef ENABLE_SCI32
 	FIND_SELECTOR(data);
@@ -173,12 +185,15 @@ void Kernel::mapSelectors() {
 	FIND_SELECTOR(left);
 	FIND_SELECTOR(bottom);
 	FIND_SELECTOR(right);
+	FIND_SELECTOR(seenRect);
 	FIND_SELECTOR(resY);
 	FIND_SELECTOR(resX);
 	FIND_SELECTOR(dimmed);
 	FIND_SELECTOR(fore);
 	FIND_SELECTOR(back);
 	FIND_SELECTOR(skip);
+	FIND_SELECTOR(borderColor);
+	FIND_SELECTOR(width);
 	FIND_SELECTOR(fixPriority);
 	FIND_SELECTOR(mirrored);
 	FIND_SELECTOR(visible);
@@ -187,32 +202,92 @@ void Kernel::mapSelectors() {
 	FIND_SELECTOR(inLeft);
 	FIND_SELECTOR(inBottom);
 	FIND_SELECTOR(inRight);
+	FIND_SELECTOR(textTop);
+	FIND_SELECTOR(textLeft);
+	FIND_SELECTOR(textBottom);
+	FIND_SELECTOR(textRight);
+	FIND_SELECTOR(title);
+	FIND_SELECTOR(titleFont);
+	FIND_SELECTOR(titleFore);
+	FIND_SELECTOR(titleBack);
+	FIND_SELECTOR(magnifier);
+	FIND_SELECTOR(frameOut);
+	FIND_SELECTOR(casts);
+	FIND_SELECTOR(setVol);
+	FIND_SELECTOR(reSyncVol);
+	FIND_SELECTOR(set);
+	FIND_SELECTOR(clear);
+	FIND_SELECTOR(show);
+	FIND_SELECTOR(position);
+	FIND_SELECTOR(musicVolume);
+	FIND_SELECTOR(soundVolume);
+	FIND_SELECTOR(initialOff);
+	FIND_SELECTOR(setPos);
+	FIND_SELECTOR(setSize);
+	FIND_SELECTOR(displayValue);
+	FIND_SELECTOR2(new_, "new");
+	FIND_SELECTOR(mainCel);
+	FIND_SELECTOR(move);
+	FIND_SELECTOR(eachElementDo);
+	FIND_SELECTOR(physicalBar);
+	FIND_SELECTOR(init);
+	FIND_SELECTOR(scratch);
+	FIND_SELECTOR(num);
+	FIND_SELECTOR(reallyRestore);
+	FIND_SELECTOR(bookMark);
+	FIND_SELECTOR(fileNumber);
+	FIND_SELECTOR(description);
+	FIND_SELECTOR(dispose);
+	FIND_SELECTOR(masterVolume);
+	FIND_SELECTOR(setCel);
+	FIND_SELECTOR(value);
 #endif
 }
 
 reg_t readSelector(SegManager *segMan, reg_t object, Selector selectorId) {
 	ObjVarRef address;
 
-	if (lookupSelector(segMan, object, selectorId, &address, NULL) != kSelectorVariable)
+	if (lookupSelector(segMan, object, selectorId, &address, nullptr) != kSelectorVariable)
 		return NULL_REG;
-	else
-		return *address.getPointer(segMan);
+
+	if (g_sci->_debugState._activeBreakpointTypes & BREAK_SELECTORREAD) {
+		reg_t curValue = *address.getPointer(segMan);
+		debugPropertyAccess(segMan->getObject(object), object, 0, selectorId,
+			                curValue, NULL_REG, segMan, BREAK_SELECTORREAD);
+	}
+
+	return *address.getPointer(segMan);
 }
+
+#ifdef ENABLE_SCI32
+void updateInfoFlagViewVisible(Object *obj, int index, bool fromPropertyOp) {
+	if (getSciVersion() >= SCI_VERSION_2 && obj->mustSetViewVisible(index, fromPropertyOp)) {
+		obj->setInfoSelectorFlag(kInfoFlagViewVisible);
+	}
+}
+#endif
 
 void writeSelector(SegManager *segMan, reg_t object, Selector selectorId, reg_t value) {
 	ObjVarRef address;
 
 	if ((selectorId < 0) || (selectorId > (int)g_sci->getKernel()->getSelectorNamesSize())) {
-		error("Attempt to write to invalid selector %d of"
-		         " object at %04x:%04x.", selectorId, PRINT_REG(object));
-		return;
+		error("Attempt to write to invalid selector %d. Address %04x:%04x", selectorId, PRINT_REG(object));
 	}
 
-	if (lookupSelector(segMan, object, selectorId, &address, NULL) != kSelectorVariable)
-		error("Selector '%s' of object at %04x:%04x could not be"
-		         " written to", g_sci->getKernel()->getSelectorName(selectorId).c_str(), PRINT_REG(object));
-	else
-		*address.getPointer(segMan) = value;
+	if (lookupSelector(segMan, object, selectorId, &address, nullptr) != kSelectorVariable) {
+		error("Selector '%s' of object could not be written to. Address %04x:%04x", g_sci->getKernel()->getSelectorName(selectorId).c_str(), PRINT_REG(object));
+	}
+
+	if (g_sci->_debugState._activeBreakpointTypes & BREAK_SELECTORWRITE) {
+		reg_t curValue = *address.getPointer(segMan);
+		debugPropertyAccess(segMan->getObject(object), object, 0, selectorId,
+			                curValue, value, segMan, BREAK_SELECTORWRITE);
+	}
+
+	*address.getPointer(segMan) = value;
+#ifdef ENABLE_SCI32
+	updateInfoFlagViewVisible(segMan->getObject(object), address.varindex);
+#endif
 }
 
 void invokeSelector(EngineState *s, reg_t object, int selectorId,
@@ -225,15 +300,13 @@ void invokeSelector(EngineState *s, reg_t object, int selectorId,
 	stackframe[0] = make_reg(0, selectorId);  // The selector we want to call
 	stackframe[1] = make_reg(0, argc); // Argument count
 
-	slc_type = lookupSelector(s->_segMan, object, selectorId, NULL, NULL);
+	slc_type = lookupSelector(s->_segMan, object, selectorId, nullptr, nullptr);
 
 	if (slc_type == kSelectorNone) {
-		error("Selector '%s' of object at %04x:%04x could not be invoked",
-		         g_sci->getKernel()->getSelectorName(selectorId).c_str(), PRINT_REG(object));
+		error("invokeSelector: Selector '%s' could not be invoked. Address %04x:%04x", g_sci->getKernel()->getSelectorName(selectorId).c_str(), PRINT_REG(object));
 	}
 	if (slc_type == kSelectorVariable) {
-		error("Attempting to invoke variable selector %s of object %04x:%04x",
-			g_sci->getKernel()->getSelectorName(selectorId).c_str(), PRINT_REG(object));
+		error("invokeSelector: Attempting to invoke variable selector %s. Address %04x:%04x", g_sci->getKernel()->getSelectorName(selectorId).c_str(), PRINT_REG(object));
 	}
 
 	for (i = 0; i < argc; i++)
@@ -252,7 +325,6 @@ void invokeSelector(EngineState *s, reg_t object, int selectorId,
 
 SelectorType lookupSelector(SegManager *segMan, reg_t obj_location, Selector selectorId, ObjVarRef *varp, reg_t *fptr) {
 	const Object *obj = segMan->getObject(obj_location);
-	int index;
 	bool oldScriptHeader = (getSciVersion() == SCI_VERSION_0_EARLY);
 
 	// Early SCI versions used the LSB in the selector ID as a read/write
@@ -261,11 +333,10 @@ SelectorType lookupSelector(SegManager *segMan, reg_t obj_location, Selector sel
 		selectorId &= ~1;
 
 	if (!obj) {
-		error("lookupSelector(): Attempt to send to non-object or invalid script. Address was %04x:%04x",
-				PRINT_REG(obj_location));
+		error("lookupSelector: Attempt to send to non-object or invalid script. Address %04x:%04x", PRINT_REG(obj_location));
 	}
 
-	index = obj->locateVarSelector(segMan, selectorId);
+	int index = obj->locateVarSelector(segMan, selectorId);
 
 	if (index >= 0) {
 		// Found it as a variable
@@ -290,9 +361,6 @@ SelectorType lookupSelector(SegManager *segMan, reg_t obj_location, Selector sel
 
 		return kSelectorNone;
 	}
-
-
-//	return _lookupSelector_function(segMan, obj, selectorId, fptr);
 }
 
 } // End of namespace Sci

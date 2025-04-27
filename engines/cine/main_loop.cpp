@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -31,6 +30,8 @@
 #include "cine/bg_list.h"
 #include "cine/sound.h"
 
+#include "backends/audiocd/audiocd.h"
+
 namespace Cine {
 
 struct MouseStatusStruct {
@@ -43,8 +44,6 @@ MouseStatusStruct mouseData;
 uint16 mouseRight = 0;
 uint16 mouseLeft = 0;
 
-int lastKeyStroke = 0;
-
 uint16 mouseUpdateStatus;
 uint16 dummyU16;
 
@@ -56,169 +55,317 @@ static void processEvent(Common::Event &event) {
 	case Common::EVENT_RBUTTONDOWN:
 		mouseRight = 1;
 		break;
+	case Common::EVENT_MBUTTONDOWN:
+		mouseLeft = mouseRight = 1;
+		break;
 	case Common::EVENT_LBUTTONUP:
 		mouseLeft = 0;
 		break;
 	case Common::EVENT_RBUTTONUP:
 		mouseRight = 0;
 		break;
+	case Common::EVENT_MBUTTONUP:
+		mouseLeft = mouseRight = 0;
+		break;
 	case Common::EVENT_MOUSEMOVE:
 		break;
-	case Common::EVENT_KEYDOWN:
-		switch (event.kbd.keycode) {
-		case Common::KEYCODE_RETURN:
-		case Common::KEYCODE_KP_ENTER:
-		case Common::KEYCODE_KP5:
+	case Common::EVENT_WHEELUP:
+		g_cine->_actionList.push_back(Common::CustomEventType(kActionMenuOptionUp));
+		break;
+	case Common::EVENT_WHEELDOWN:
+		g_cine->_actionList.push_back(Common::CustomEventType(kActionMenuOptionDown));
+		break;
+	case Common::EVENT_CUSTOM_ENGINE_ACTION_START:
+		g_cine->_actionList.push_back(event.customType);
+		switch (event.customType) {
+		case kActionMouseLeft:
 			if (allowPlayerInput) {
 				mouseLeft = 1;
 			}
 			break;
-		case Common::KEYCODE_ESCAPE:
+		case kActionMouseRight:
 			if (allowPlayerInput) {
 				mouseRight = 1;
 			}
 			break;
-		case Common::KEYCODE_F1:
+		case kActionExamine:
 			if (allowPlayerInput) {
 				playerCommand = 0; // EXAMINE
 				makeCommandLine();
 			}
 			break;
-		case Common::KEYCODE_F2:
+		case kActionTake:
 			if (allowPlayerInput) {
 				playerCommand = 1; // TAKE
 				makeCommandLine();
 			}
 			break;
-		case Common::KEYCODE_F3:
-			if (allowPlayerInput) {
+		case kActionInventory:
+			if (allowPlayerInput && !inMenu) {
 				playerCommand = 2; // INVENTORY
 				makeCommandLine();
 			}
 			break;
-		case Common::KEYCODE_F4:
-			if (allowPlayerInput) {
+		case kActionUse:
+			if (allowPlayerInput && !inMenu) {
 				playerCommand = 3; // USE
 				makeCommandLine();
 			}
 			break;
-		case Common::KEYCODE_F5:
+		case kActionActivate:
 			if (allowPlayerInput) {
 				playerCommand = 4; // ACTIVATE
 				makeCommandLine();
 			}
 			break;
-		case Common::KEYCODE_F6:
+		case kActionSpeak:
 			if (allowPlayerInput) {
 				playerCommand = 5; // SPEAK
 				makeCommandLine();
 			}
 			break;
-		case Common::KEYCODE_F9:
+		case kActionActionMenu:
 			if (allowPlayerInput && !inMenu) {
 				makeActionMenu();
 				makeCommandLine();
 			}
 			break;
-		case Common::KEYCODE_F10:
+		case kActionSystemMenu:
 			if (!inMenu) {
 				g_cine->makeSystemMenu();
 			}
 			break;
-		case Common::KEYCODE_F11:
+		case kActionCollisionPage:
 			renderer->showCollisionPage(true);
 			break;
-		case Common::KEYCODE_MINUS:
-		case Common::KEYCODE_KP_MINUS:
+		case kActionGameSpeedDefault:
+			g_cine->setDefaultGameSpeed();
+			break;
+		case kActionGameSpeedSlower:
 			g_cine->modifyGameSpeed(-1); // Slower
 			break;
-		case Common::KEYCODE_PLUS:
-		case Common::KEYCODE_KP_PLUS:
+		case kActionGameSpeedFaster:
 			g_cine->modifyGameSpeed(+1); // Faster
 			break;
-		case Common::KEYCODE_LEFT:
-		case Common::KEYCODE_KP4:
+		case kActionMoveLeft:
 			moveUsingKeyboard(-1, 0); // Left
 			break;
-		case Common::KEYCODE_RIGHT:
-		case Common::KEYCODE_KP6:
+		case kActionMoveRight:
 			moveUsingKeyboard(+1, 0); // Right
 			break;
-		case Common::KEYCODE_UP:
-		case Common::KEYCODE_KP8:
+		case kActionMoveUp:
 			moveUsingKeyboard(0, +1); // Up
 			break;
-		case Common::KEYCODE_DOWN:
-		case Common::KEYCODE_KP2:
+		case kActionMoveDown:
 			moveUsingKeyboard(0, -1); // Down
 			break;
-		case Common::KEYCODE_KP9:
+		case kActionMoveUpRight:
 			moveUsingKeyboard(+1, +1); // Up & Right
 			break;
-		case Common::KEYCODE_KP7:
+		case kActionMoveUpLeft:
 			moveUsingKeyboard(-1, +1); // Up & Left
 			break;
-		case Common::KEYCODE_KP1:
+		case kActionMoveDownLeft:
 			moveUsingKeyboard(-1, -1); // Down & Left
 			break;
-		case Common::KEYCODE_KP3:
+		case kActionMoveDownRight:
 			moveUsingKeyboard(+1, -1); // Down & Right
 			break;
-		case Common::KEYCODE_d:
-			if (event.kbd.hasFlags(Common::KBD_CTRL)) {
-				g_cine->getDebugger()->attach();
-				g_cine->getDebugger()->onFrame();
-			}
-			// No Break to allow fallthrough to process 'd' without CTRL
 		default:
-			lastKeyStroke = event.kbd.keycode;
 			break;
-		}
+		};
 		break;
-	case Common::EVENT_KEYUP:
-		switch (event.kbd.keycode) {
-		case Common::KEYCODE_F11:
-			renderer->showCollisionPage(false);
+	case Common::EVENT_CUSTOM_ENGINE_ACTION_END:
+		switch (event.customType) {
+		case kActionMouseLeft:
+			if (allowPlayerInput) {
+				mouseLeft = 0;
+			}
 			break;
-		case Common::KEYCODE_KP5:   // Emulated left mouse button click
-		case Common::KEYCODE_LEFT:  // Left
-		case Common::KEYCODE_KP4:   // Left
-		case Common::KEYCODE_RIGHT: // Right
-		case Common::KEYCODE_KP6:   // Right
-		case Common::KEYCODE_UP:    // Up
-		case Common::KEYCODE_KP8:   // Up
-		case Common::KEYCODE_DOWN:  // Down
-		case Common::KEYCODE_KP2:   // Down
-		case Common::KEYCODE_KP9:   // Up & Right
-		case Common::KEYCODE_KP7:   // Up & Left
-		case Common::KEYCODE_KP1:   // Down & Left
-		case Common::KEYCODE_KP3:   // Down & Right
+		case kActionMouseRight:
+			if (allowPlayerInput) {
+				mouseRight = 0;
+			}
+			break;
+		case kActionMoveUp:
+		case kActionMoveDown:
+		case kActionMoveLeft:
+		case kActionMoveRight:
+		case kActionMoveUpLeft:
+		case kActionMoveUpRight:
+		case kActionMoveDownLeft:
+		case kActionMoveDownRight:
 			// Stop ego movement made with keyboard when releasing a known key
 			moveUsingKeyboard(0, 0);
 			break;
+		case kActionCollisionPage:
+			renderer->showCollisionPage(false);
+			break;
 		default:
 			break;
 		}
+		break;
+	case Common::EVENT_KEYDOWN:
+		g_cine->_keyInputList.push_back(event.kbd);
+		break;
 	default:
 		break;
 	}
 }
 
-void manageEvents() {
+void manageEvents(CallSource callSource, EventTarget eventTarget, bool useMaxMouseButtonState, Common::Array<Common::Rect> rects) {
 	Common::EventManager *eventMan = g_system->getEventManager();
+	Common::Point mousePos;
+	uint keysPressed = g_cine->_keyInputList.size();
+	bool foundTarget = false;
+	int eventsChecked = 0;
+	uint16 maxMouseLeft = mouseLeft;
+	uint16 maxMouseRight = mouseRight;
+	uint32 waitStart = g_system->getMillis();
+	uint32 waitEnd = waitStart + g_cine->getTimerDelay();
+	uint32 frameEnd = waitStart + 20;
+	bool frameEnded = false;
+	bool waitEnded = false;
+	bool checkWaitEnd = (eventTarget == UNTIL_WAIT_ENDED);
+	bool updateScreen = false;
+	bool updateAudio = false;
 
-	uint32 nextFrame = g_system->getMillis() + g_cine->getTimerDelay();
 	do {
-		Common::Event event;
-		while (eventMan->pollEvent(event)) {
+		Common::Event event = Common::Event();
+		int eventsCheckedBeforePolling = eventsChecked;
+		while (!foundTarget && !frameEnded && (eventMan->pollEvent(event) || eventsChecked == 0)) {
 			processEvent(event);
-		}
-		g_system->updateScreen();
-		g_system->delayMillis(20);
-	} while (g_system->getMillis() < nextFrame);
+			eventsChecked++;
+			maxMouseLeft = MAX<uint16>(mouseLeft, maxMouseLeft);
+			maxMouseRight = MAX<uint16>(mouseRight, maxMouseRight);
 
-	mouseData.left = mouseLeft;
-	mouseData.right = mouseRight;
+			bool mouseButtonDown = (mouseLeft != 0 || mouseRight != 0);
+			bool mouseButtonUp = !mouseButtonDown;
+
+			switch (eventTarget) {
+			case UNTIL_MOUSE_BUTTON_UP_DOWN_UP:
+				// fall through
+			case UNTIL_MOUSE_BUTTON_UP_DOWN:
+				// fall through
+			case UNTIL_MOUSE_BUTTON_UP:
+				// fall through
+			case UNTIL_MOUSE_BUTTON_UP_AND_WAIT_ENDED:
+				foundTarget = mouseButtonUp;
+				break;
+			case UNTIL_MOUSE_BUTTON_DOWN_UP:
+				// fall through
+			case UNTIL_MOUSE_BUTTON_DOWN:
+				foundTarget = mouseButtonDown;
+				break;
+			case UNTIL_MOUSE_BUTTON_DOWN_OR_KEY_UP_OR_DOWN_OR_IN_RECTS:
+				foundTarget = mouseButtonDown;
+				if (!g_cine->_actionList.empty()) {
+					Common::CustomEventType customType = g_cine->_actionList.back();
+					if (customType == kActionMenuOptionUp || customType == kActionMenuOptionDown) {
+						foundTarget = true;
+					}
+				}
+				mousePos = g_system->getEventManager()->getMousePos();
+				for (auto &r : rects) {
+					if (r.contains(mousePos)) {
+						foundTarget = true;
+						break;
+					}
+				}
+				break;
+			case UNTIL_MOUSE_BUTTON_DOWN_OR_KEY_INPUT:
+				foundTarget = mouseButtonDown || keysPressed < g_cine->_keyInputList.size();
+				break;
+			default:
+				break;
+			}
+
+			uint32 now = g_system->getMillis();
+			frameEnded = (now >= frameEnd);
+			waitEnded = (now >= waitEnd);
+
+			if (foundTarget) {
+				switch (eventTarget) {
+				case UNTIL_MOUSE_BUTTON_UP_DOWN_UP:
+					eventTarget = UNTIL_MOUSE_BUTTON_DOWN_UP;
+					foundTarget = false;
+					break;
+				case UNTIL_MOUSE_BUTTON_UP_DOWN:
+					eventTarget = UNTIL_MOUSE_BUTTON_DOWN;
+					foundTarget = false;
+					break;
+				case UNTIL_MOUSE_BUTTON_DOWN_UP:
+					eventTarget = UNTIL_MOUSE_BUTTON_UP;
+					foundTarget = false;
+					break;
+				case UNTIL_MOUSE_BUTTON_UP_AND_WAIT_ENDED:
+					eventTarget = UNTIL_WAIT_ENDED;
+					checkWaitEnd = true;
+					foundTarget = false;
+					break;
+				default:
+					break;
+				}
+			}
+
+			foundTarget |= (checkWaitEnd && waitEnded);
+		}
+		int eventsCheckedAfterPolling = eventsChecked;
+
+		bool eventQueueEmpty = (eventsCheckedBeforePolling == eventsCheckedAfterPolling);
+
+		if (eventQueueEmpty) {
+			uint32 now = g_system->getMillis();
+			frameEnded = (now >= frameEnd);
+			waitEnded = (now >= waitEnd);
+		}
+
+		if (eventTarget == UNTIL_WAIT_ENDED) {
+			foundTarget = waitEnded;
+		}
+
+		if (eventTarget == EMPTY_EVENT_QUEUE) {
+			foundTarget = eventQueueEmpty;
+		}
+
+		foundTarget |= (checkWaitEnd && waitEnded);
+		updateScreen = updateAudio = (foundTarget || frameEnded);
+
+		if (updateScreen) {
+			if (callSource != EXECUTE_PLAYER_INPUT) {
+				g_system->updateScreen();
+			} else {
+				// Make the command line (e.g. "EXAMINE DOOR" -> "EXAMINE BUTTON")
+				// responsive by updating it here.
+				if (allowPlayerInput && playerCommand != -1 && !mouseLeft && !mouseRight) {
+					// A player command is given, left and right mouse buttons are up
+					mousePos = eventMan->getMousePos();
+					playerCommandMouseLeftRightUp(mousePos.x, mousePos.y);
+					renderer->drawCommand();
+				}
+
+				renderer->blit();
+			}
+		}
+
+		if (updateAudio) {
+			g_system->getAudioCDManager()->update(); // For Future Wars CD version
+		}
+
+		if (frameEnded) {
+			frameEnd += 20;
+		}
+
+		g_system->delayMillis(10);
+	} while (!foundTarget && !g_cine->shouldQuit());
+
+	if (useMaxMouseButtonState) {
+		mouseData.left = maxMouseLeft;
+		mouseData.right = maxMouseRight;
+	} else {
+		mouseData.left = mouseLeft;
+		mouseData.right = mouseRight;
+	}
 }
 
 void getMouseData(uint16 param, uint16 *pButton, uint16 *pX, uint16 *pY) {
@@ -237,14 +384,6 @@ void getMouseData(uint16 param, uint16 *pButton, uint16 *pX, uint16 *pY) {
 	}
 }
 
-int getKeyData() {
-	int k = lastKeyStroke;
-
-	lastKeyStroke = -1;
-
-	return k;
-}
-
 /** Removes elements from seqList that have their member variable var4 set to value -1. */
 void purgeSeqList() {
 	Common::List<SeqListElement>::iterator it = g_cine->_seqList.begin();
@@ -260,9 +399,7 @@ void purgeSeqList() {
 }
 
 void CineEngine::mainLoop(int bootScriptIdx) {
-	bool playerAction;
 	byte di;
-	uint16 mouseButton;
 
 	if (_preLoad == false) {
 		resetBgIncrustList();
@@ -283,7 +420,12 @@ void CineEngine::mainLoop(int bootScriptIdx) {
 		allowPlayerInput = 0;
 		checkForPendingDataLoadSwitch = 0;
 
-		fadeRequired = false;
+		reloadBgPalOnNextFlip = 0;
+		forbidBgPalReload = 0;
+		gfxFadeOutCompleted = 0;
+		gfxFadeInRequested = 0;
+		safeControlsLastAccessedMs = 0;
+		lastSafeControlObjIdx = -1;
 		isDrawCommandEnabled = 0;
 		waitForPlayerClick = 0;
 		menuCommandLen = 0;
@@ -300,12 +442,14 @@ void CineEngine::mainLoop(int bootScriptIdx) {
 			g_cine->_globalVars[VAR_LOW_MEMORY] = 0; // set to 1 to disable some animations, sounds etc.
 		}
 
-		strcpy(newPrcName, "");
-		strcpy(newRelName, "");
-		strcpy(newObjectName, "");
-		strcpy(newMsgName, "");
-		strcpy(currentCtName, "");
-		strcpy(currentPartName, "");
+		renderer->setBlackPalette(true); // Sets _changePal = true
+
+		newPrcName[0] = '\0';
+		newRelName[0] = '\0';
+		newObjectName[0] = '\0';
+		newMsgName[0] = '\0';
+		currentCtName[0] = '\0';
+		currentPartName[0] = '\0';
 
 		g_sound->stopMusic();
 	}
@@ -338,7 +482,7 @@ void CineEngine::mainLoop(int bootScriptIdx) {
 		// jump over by moving the character to (204, 109). The script handling the
 		// flower shop scene is AIRPORT.PRC's 13th script.
 		// FIXME: Remove the hack and solve what's really causing the problem in the first place.
-		if (g_cine->getGameType() == Cine::GType_OS) {
+		if (hacksEnabled && g_cine->getGameType() == Cine::GType_OS) {
 			if (scumm_stricmp(renderer->getBgName(), "21.PI1") == 0 && g_cine->_objectTable[1].x == 204 && g_cine->_objectTable[1].y == 110) {
 				g_cine->_objectTable[1].y--; // Move the player character upward on-screen by one pixel
 			}
@@ -370,8 +514,12 @@ void CineEngine::mainLoop(int bootScriptIdx) {
 			setMouseCursor(MOUSE_CURSOR_CROSS);
 		}
 
+		if (gfxFadeInRequested) {
+			gfxFadeOutCompleted = 0;
+		}
+
 		if (renderer->ready()) {
-			renderer->drawFrame();
+			renderer->drawFrame(true);
 		}
 
 		// NOTE: In the original Future Wars and Operation Stealth messages
@@ -380,33 +528,11 @@ void CineEngine::mainLoop(int bootScriptIdx) {
 		removeMessages();
 
 		if (waitForPlayerClick) {
-			playerAction = false;
-
 			_messageLen <<= 3;
 			if (_messageLen < 800)
 				_messageLen = 800;
 
-			do {
-				manageEvents();
-				getMouseData(mouseUpdateStatus, &mouseButton, &dummyU16, &dummyU16);
-			} while (mouseButton != 0 && !shouldQuit());
-
-			menuVar = 0;
-
-			do {
-				manageEvents();
-				getMouseData(mouseUpdateStatus, &mouseButton, &dummyU16, &dummyU16);
-				playerAction = (mouseButton != 0) || processKeyboard(menuVar);
-				mainLoopSub6();
-			} while (!playerAction && !shouldQuit());
-
-			menuVar = 0;
-
-			do {
-				manageEvents();
-				getMouseData(mouseUpdateStatus, &mouseButton, &dummyU16, &dummyU16);
-			} while (mouseButton != 0 && !shouldQuit());
-
+			manageEvents(MAIN_LOOP_WAIT_FOR_PLAYER_CLICK, UNTIL_MOUSE_BUTTON_UP_DOWN_UP);
 			waitForPlayerClick = 0;
 		}
 
@@ -426,9 +552,6 @@ void CineEngine::mainLoop(int bootScriptIdx) {
 				menuCommandLen = 0;
 			}
 		}
-
-		manageEvents();
-
 	} while (!shouldQuit() && !_restartRequested);
 
 	hideMouse();

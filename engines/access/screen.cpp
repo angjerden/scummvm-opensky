@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -25,18 +24,26 @@
 #include "common/rect.h"
 #include "common/textconsole.h"
 #include "common/system.h"
-#include "graphics/palette.h"
+#include "graphics/paletteman.h"
 #include "access/access.h"
 #include "access/screen.h"
 #include "access/resources.h"
+#include "access/martian/martian_resources.h"
 
 namespace Access {
 
 #define VGA_COLOR_TRANS(x) ((x) * 255 / 63)
 
+ScreenSave::ScreenSave(){
+	_clipWidth = _clipHeight = 0;
+	_windowXAdd = _windowYAdd = 0;
+	_scrollCol = _scrollRow = 0;
+	_screenYOff = 0;
+}
+
 Screen::Screen(AccessEngine *vm) : _vm(vm) {
 	create(320, 200);
-	Common::fill(&_tempPalette[0], &_tempPalette[PALETTE_SIZE], 0);
+	Common::fill(&_tempPalette[0], &_tempPalette[Graphics::PALETTE_SIZE], 0);
 	Common::fill(&_manPal[0], &_manPal[0x60], 0);
 	Common::fill(&_scaleTable1[0], &_scaleTable1[256], 0);
 	Common::fill(&_scaleTable2[0], &_scaleTable2[256], 0);
@@ -62,14 +69,20 @@ Screen::Screen(AccessEngine *vm) : _vm(vm) {
 	_startCycle = 0;
 	_cycleStart = 0;
 	_endCycle = 0;
+	_fadeIn = false;
+
+	for (int i = 0; i < 768; ++i) {
+		_rawPalette[i] = 0;
+		_savedPalettes[0][i] = 0;
+		_savedPalettes[1][i] = 0;
+		_tempPalette[i] = 0;
+	}
 }
 
 void Screen::clearScreen() {
 	clearBuffer();
 	if (_vesaMode)
 		_vm->_clearSummaryFlag = true;
-
-	addDirtyRect(Common::Rect(0, 0, this->w, this->h));
 }
 
 void Screen::setDisplayScan() {
@@ -88,29 +101,35 @@ void Screen::setPanel(int num) {
 	_msVirtualOffset = _virtualOffsetsTable[num];
 }
 
-void Screen::updateScreen() {
-	// Merge the dirty rects
-	mergeDirtyRects();
-
-	// Loop through copying dirty areas to the physical screen
-	Common::List<Common::Rect>::iterator i;
-	for (i = _dirtyRects.begin(); i != _dirtyRects.end(); ++i) {
-		const Common::Rect &r = *i;
-		const byte *srcP = (const byte *)getBasePtr(r.left, r.top);
-		g_system->copyRectToScreen(srcP, this->pitch, r.left, r.top,
-			r.width(), r.height());
+void Screen::update() {
+	if (_vm->_startup >= 0) {
+		if (--_vm->_startup == -1)
+			_fadeIn = true;
+		return;
 	}
-
-	// Signal the physical screen to update
-	g_system->updateScreen();
-	_dirtyRects.clear();
+	markAllDirty();//****DEBUG****
+	Graphics::Screen::update();
 }
 
 void Screen::setInitialPalettte() {
 	Common::copy(&INITIAL_PALETTE[0], &INITIAL_PALETTE[18 * 3], _rawPalette);
-	Common::fill(&_rawPalette[18 * 3], &_rawPalette[PALETTE_SIZE], 0);
+	Common::fill(&_rawPalette[18 * 3], &_rawPalette[Graphics::PALETTE_SIZE], 0);
 
 	g_system->getPaletteManager()->setPalette(INITIAL_PALETTE, 0, 18);
+}
+
+void Screen::setManPalette() {
+	for (int i = 0; i < 0x42; i++) {
+		_rawPalette[672 + i] = VGA_COLOR_TRANS(_manPal[i]);
+	}
+}
+
+void Screen::setIconPalette() {
+	if (_vm->getGameID() == GType_MartianMemorandum) {
+		for (int i = 0; i < 0x1B; i++) {
+			_rawPalette[741 + i] = VGA_COLOR_TRANS(Martian::ICON_PALETTE[i]);
+		}
+	}
 }
 
 void Screen::loadPalette(int fileNum, int subfile) {
@@ -121,22 +140,22 @@ void Screen::loadPalette(int fileNum, int subfile) {
 }
 
 void Screen::setPalette() {
-	g_system->getPaletteManager()->setPalette(&_rawPalette[0], 0, PALETTE_COUNT);
+	g_system->getPaletteManager()->setPalette(&_rawPalette[0], 0, Graphics::PALETTE_COUNT);
 }
 
 void Screen::loadRawPalette(Common::SeekableReadStream *stream) {
-	stream->read(&_rawPalette[0], PALETTE_SIZE);
-	for (byte *p = &_rawPalette[0]; p < &_rawPalette[PALETTE_SIZE]; ++p)
+	stream->read(&_rawPalette[0], Graphics::PALETTE_SIZE);
+	for (byte *p = &_rawPalette[0]; p < &_rawPalette[Graphics::PALETTE_SIZE]; ++p)
 		*p = VGA_COLOR_TRANS(*p);
 }
 
 void Screen::updatePalette() {
-	g_system->getPaletteManager()->setPalette(&_tempPalette[0], 0, PALETTE_COUNT);
-	updateScreen();
+	g_system->getPaletteManager()->setPalette(&_tempPalette[0], 0, Graphics::PALETTE_COUNT);
+	update();
 }
 
 void Screen::savePalette() {
-	Common::copy(&_rawPalette[0], &_rawPalette[PALETTE_SIZE],
+	Common::copy(&_rawPalette[0], &_rawPalette[Graphics::PALETTE_SIZE],
 		&_savedPalettes[_savedPaletteCount][0]);
 
 	if (++_savedPaletteCount == 2)
@@ -148,7 +167,7 @@ void Screen::restorePalette() {
 		_savedPaletteCount = 0;
 
 	Common::copy(&_savedPalettes[_savedPaletteCount][0],
-		&_savedPalettes[_savedPaletteCount][PALETTE_SIZE], &_rawPalette[0]);
+		&_savedPalettes[_savedPaletteCount][Graphics::PALETTE_SIZE], &_rawPalette[0]);
 }
 
 void Screen::getPalette(byte *pal) {
@@ -163,11 +182,11 @@ void Screen::forceFadeOut() {
 
 	do {
 		repeatFlag = false;
-		for (srcP = &_tempPalette[0], count = 0; count < PALETTE_SIZE; ++count, ++srcP) {
+		for (srcP = &_tempPalette[0], count = 0; count < Graphics::PALETTE_SIZE; ++count, ++srcP) {
 			int v = *srcP;
 			if (v) {
 				repeatFlag = true;
-				*srcP = MAX(*srcP - FADE_AMOUNT, 0);
+				*srcP = MAX((int)*srcP - FADE_AMOUNT, 0);
 			}
 		}
 
@@ -177,7 +196,7 @@ void Screen::forceFadeOut() {
 }
 
 void Screen::forceFadeIn() {
-	Common::fill(&_tempPalette[0], &_tempPalette[PALETTE_SIZE], 0);
+	Common::fill(&_tempPalette[0], &_tempPalette[Graphics::PALETTE_SIZE], 0);
 
 	const int FADE_AMOUNT = 2;
 	bool repeatFlag;
@@ -186,10 +205,10 @@ void Screen::forceFadeIn() {
 		const byte *srcP = &_rawPalette[0];
 		byte *destP = &_tempPalette[0];
 
-		for (int idx = 0; idx < PALETTE_SIZE; ++idx, ++srcP, ++destP) {
+		for (int idx = 0; idx < Graphics::PALETTE_SIZE; ++idx, ++srcP, ++destP) {
 			if (*destP != *srcP) {
 				repeatFlag = true;
-				*destP = MAX((int)*destP + FADE_AMOUNT, (int)*srcP);
+				*destP = MIN((int)*destP + FADE_AMOUNT, (int)*srcP);
 			}
 		}
 
@@ -248,7 +267,7 @@ void Screen::restoreScreen() {
 	_screenYOff = _screenSave._screenYOff;
 }
 
-void Screen::copyBlock(ASurface *src, const Common::Rect &bounds) {
+void Screen::copyBlock(BaseSurface *src, const Common::Rect &bounds) {
 	Common::Rect destBounds = bounds;
 	destBounds.translate(_windowXAdd, _windowYAdd + _screenYOff);
 
@@ -259,32 +278,22 @@ void Screen::copyBlock(ASurface *src, const Common::Rect &bounds) {
 void Screen::restoreBlock() {
 	if (!_savedBounds.isEmpty())
 		addDirtyRect(_savedBounds);
-	ASurface::restoreBlock();
+	BaseSurface::restoreBlock();
 }
 
 void Screen::drawRect() {
 	addDirtyRect(Common::Rect(_orgX1, _orgY1, _orgX2, _orgY2));
-	ASurface::drawRect();
+	BaseSurface::drawRect();
 }
 
-void Screen::transBlitFrom(ASurface *src, const Common::Point &destPos) {
-	addDirtyRect(Common::Rect(destPos.x, destPos.y, destPos.x + src->w, destPos.y + src->h));
-	ASurface::transBlitFrom(src, destPos);
+void Screen::drawBox() {
+	addDirtyRect(Common::Rect(_orgX1, _orgY1, _orgX2, _orgY2));
+	BaseSurface::drawBox();
 }
 
-void Screen::transBlitFrom(ASurface *src, const Common::Rect &bounds) {
-	addDirtyRect(bounds);
-	ASurface::transBlitFrom(src, bounds);
-}
-
-void Screen::blitFrom(Graphics::Surface &src) {
-	addDirtyRect(Common::Rect(0, 0, src.w, src.h));
-	ASurface::blitFrom(src);
-}
-
-void Screen::copyBuffer(Graphics::Surface *src) {
+void Screen::copyBuffer(Graphics::ManagedSurface *src) {
 	addDirtyRect(Common::Rect(0, 0, src->w, src->h));
-	ASurface::copyBuffer(src);
+	BaseSurface::copyBuffer(src);
 }
 
 void Screen::setPaletteCycle(int startCycle, int endCycle, int timer) {
@@ -305,10 +314,10 @@ void Screen::cyclePaletteBackwards() {
 		_vm->_timers[6]._flag++;
 		byte *pStart = &_rawPalette[_cycleStart * 3];
 		byte *pEnd = &_rawPalette[_endCycle * 3];
-		
+
 		for (int idx = _startCycle; idx < _endCycle; ++idx) {
 			g_system->getPaletteManager()->setPalette(pStart, idx, 1);
-			
+
 			pStart += 3;
 			if (pStart == pEnd)
 				pStart = &_rawPalette[_cycleStart * 3];
@@ -322,48 +331,8 @@ void Screen::cyclePaletteBackwards() {
 	}
 }
 
-void Screen::addDirtyRect(const Common::Rect &r) {
-	_dirtyRects.push_back(r);
-	assert(r.isValidRect() && r.width() > 0 && r.height() > 0);
+void Screen::flashPalette(int count) {
+	// No implementation needed in ScummVM
 }
-
-void Screen::mergeDirtyRects() {
-	Common::List<Common::Rect>::iterator rOuter, rInner;
-
-	// Ensure dirty rect list has at least two entries
-	rOuter = _dirtyRects.begin();
-	for (int i = 0; i < 2; ++i, ++rOuter) {
-		if (rOuter == _dirtyRects.end())
-			return;
-	}
-	
-	// Process the dirty rect list to find any rects to merge
-	for (rOuter = _dirtyRects.begin(); rOuter != _dirtyRects.end(); ++rOuter) {
-		rInner = rOuter;
-		while (++rInner != _dirtyRects.end()) {
-
-			if ((*rOuter).intersects(*rInner)) {
-				// these two rectangles overlap or
-				// are next to each other - merge them
-
-				unionRectangle(*rOuter, *rOuter, *rInner);
-
-				// remove the inner rect from the list
-				_dirtyRects.erase(rInner);
-
-				// move back to beginning of list
-				rInner = rOuter;
-			}
-		}
-	}
-}
-
-bool Screen::unionRectangle(Common::Rect &destRect, const Common::Rect &src1, const Common::Rect &src2) {
-	destRect = src1;
-	destRect.extend(src2);
-
-	return !destRect.isEmpty();
-}
-
 
 } // End of namespace Access

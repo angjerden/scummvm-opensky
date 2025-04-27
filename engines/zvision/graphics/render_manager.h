@@ -4,19 +4,18 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
-
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -31,7 +30,7 @@
 
 #include "graphics/surface.h"
 
-#include "graphics_effect.h"
+#include "zvision/graphics/graphics_effect.h"
 
 class OSystem;
 
@@ -48,7 +47,7 @@ namespace ZVision {
 
 class RenderManager {
 public:
-	RenderManager(ZVision *engine, uint32 windowWidth, uint32 windowHeight, const Common::Rect workingWindow, const Graphics::PixelFormat pixelFormat, bool doubleFPS);
+	RenderManager(ZVision *engine, uint32 windowWidth, uint32 windowHeight, const Common::Rect &workingWindow, const Graphics::PixelFormat &pixelFormat, bool doubleFPS);
 	~RenderManager();
 
 private:
@@ -151,7 +150,7 @@ public:
 	 * @param destinationX    X position where the image should be put. Coords are in working window space, not screen space!
 	 * @param destinationY    Y position where the image should be put. Coords are in working window space, not screen space!
 	 */
-	void renderImageToBackground(const Common::String &fileName, int16 destinationX, int16 destinationY);
+	void renderImageToBackground(const Common::Path &fileName, int16 destinationX, int16 destinationY);
 
 	/**
 	 * Blits the image or a portion of the image to the background.
@@ -161,7 +160,7 @@ public:
 	 * @param destY      Y position where the image should be put. Coords are in working window space, not screen space!
 	 * @param colorkey   Transparent color
 	 */
-	void renderImageToBackground(const Common::String &fileName, int16 destX, int16 destY, uint32 colorkey);
+	void renderImageToBackground(const Common::Path &fileName, int16 destX, int16 destY, uint32 colorkey);
 
 	/**
 	 * Blits the image or a portion of the image to the background.
@@ -172,7 +171,7 @@ public:
 	 * @param keyX       X position of transparent color
 	 * @param keyY       Y position of transparent color
 	 */
-	void renderImageToBackground(const Common::String &fileName, int16 destX, int16 destY, int16 keyX, int16 keyY);
+	void renderImageToBackground(const Common::Path &fileName, int16 destX, int16 destY, int16 keyX, int16 keyY);
 
 	/**
 	 * Sets the current background image to be used by the RenderManager and immediately
@@ -180,7 +179,7 @@ public:
 	 *
 	 * @param fileName    The name of the image file
 	 */
-	void setBackgroundImage(const Common::String &fileName);
+	void setBackgroundImage(const Common::Path &fileName);
 
 	/**
 	 * Set the background position (_backgroundOffset). If the current RenderState is PANORAMA, the offset
@@ -237,7 +236,7 @@ public:
 
 	// Subtitles methods
 
-	void initSubArea(uint32 windowWidth, uint32 windowHeight, const Common::Rect workingWindow);
+	void initSubArea(uint32 windowWidth, uint32 windowHeight, const Common::Rect &workingWindow);
 
 	// Create subtitle area and return ID
 	uint16 createSubArea(const Common::Rect &area);
@@ -260,8 +259,8 @@ public:
 	Graphics::Surface *getBkgRect(Common::Rect &rect);
 
 	// Load image into new surface
-	Graphics::Surface *loadImage(Common::String file);
-	Graphics::Surface *loadImage(Common::String file, bool transposed);
+	Graphics::Surface *loadImage(const Common::Path &file);
+	Graphics::Surface *loadImage(const Common::Path &file, bool transposed);
 
 	// Clear whole/area of menu surface
 	void clearMenuSurface();
@@ -282,7 +281,7 @@ public:
 	 * @param fileName       The name of a .tga file
 	 * @param destination    A reference to the Surface to store the pixel data in
 	 */
-	void readImageToSurface(const Common::String &fileName, Graphics::Surface &destination);
+	void readImageToSurface(const Common::Path &fileName, Graphics::Surface &destination);
 
 	/**
 	 * Reads an image file pixel data into a Surface buffer. Also, if the image
@@ -294,7 +293,7 @@ public:
 	 * @param destination    A reference to the Surface to store the pixel data in
 	 * @param transposed     Transpose flag
 	 */
-	void readImageToSurface(const Common::String &fileName, Graphics::Surface &destination, bool transposed);
+	void readImageToSurface(const Common::Path &fileName, Graphics::Surface &destination, bool transposed);
 
 	// Add visual effect to effects list
 	void addEffect(GraphicsEffect *_effect);
@@ -306,8 +305,8 @@ public:
 	// xy - base color
 	// depth - +/- of base color
 	// rect - rectangle where select pixels
-	// minD - if not NULL will recieve real bottom border of depth
-	// maxD - if not NULL will recieve real top border of depth
+	// minD - if not NULL will receive real bottom border of depth
+	// maxD - if not NULL will receive real top border of depth
 	EffectMap *makeEffectMap(const Common::Point &xy, int16 depth, const Common::Rect &rect, int8 *minD, int8 *maxD);
 
 	// Create "mask" for effects by simple transparent color

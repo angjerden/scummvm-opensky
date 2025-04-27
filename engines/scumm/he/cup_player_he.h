@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -84,26 +83,26 @@ protected:
 
 	Common::File _fileStream;
 
-	int _playbackRate;
-	int _width, _height;
+	int _playbackRate = 0;
+	int _width = 0, _height = 0;
 
-	uint8 _paletteData[256 * 3];
-	bool _paletteChanged;
-	uint8 *_offscreenBuffer;
+	uint8 _paletteData[256 * 3] = {};
+	bool _paletteChanged = false;
+	uint8 *_offscreenBuffer = nullptr;
 
-	uint8 *_inLzssBufData;
-	uint32 _inLzssBufSize;
-	uint8 *_outLzssBufData;
-	uint32 _outLzssBufSize;
+	uint8 *_inLzssBufData = nullptr;
+	uint32 _inLzssBufSize = 0;
+	uint8 *_outLzssBufData = nullptr;
+	uint32 _outLzssBufSize = 0;
 
-	uint32 _dataSize;
+	uint32 _dataSize = 0;
 
-	int _sfxCount;
-	uint8 *_sfxBuffer;
-	CUP_SfxChannel _sfxChannels[kSfxChannels];
-	CUP_Sfx _sfxQueue[kSfxQueueSize];
-	int _sfxQueuePos;
-	int _lastSfxChannel;
+	int _sfxCount = 0;
+	uint8 *_sfxBuffer = nullptr;
+	CUP_SfxChannel _sfxChannels[kSfxChannels] = {};
+	CUP_Sfx _sfxQueue[kSfxQueueSize] = {};
+	int _sfxQueuePos = 0;
+	int _lastSfxChannel = 0;
 };
 
 } // End of namespace Scumm

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -26,14 +25,12 @@
 #include "common/scummsys.h"
 #include "common/rect.h"
 #include "common/stream.h"
+#include "graphics/screen.h"
 #include "access/asurface.h"
 
 namespace Access {
 
 class AccessEngine;
-
-#define PALETTE_COUNT 256
-#define PALETTE_SIZE (256 * 3)
 
 struct ScreenSave {
 	int _clipWidth;
@@ -45,14 +42,16 @@ struct ScreenSave {
 	int _scrollRow;
 	Common::Point _bufferStart;
 	int _screenYOff;
+
+	ScreenSave();
 };
 
-class Screen : public ASurface {
+class Screen : public BaseSurface {
 private:
 	AccessEngine *_vm;
-	byte _tempPalette[PALETTE_SIZE];
-	byte _rawPalette[PALETTE_SIZE];
-	byte _savedPalettes[2][PALETTE_SIZE];
+	byte _tempPalette[Graphics::PALETTE_SIZE];
+	byte _rawPalette[Graphics::PALETTE_SIZE];
+	byte _savedPalettes[2][Graphics::PALETTE_SIZE];
 	int _savedPaletteCount;
 	int _vesaCurrentWin;
 	int _currentPanel;
@@ -66,10 +65,6 @@ private:
 	Common::List<Common::Rect> _dirtyRects;
 
 	void updatePalette();
-
-	void mergeDirtyRects();
-
-	bool unionRectangle(Common::Rect &destRect, const Common::Rect &src1, const Common::Rect &src2);
 public:
 	int _vesaMode;
 	int _startColor, _numColors;
@@ -85,35 +80,30 @@ public:
 	int _bufferBytesWide;
 	int _vWindowLinesTall;
 	bool _screenChangeFlag;
+	bool _fadeIn;
 public:
-	virtual void copyBlock(ASurface *src, const Common::Rect &bounds);
+	/**
+	 * Updates the screen
+	 */
+	void update() override;
 
-	virtual void restoreBlock();
+	void copyBlock(BaseSurface *src, const Common::Rect &bounds) override;
 
-	virtual void drawRect();
+	void restoreBlock() override;
 
-	virtual void transBlitFrom(ASurface *src, const Common::Point &destPos);
+	void drawRect() override;
 
-	virtual void transBlitFrom(ASurface *src, const Common::Rect &bounds);
+	void drawBox() override;
 
-	virtual void blitFrom(Graphics::Surface &src);
-
-	virtual void copyBuffer(Graphics::Surface *src);
-
-	virtual void addDirtyRect(const Common::Rect &r);
+	void copyBuffer(Graphics::ManagedSurface *src) override;
 public:
 	Screen(AccessEngine *vm);
 
-	virtual ~Screen() {}
+	~Screen() override {}
 
 	void setDisplayScan();
 
 	void setPanel(int num);
-
-	/**
-	 * Update the underlying screen
-	 */
-	void updateScreen();
 
 	/**
 	 * Fade out screen
@@ -137,7 +127,12 @@ public:
 	/**
 	 * Set icon palette
 	 */
-	void setIconPalette() {}
+	void setIconPalette();
+
+	/**
+	 * Set Tex palette (Martian Memorandum)
+	 */
+	void setManPalette();
 
 	void loadPalette(int fileNum, int subfile);
 
@@ -150,6 +145,8 @@ public:
 	void restorePalette();
 
 	void getPalette(byte *pal);
+
+	void flashPalette(int count);
 
 	/**
 	 * Copy a buffer to the screen

@@ -2,58 +2,61 @@ MODULE := common
 
 MODULE_OBJS := \
 	archive.o \
+	base64.o \
+	btea.o \
+	concatstream.o \
 	config-manager.o \
 	coroutines.o \
-	dcl.o \
+	dbcs-str.o \
 	debug.o \
+	engine_data.o \
 	error.o \
-	EventDispatcher.o \
-	EventMapper.o \
+	events.o \
 	file.o \
 	fs.o \
 	gui_options.o \
 	hashmap.o \
-	iff_container.o \
-	ini-file.o \
-	installshield_cab.o \
 	language.o \
 	localization.o \
 	macresman.o \
+	memory.o \
 	memorypool.o \
 	md5.o \
 	mutex.o \
+	osd_message_queue.o \
+	path.o \
 	platform.o \
-	quicktime.o \
+	punycode.o \
 	random.o \
 	rational.o \
 	rendermode.o \
+	rotationmode.o \
 	str.o \
 	stream.o \
+	streamdebug.o \
+	str-base.o \
+	str-enc.o \
+	encodings/singlebyte.o \
 	system.o \
 	textconsole.o \
+	text-to-speech.o \
 	tokenizer.o \
 	translation.o \
-	unarj.o \
-	unzip.o \
+	unicode-bidi.o \
 	ustr.o \
 	util.o \
-	winexe.o \
-	winexe_ne.o \
-	winexe_pe.o \
-	xmlparser.o \
-	zlib.o
-
-MODULE_OBJS += \
-	cosinetables.o \
-	dct.o \
-	fft.o \
-	huffman.o \
-	rdft.o \
-	sinetables.o
+	xpfloat.o \
+	zip-set.o \
+	std/std.o
 
 ifdef ENABLE_EVENTRECORDER
 MODULE_OBJS += \
 	recorderfile.o
+endif
+
+ifdef USE_UPDATES
+MODULE_OBJS += \
+	updates.o
 endif
 
 # Include common rules

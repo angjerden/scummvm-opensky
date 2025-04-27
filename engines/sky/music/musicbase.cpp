@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -54,6 +53,7 @@ void MusicBase::loadSection(uint8 pSection) {
 	_musicTempo0 = 0x78; // init constants taken from idb file, area ~0x1060
 	_musicTempo1 = 0xC0;
 	_onNextPoll.musicToProcess = 0;
+	_onNextPoll.stream = nullptr;
 	_tempo = _aktTime = 0x10001;
 	_numberOfChannels = _currentMusic = 0;
 	setupPointers();
@@ -106,24 +106,14 @@ void MusicBase::loadNewMusic() {
 
 	// Try playing digital audio first (from the Music Enhancement Project).
 	// TODO: This always prefers digital music over the MIDI music types!
-	uint8 section = _currentSection;
-	uint8 song = _currentMusic;
-	// handle duplicates
-	if ((section == 2 && song == 1) || (section == 5 && song == 1)) {
-		section = 1;
-		song = 1;
-	} else if ((section == 2 && song == 4) || (section == 5 && song == 4)) {
-		section = 1;
-		song = 4;
-	} else if (section == 5 && song == 6) {
-		section = 4;
-		song = 4;
-	}
-	Common::String trackName = Common::String::format("music_%d%02d", section, song);
-	Audio::SeekableAudioStream *stream = Audio::SeekableAudioStream::openStreamFile(trackName);
+	Audio::SeekableAudioStream *stream = _onNextPoll.stream;
 	if (stream) {
+		_onNextPoll.stream = nullptr;
+
 		// not all tracks should loop
 		bool loops = true;
+		uint8 section = _currentSection;
+		uint8 song = _currentMusic;
 		if ((section == 0 && song == 1)
 		 || (section == 1 && song == 1) || (section == 1 && song == 4)
 		 || (section == 2 && song == 1) || (section == 2 && song == 4)
@@ -168,7 +158,32 @@ void MusicBase::pollMusic() {
 }
 
 void MusicBase::startMusic(uint16 param) {
-	_onNextPoll.musicToProcess = param & 0xF;
+	uint8 song = param & 0xF;
+
+	_onNextPoll.musicToProcess = song;
+	delete _onNextPoll.stream;
+	_onNextPoll.stream = nullptr;
+
+	if (song == 0)
+		return;
+
+	// Load digital audio now if available
+	// This avoids doing it in the audio thread
+	uint8 section = _currentSection;
+	// handle duplicates
+	if ((section == 2 && song == 1) || (section == 5 && song == 1)) {
+		section = 1;
+		song = 1;
+	} else if ((section == 2 && song == 4) || (section == 5 && song == 4)) {
+		section = 1;
+		song = 4;
+	} else if (section == 5 && song == 6) {
+		section = 4;
+		song = 4;
+	}
+
+	Common::Path trackName(Common::String::format("music_%d%02d", section, song));
+	_onNextPoll.stream = Audio::SeekableAudioStream::openStreamFile(trackName);
 }
 
 uint8 MusicBase::giveVolume() {

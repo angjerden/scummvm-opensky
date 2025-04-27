@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -190,10 +189,6 @@ private:
 	 * Draw a UI textual element
 	 */
 	void writeVocab(ScrCategory category, int id);
-
-	void refresh();
-
-	void updateRect(const Common::Rect &bounds);
 public:
 	MSurface _surface;
 	UISlots _uiSlots;
@@ -225,7 +220,7 @@ public:
 	/**
 	* Loads an interface from a specified resource
 	*/
-	virtual void load(const Common::String &resName);
+	void load(const Common::Path &resName) override;
 
 	/**
 	* Set up the interface
@@ -242,7 +237,7 @@ public:
 	* @param destPos		Destination position to draw in current surface
 	* @param transparencyIndex	Transparency color
 	*/
-	void mergeFrom(MSurface *src, const Common::Rect &srcBounds, const Common::Point &destPos,
+	void mergeFrom(BaseSurface *src, const Common::Rect &srcBounds, const Common::Point &destPos,
 		int transparencyIndex = -1);
 
 	/**
@@ -304,6 +299,8 @@ public:
 	 * Synchronize the data
 	 */
 	void synchronize(Common::Serializer &s);
+
+	void refresh();
 };
 
 } // End of namespace MADS

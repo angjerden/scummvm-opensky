@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -24,6 +23,7 @@
 #define IMAGE_CODECS_QTRLE_H
 
 #include "graphics/pixelformat.h"
+#include "graphics/palette.h"
 #include "image/codecs/codec.h"
 
 namespace Image {
@@ -36,23 +36,23 @@ namespace Image {
 class QTRLEDecoder : public Codec {
 public:
 	QTRLEDecoder(uint16 width, uint16 height, byte bitsPerPixel);
-	~QTRLEDecoder();
+	~QTRLEDecoder() override;
 
-	const Graphics::Surface *decodeFrame(Common::SeekableReadStream &stream);
-	Graphics::PixelFormat getPixelFormat() const;
+	const Graphics::Surface *decodeFrame(Common::SeekableReadStream &stream) override;
+	Graphics::PixelFormat getPixelFormat() const override;
 
-	bool containsPalette() const { return _ditherPalette != 0; }
-	const byte *getPalette() { _dirtyPalette = false; return _ditherPalette; }
-	bool hasDirtyPalette() const { return _dirtyPalette; }
-	bool canDither(DitherType type) const;
-	void setDither(DitherType type, const byte *palette);
+	bool containsPalette() const override { return _ditherPalette != 0; }
+	const byte *getPalette() override { _dirtyPalette = false; return _ditherPalette.data(); }
+	bool hasDirtyPalette() const override { return _dirtyPalette; }
+	bool canDither(DitherType type) const override;
+	void setDither(DitherType type, const byte *palette) override;
 
 private:
 	byte _bitsPerPixel;
 	Graphics::Surface *_surface;
 	uint16 _width, _height;
 	uint32 _paddedWidth;
-	byte *_ditherPalette;
+	Graphics::Palette _ditherPalette;
 	bool _dirtyPalette;
 	byte *_colorMap;
 

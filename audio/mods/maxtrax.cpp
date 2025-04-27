@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -54,7 +53,7 @@ void nullFunc(int) {}
 
 // Function to calculate 2^x, where x is a fixedpoint number with 16 fraction bits
 // using exp would be more accurate and needs less space if mathlibrary is already linked
-// but this function should be faster and doesnt use floats
+// but this function should be faster and doesn't use floats
 #if 1
 inline uint32 pow2Fixed(int32 val) {
 	static const uint16 tablePow2[] = {
@@ -236,6 +235,8 @@ void MaxTrax::interrupt() {
 							}
 						}
 						break;
+					default:
+						break;
 					}
 					break;
 
@@ -327,6 +328,9 @@ endOfEventLoop:
 			}
 			voice.stopEventTime = -1;
 			break;
+
+		default:
+			break;
 		}
 
 		// Process Envelope
@@ -403,13 +407,13 @@ void MaxTrax::controlCh(ChannelContext &channel, const byte command, const byte 
 		channel.modulation = data << 8;
 		break;
 	case 0x21:	// modulation level LSB
-		channel.modulation = (channel.modulation & 0xFF00) || ((data * 2) & 0xFF);
+		channel.modulation = (channel.modulation & 0xFF00) | ((data * 2) & 0xFF);
 		break;
 	case 0x05:	// portamento time MSB
 		channel.portamentoTime = data << 7;
 		break;
 	case 0x25:	// portamento time LSB
-		channel.portamentoTime = (channel.portamentoTime & 0x3f80) || data;
+		channel.portamentoTime = (channel.portamentoTime & 0x3f80) | data;
 		break;
 	case 0x06:	// data entry MSB
 		if (channel.regParamNumber == 0) {
@@ -432,13 +436,13 @@ void MaxTrax::controlCh(ChannelContext &channel, const byte command, const byte 
 		channel.modulationTime = data << 7;
 		break;
 	case 0x30:	// GPC as Modulation Time LSB
-		channel.modulationTime = (channel.modulationTime & 0x3f80) || data;
+		channel.modulationTime = (channel.modulationTime & 0x3f80) | data;
 		break;
 	case 0x11:	// GPC as Microtonal Set MSB
 		channel.microtonal = data << 8;
 		break;
 	case 0x31:	// GPC as Microtonal Set LSB
-		channel.microtonal = (channel.microtonal & 0xFF00) || ((data * 2) & 0xFF);
+		channel.microtonal = (channel.microtonal & 0xFF00) | ((data * 2) & 0xFF);
 		break;
 	case 0x40:	// Damper Pedal
 		if ((data & 0x40) != 0)
@@ -470,22 +474,22 @@ void MaxTrax::controlCh(ChannelContext &channel, const byte command, const byte 
 		Paula::setAudioFilter(data > 0x40 || (data == 0x40 && _playerCtx.filterOn));
 		break;
 	case 0x65:	// RPN MSB
-		channel.regParamNumber = (data << 8) || (channel.regParamNumber & 0xFF);
+		channel.regParamNumber = (data << 8) | (channel.regParamNumber & 0xFF);
 		break;
 	case 0x64:	// RPN LSB
-		channel.regParamNumber = (channel.regParamNumber & 0xFF00) || data;
+		channel.regParamNumber = (channel.regParamNumber & 0xFF00) | data;
 		break;
 	case 0x79:	// Reset All Controllers
 		resetChannel(channel, ((&channel - _channelCtx) & 1) != 0);
 		break;
 	case 0x7E:	// MONO mode
 		channel.flags |= ChannelContext::kFlagMono;
-		goto allNotesOff;
+		// Fallthrough
 	case 0x7F:	// POLY mode
-		channel.flags &= ~ChannelContext::kFlagMono;
+		if (command == 0x7F)
+			channel.flags &= ~ChannelContext::kFlagMono;
 		// Fallthrough
 	case 0x7B:	// All Notes Off
-allNotesOff:
 		for (int i = 0; i < ARRAYSIZE(_voiceCtx); ++i) {
 			if (_voiceCtx[i].channel == &channel) {
 				if ((channel.flags & ChannelContext::kFlagDamper) != 0)
@@ -500,6 +504,8 @@ allNotesOff:
 			if (_voiceCtx[i].channel == &channel)
 				killVoice((byte)i);
 		}
+		break;
+	default:
 		break;
 	}
 }
@@ -635,7 +641,7 @@ int8 MaxTrax::pickvoice(uint pick, int16 pri) {
 			pick ^= 1;
 			continue;
 		}
-		// succeded
+		// succeeded
 		return (int8)pick;
 	}
 	// failed
@@ -708,7 +714,7 @@ int8 MaxTrax::noteOn(ChannelContext &channel, const byte note, uint16 volume, ui
 		voiceNum = pickvoice((channel.flags & ChannelContext::kFlagRightChannel) != 0 ? 1 : 0, pri);
 	} else {
 		VoiceContext *voice = ARRAYEND(_voiceCtx);
-		for (voiceNum = ARRAYSIZE(_voiceCtx); voiceNum-- != 0 && --voice->channel != &channel;)
+		for (voiceNum = ARRAYSIZE(_voiceCtx); voiceNum >= 0 && voice->channel != &channel; voiceNum--, voice--)
 			;
 		if (voiceNum < 0)
 			voiceNum = pickvoice((channel.flags & ChannelContext::kFlagRightChannel) != 0 ? 1 : 0, pri);
@@ -744,7 +750,7 @@ int8 MaxTrax::noteOn(ChannelContext &channel, const byte note, uint16 volume, ui
 		// adjust precalculated value
 		voice.preCalcNote = plainNote - (useOctave << 16);
 
-		// next calculate the actual period which depends on wether porta is enabled
+		// next calculate the actual period which depends on whether porta is enabled
 		if (&channel < &_channelCtx[kNumChannels] && (channel.flags & ChannelContext::kFlagPortamento) != 0) {
 			if ((channel.flags & ChannelContext::kFlagMono) != 0 && channel.lastNote < 0x80 && channel.lastNote != note) {
 				voice.portaTicks = 0;
@@ -812,6 +818,13 @@ void MaxTrax::resetChannel(ChannelContext &chan, bool rightChannel) {
 		chan.flags |= ChannelContext::kFlagRightChannel;
 }
 
+void MaxTrax::freeResources(bool loadScores, bool loadSamples) {
+	if (loadSamples)
+		freePatches();
+	if (loadScores)
+		freeScores();
+}
+
 void MaxTrax::freeScores() {
 	if (_scores) {
 		for (int i = 0; i < _numScores; ++i)
@@ -856,11 +869,7 @@ int MaxTrax::playNote(byte note, byte patch, uint16 duration, uint16 volume, boo
 bool MaxTrax::load(Common::SeekableReadStream &musicData, bool loadScores, bool loadSamples) {
 	Common::StackLock lock(_mutex);
 	stopMusic();
-	if (loadSamples)
-		freePatches();
-	if (loadScores)
-		freeScores();
-	const char *errorMsg = 0;
+	freeResources(loadScores, loadSamples);
 	// 0x0000: 4 Bytes Header "MXTX"
 	// 0x0004: uint16 tempo
 	// 0x0006: uint16 flags. bit0 = lowpassfilter, bit1 = attackvolume, bit15 = microtonal
@@ -893,21 +902,32 @@ bool MaxTrax::load(Common::SeekableReadStream &musicData, bool loadScores, bool 
 	// uint16 number of Scores
 	const uint16 scoresInFile = musicData.readUint16BE();
 
-	if (musicData.err() || musicData.eos())
-		goto ioError;
+	if (musicData.err() || musicData.eos()) {
+		warning("Maxtrax: Encountered IO-Error");
+		freeResources(loadScores, loadSamples);
+		return false;
+	}
 
 	if (loadScores) {
 		const uint16 tempScores = MIN(scoresInFile, _playerCtx.maxScoreNum);
 		Score *curScore = new Score[tempScores];
-		if (!curScore)
-			goto allocError;
+		if (!curScore) {
+			warning("Maxtrax: Could not allocate Memory");
+			freeResources(loadScores, loadSamples);
+			return false;
+		}
+
 		_scores = curScore;
 
 		for (scoresLoaded = 0; scoresLoaded < tempScores; ++scoresLoaded, ++curScore) {
 			const uint32 numEvents = musicData.readUint32BE();
 			Event *curEvent = new Event[numEvents];
-			if (!curEvent)
-				goto allocError;
+			if (!curEvent) {
+				warning("Maxtrax: Could not allocate Memory");
+				freeResources(loadScores, loadSamples);
+				return false;
+			}
+
 			curScore->events = curEvent;
 			for (int j = numEvents; j > 0; --j, ++curEvent) {
 				curEvent->command = musicData.readByte();
@@ -953,8 +973,11 @@ bool MaxTrax::load(Common::SeekableReadStream &musicData, bool loadScores, bool 
 
 			// Allocate space for both attack and release Segment.
 			Envelope *envPtr = new Envelope[totalEnvs];
-			if (!envPtr)
-				goto allocError;
+			if (!envPtr) {
+				warning("Maxtrax: Could not allocate Memory");
+				freeResources(loadScores, loadSamples);
+				return false;
+			}
 			// Attack Segment
 			curPatch.attackPtr = envPtr;
 			// Release Segment
@@ -968,29 +991,23 @@ bool MaxTrax::load(Common::SeekableReadStream &musicData, bool loadScores, bool 
 
 			// read Samples
 			int8 *allocSamples = new int8[totalSamples];
-			if (!allocSamples)
-				goto allocError;
+			if (!allocSamples) {
+				warning("Maxtrax: Could not allocate Memory");
+				freeResources(loadScores, loadSamples);
+				return false;
+			}
 			curPatch.samplePtr = allocSamples;
 			musicData.read(allocSamples, totalSamples);
 		}
 	}
 	if (!musicData.err() && !musicData.eos())
 		return true;
-ioError:
-	errorMsg = "Maxtrax: Encountered IO-Error";
-allocError:
-	if (!errorMsg)
-		errorMsg = "Maxtrax: Could not allocate Memory";
 
-	warning("%s", errorMsg);
-	if (loadSamples)
-		freePatches();
-	if (loadScores)
-		freeScores();
+	warning("Maxtrax: Encountered IO-Error");
+	freeResources(loadScores, loadSamples);
 	return false;
 }
 
-#if !defined(NDEBUG) && 0
 void MaxTrax::outPutEvent(const Event &ev, int num) {
 	struct {
 		byte cmd;
@@ -1013,24 +1030,23 @@ void MaxTrax::outPutEvent(const Event &ev, int num) {
 		;
 
 	if (num == -1)
-		debug("Event    : %02X %s %s %02X %04X %04X", ev.command, COMMANDS[i].name, COMMANDS[i].param, ev.parameter, ev.startTime, ev.stopTime);
+		debug(6, "Event    : %02X %s %s %02X %04X %04X", ev.command, COMMANDS[i].name, COMMANDS[i].param, ev.parameter, ev.startTime, ev.stopTime);
 	else
-		debug("Event %3d: %02X %s %s %02X %04X %04X", num, ev.command, COMMANDS[i].name, COMMANDS[i].param, ev.parameter, ev.startTime, ev.stopTime);
+		debug(6, "Event %3d: %02X %s %s %02X %04X %04X", num, ev.command, COMMANDS[i].name, COMMANDS[i].param, ev.parameter, ev.startTime, ev.stopTime);
 }
 
 void MaxTrax::outPutScore(const Score &sc, int num) {
+	if (gDebugLevel < 6)
+		return;
+
 	if (num == -1)
-		debug("score   : %i Events", sc.numEvents);
+		debug(6, "score   : %i Events", sc.numEvents);
 	else
-		debug("score %2d: %i Events", num, sc.numEvents);
+		debug(6, "score %2d: %i Events", num, sc.numEvents);
 	for (uint i = 0; i < sc.numEvents; ++i)
 		outPutEvent(sc.events[i], i);
-	debug("");
+	debug(6, "%s", "");
 }
-#else
-void MaxTrax::outPutEvent(const Event &ev, int num) {}
-void MaxTrax::outPutScore(const Score &sc, int num) {}
-#endif	// #ifndef NDEBUG
 
 } // End of namespace Audio
 

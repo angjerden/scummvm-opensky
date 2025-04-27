@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,15 +15,9 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
-
-#include "common/translation.h"
-
-#include "gui/dialog.h"
-#include "gui/widget.h"
 
 #include "tsage/tsage.h"
 #include "tsage/core.h"
@@ -154,7 +148,7 @@ int RightClickDialog::execute() {
 		}
 
 		g_system->delayMillis(10);
-		GLOBALS._screenSurface.updateScreen();
+		GLOBALS._screen.update();
 	}
 
 	// Execute the specified action
@@ -184,6 +178,8 @@ int RightClickDialog::execute() {
 	case 5:
 		// Options dialog
 		result = 1;
+		break;
+	default:
 		break;
 	}
 
@@ -370,22 +366,23 @@ void HelpDialog::show() {
 
 	// If a function button was selected, take care of it
 	Event evt;
-	evt.eventType = EVENT_KEYPRESS;
+	evt.eventType = EVENT_CUSTOM_ACTIONSTART;
 	evt.kbd.keycode = Common::KEYCODE_INVALID;
+	evt.customType = kActionNone;
 	if (btn == &dlg->_btnList[0]) {
-		evt.kbd.keycode = Common::KEYCODE_F2;
+		evt.customType = kActionSoundOptions;
 	} else if (btn == &dlg->_btnList[1]) {
-		evt.kbd.keycode = Common::KEYCODE_F3;
+		evt.customType = kActionQuitGame;
 	} else if (btn == &dlg->_btnList[2]) {
-		evt.kbd.keycode = Common::KEYCODE_F4;
+		evt.customType = kActionRestartGame;
 	} else if (btn == &dlg->_btnList[3]) {
-		evt.kbd.keycode = Common::KEYCODE_F5;
+		evt.customType = kActionSaveGame;
 	} else if (btn == &dlg->_btnList[4]) {
-		evt.kbd.keycode = Common::KEYCODE_F7;
+		evt.customType = kActionRestoreGame;
 	} else if (btn == &dlg->_btnList[5]) {
-		evt.kbd.keycode = Common::KEYCODE_F8;
+		evt.customType = kActionCredits;
 	} else if (btn == &dlg->_btnList[6]) {
-		evt.kbd.keycode = Common::KEYCODE_F10;
+		evt.customType = kActionPauseGame;
 	}
 
 	// Remove the dialog
@@ -393,7 +390,7 @@ void HelpDialog::show() {
 	delete dlg;
 
 	// If a action button was selected, dispatch to handle it
-	if (evt.kbd.keycode != Common::KEYCODE_INVALID)
+	if (evt.kbd.keycode != Common::KEYCODE_INVALID || evt.customType != kActionNone)
 		R2_GLOBALS._game->processEvent(evt);
 	else
 		R2_GLOBALS._events.setCursorFromFlag();
@@ -459,26 +456,26 @@ HelpDialog::HelpDialog() {
 }
 
 bool HelpDialog::handleKeypress(Event &event, GfxButton *&btn) {
-	switch (event.kbd.keycode) {
-	case Common::KEYCODE_F2:
+	switch (event.customType) {
+	case kActionSoundOptions:
 		btn = &_btnList[0];
 		break;
-	case Common::KEYCODE_F3:
+	case kActionQuitGame:
 		btn = &_btnList[1];
 		break;
-	case Common::KEYCODE_F4:
+	case kActionRestartGame:
 		btn = &_btnList[2];
 		break;
-	case Common::KEYCODE_F5:
+	case kActionSaveGame:
 		btn = &_btnList[3];
 		break;
-	case Common::KEYCODE_F7:
+	case kActionRestoreGame:
 		btn = &_btnList[4];
 		break;
-	case Common::KEYCODE_F8:
+	case kActionCredits:
 		btn = &_btnList[5];
 		break;
-	case Common::KEYCODE_F10:
+	case kActionPauseGame:
 		btn = &_btnList[6];
 		break;
 	default:

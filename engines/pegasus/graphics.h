@@ -7,19 +7,18 @@
  * Additional copyright for this file:
  * Copyright (C) 1995-1997 Presto Studios, Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
-
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -57,7 +56,6 @@ public:
 	Graphics::Surface *getCurSurface() { return _curSurface; }
 	void setCurSurface(Graphics::Surface *surface) { _curSurface = surface; }
 	Graphics::Surface *getWorkArea() { return &_workArea; }
-	void clearScreen();
 	DisplayElement *findDisplayElement(const DisplayElementID id);
 	void shakeTheWorld(TimeValue time, TimeScale scale);
 	void enableErase();
@@ -69,13 +67,10 @@ public:
 	void doFadeOutSync(const TimeValue = kOneSecondPerThirtyTicks, const TimeScale = kThirtyTicksPerSecond, bool isBlack = true);
 	void doFadeInSync(const TimeValue = kOneSecondPerThirtyTicks, const TimeScale = kThirtyTicksPerSecond, bool isBlack = true);
 
-protected:
-	void markCursorAsDirty();
-
 private:
 	PegasusEngine *_vm;
 
-	bool _modifiedScreen, _erase;
+	bool _erase;
 	Common::Rect _dirtyRect;
 	DisplayOrder _backLayer, _frontLayer;
 	DisplayElement *_firstDisplayElement, *_lastDisplayElement;

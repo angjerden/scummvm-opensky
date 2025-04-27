@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,13 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ *
+ * This file is dual-licensed.
+ * In addition to the GPLv3 license mentioned above, this code is also
+ * licensed under LGPL 2.1. See LICENSES/COPYING.LGPL file for the
+ * full text of the license.
  *
  */
 
@@ -63,7 +68,7 @@ void TXTFile::load(Common::SeekableReadStream &txt, Format format) {
 }
 
 bool TXTFile::draw(Surface &surface, int16 &left, int16 &top, int16 &right, int16 &bottom,
-                   const Font * const *fonts, uint fontCount, int color) {
+				   const Font * const *fonts, uint fontCount, int color) {
 
 	trashBuffer();
 
@@ -73,18 +78,18 @@ bool TXTFile::draw(Surface &surface, int16 &left, int16 &top, int16 &right, int1
 	resizeBuffer(right - left + 1, bottom - top + 1);
 	saveScreen(surface, left, top, right, bottom);
 
-	for (LineArray::const_iterator l = _lines.begin(); l != _lines.end(); ++l) {
-		if (l->font >= fontCount)
+	for (const auto &line : _lines) {
+		if (line.font >= fontCount)
 			continue;
 
-		fonts[l->font]->drawString(l->text, l->x, l->y, (color < 0) ? l->color : color, 0, true, surface);
+		fonts[line.font]->drawString(line.text, line.x, line.y, (color < 0) ? line.color : color, 0, true, surface);
 	}
 
 	return true;
 }
 
 bool TXTFile::draw(uint line, Surface &surface, int16 &left, int16 &top, int16 &right, int16 &bottom,
-                   const Font * const *fonts, uint fontCount, int color) {
+				   const Font * const *fonts, uint fontCount, int color) {
 
 	trashBuffer();
 
@@ -118,7 +123,7 @@ bool TXTFile::clear(Surface &surface, int16 &left, int16 &top, int16 &right, int
 }
 
 bool TXTFile::getArea(int16 &left, int16 &top, int16 &right, int16 &bottom,
-                      const Font * const *fonts, uint fontCount) const {
+					  const Font * const *fonts, uint fontCount) const {
 
 	bool hasLine = false;
 
@@ -144,7 +149,7 @@ bool TXTFile::getArea(int16 &left, int16 &top, int16 &right, int16 &bottom,
 }
 
 bool TXTFile::getArea(uint line, int16 &left, int16 &top, int16 &right, int16 &bottom,
-                      const Font * const *fonts, uint fontCount) const {
+					  const Font * const *fonts, uint fontCount) const {
 
 
 	if ((line >= _lines.size()) || (_lines[line].font >= fontCount))

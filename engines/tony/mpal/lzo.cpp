@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 /* minilzo.c -- mini subset of the LZO real-time data compression library
@@ -77,10 +76,10 @@ namespace MPAL {
  * Decompresses an LZO compressed resource
  */
 int lzo1x_decompress(const byte *in, uint32 in_len, byte *out, uint32 *out_len) {
-	register byte *op;
-	register const byte *ip;
-	register uint32 t = 0;
-	register const byte *m_pos;
+	byte *op;
+	const byte *ip;
+	uint32 t = 0;
+	const byte *m_pos;
 
 	const byte * const ip_end = in + in_len;
 
@@ -94,9 +93,9 @@ int lzo1x_decompress(const byte *in, uint32 in_len, byte *out, uint32 *out_len) 
 		if (t < 4)
 			goto match_next;
 		assert(t > 0);
-		do
+		do {
 			*op++ = *ip++;
-		while (--t > 0);
+		} while (--t > 0);
 		goto first_literal_run;
 	}
 
@@ -116,9 +115,9 @@ int lzo1x_decompress(const byte *in, uint32 in_len, byte *out, uint32 *out_len) 
 		*op++ = *ip++;
 		*op++ = *ip++;
 		*op++ = *ip++;
-		do
+		do {
 			*op++ = *ip++;
-		while (--t > 0);
+		} while (--t > 0);
 
 first_literal_run:
 		t = *ip++;
@@ -186,9 +185,9 @@ match:
 copy_match:
 				*op++ = *m_pos++;
 				*op++ = *m_pos++;
-				do
+				do {
 					*op++ = *m_pos++;
-				while (--t > 0);
+				} while (--t > 0);
 			}
 
 match_done:

@@ -7,10 +7,10 @@
  * Additional copyright for this file:
  * Copyright (C) 1994-1998 Revolution Software Ltd.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -18,13 +18,13 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 
 #include "common/rect.h"
 #include "common/system.h"
+
+#include "backends/keymapper/keymapper.h"
 
 #include "sword2/sword2.h"
 #include "sword2/defs.h"
@@ -86,7 +86,7 @@ public:
 	void setState(int state);
 	int getState();
 
-	virtual void paint(Common::Rect *clipRect = NULL);
+	virtual void paint(Common::Rect *clipRect = nullptr);
 
 	virtual void onMouseEnter() {}
 	virtual void onMouseExit() {}
@@ -223,6 +223,8 @@ void FontRendererGui::drawText(byte *text, int x, int y, int alignment) {
 			break;
 		case kAlignCenter:
 			x -= (textWidth / 2);
+			break;
+		default:
 			break;
 		}
 	}
@@ -365,6 +367,8 @@ int Dialog::runModal() {
 				case RD_WHEELDOWN:
 					_widgets[newHit]->onWheelDown(newMouseX, newMouseY);
 					break;
+				default:
+					break;
 				}
 			}
 		}
@@ -426,7 +430,7 @@ Widget::~Widget() {
 }
 
 void Widget::createSurfaceImage(int state, uint32 res, int x, int y, uint32 pc) {
-	byte *file, *colTablePtr = NULL;
+	byte *file, *colTablePtr = nullptr;
 	AnimHeader anim_head;
 	FrameHeader frame_head;
 	CdtEntry cdt_entry;
@@ -462,6 +466,8 @@ void Widget::createSurfaceImage(int state, uint32 res, int x, int y, uint32 pc) 
 		// table
 		colTablePtr = _vm->fetchAnimHeader(file) + AnimHeader::size()
 			+ anim_head.noAnimFrames * CdtEntry::size();
+		break;
+	default:
 		break;
 	}
 
@@ -545,15 +551,15 @@ public:
 		setHitRect(x, y, w, h);
 	}
 
-	virtual void onMouseExit() {
+	void onMouseExit() override {
 		setState(0);
 	}
 
-	virtual void onMouseDown(int x, int y) {
+	void onMouseDown(int x, int y) override {
 		setState(1);
 	}
 
-	virtual void onMouseUp(int x, int y) {
+	void onMouseUp(int x, int y) override {
 		if (getState() != 0) {
 			setState(0);
 			_parent->onAction(this);
@@ -576,21 +582,21 @@ public:
 		setHitRect(x, y, w, h);
 	}
 
-	virtual void onMouseExit() {
+	void onMouseExit() override {
 		setState(0);
 	}
 
-	virtual void onMouseDown(int x, int y) {
+	void onMouseDown(int x, int y) override {
 		setState(1);
 		_parent->onAction(this);
 		_holdCounter = 0;
 	}
 
-	virtual void onMouseUp(int x, int y) {
+	void onMouseUp(int x, int y) override {
 		setState(0);
 	}
 
-	virtual void onTick() {
+	void onTick() override {
 		if (getState() != 0) {
 			_holdCounter++;
 			if (_holdCounter > 16 && (_holdCounter % 4) == 0)
@@ -637,18 +643,18 @@ public:
 		return _value;
 	}
 
-	virtual void onMouseExit() {
+	void onMouseExit() override {
 		if (_holding && !_value)
 			setState(_upState);
 		_holding = false;
 	}
 
-	virtual void onMouseDown(int x, int y) {
+	void onMouseDown(int x, int y) override {
 		_holding = true;
 		setState(_downState);
 	}
 
-	virtual void onMouseUp(int x, int y) {
+	void onMouseUp(int x, int y) override {
 		if (_holding) {
 			_holding = false;
 			_value = !_value;
@@ -684,7 +690,7 @@ private:
 
 public:
 	Slider(Dialog *parent, Widget *background, int max,
-		int x, int y, int w, int h, int step, Widget *base = NULL)
+		int x, int y, int w, int h, int step, Widget *base = nullptr)
 		: Widget(parent, 1), _background(background),
 		  _dragging(false), _value(0), _targetValue(0),
 		  _maxValue(max), _valueStep(step) {
@@ -699,7 +705,7 @@ public:
 			createSurfaceImages(3406, x, y);
 	}
 
-	virtual void paint(Common::Rect *clipRect = NULL) {
+	void paint(Common::Rect *clipRect = nullptr) override {
 		// This will redraw a bit more than is strictly necessary,
 		// but I doubt that will make any noticeable difference.
 
@@ -718,7 +724,7 @@ public:
 		return _value;
 	}
 
-	virtual void onMouseMove(int x, int y) {
+	void onMouseMove(int x, int y) override {
 		if (_dragging) {
 			int newX = x - _dragOffset;
 			int newValue;
@@ -741,7 +747,7 @@ public:
 		}
 	}
 
-	virtual void onMouseDown(int x, int y) {
+	void onMouseDown(int x, int y) override {
 		if (x >= _sprites[0].x && x < _sprites[0].x + 38) {
 			_dragging = true;
 			_dragOffset = x - _sprites[0].x;
@@ -758,12 +764,12 @@ public:
 		}
 	}
 
-	virtual void releaseMouse(int x, int y) {
+	void releaseMouse(int x, int y) override {
 		if (_dragging)
 			_dragging = false;
 	}
 
-	virtual void onTick() {
+	void onTick() override {
 		if (!_dragging) {
 			int target = posFromValue(_targetValue);
 
@@ -899,10 +905,10 @@ OptionsDialog::OptionsDialog(Sword2Engine *vm) : Dialog(vm) {
 	_mixer = _vm->_mixer;
 
 	_panel = new Widget(this, 1);
-	_panel->createSurfaceImages(3405, 0, 40);
+	_panel->createSurfaceImages(3405, (_vm->_features & GF_SPANISHDEMO) ? 45 : 0, 40);
 
 	_objectLabelsSwitch = new Switch(this, 304, 100, 53, 32);
-	_objectLabelsSwitch->createSurfaceImages(3687, 304, 100);
+	_objectLabelsSwitch->createSurfaceImages((_vm->_features & GF_SPANISHDEMO) ? 901 : 3687, 304, 100);
 
 	_subtitlesSwitch = new Switch(this, 510, 100, 53, 32);
 	_subtitlesSwitch->linkSurfaceImages(_objectLabelsSwitch, 510, 100);
@@ -1090,16 +1096,16 @@ public:
 	void setText(FontRendererGui *fr, int slot, byte *text) {
 		_fr = fr;
 		if (text)
-			sprintf((char *)_text, "%d.  %s", slot, text);
+			Common::sprintf_s(_text, "%d.  %s", slot, text);
 		else
-			sprintf((char *)_text, "%d.  ", slot);
+			Common::sprintf_s(_text, "%d.  ", slot);
 	}
 
 	byte *getText() {
 		return &_text[0];
 	}
 
-	virtual void paint(Common::Rect *clipRect = NULL) {
+	void paint(Common::Rect *clipRect = nullptr) override {
 		Widget::paint();
 
 		// HACK: The main dialog is responsible for drawing the text
@@ -1109,7 +1115,7 @@ public:
 			_fr->drawText(_text, _sprites[0].x + 16, _sprites[0].y + 4 + 2 * getState());
 	}
 
-	virtual void onMouseDown(int x, int y) {
+	void onMouseDown(int x, int y) override {
 		if (_clickable) {
 			if (getState() == 0) {
 				setState(1);
@@ -1123,15 +1129,15 @@ public:
 		}
 	}
 
-	virtual void onWheelUp(int x, int y) {
+	void onWheelUp(int x, int y) override {
 		_parent->onAction(this, kWheelUp);
 	}
 
-	virtual void onWheelDown(int x, int y) {
+	void onWheelDown(int x, int y) override {
 		_parent->onAction(this, kWheelDown);
 	}
 
-	virtual void onKey(KeyboardEvent *ke) {
+	void onKey(KeyboardEvent *ke) override {
 		if (_editable) {
 			if (ke->kbd.keycode == Common::KEYCODE_BACKSPACE)
 				_parent->onAction(this, Common::KEYCODE_BACKSPACE);
@@ -1144,7 +1150,7 @@ public:
 		}
 	}
 
-	virtual void onTick() {
+	void onTick() override {
 		if (_editable)
 			_parent->onAction(this, kCursorTick);
 	}
@@ -1173,7 +1179,7 @@ SaveRestoreDialog::SaveRestoreDialog(Sword2Engine *vm, int mode) : Dialog(vm) {
 	_fr2 = new FontRendererGui(_vm, _vm->_redFontId);
 
 	_panel = new Widget(this, 1);
-	_panel->createSurfaceImages(2016, 0, 40);
+	_panel->createSurfaceImages(2016, (_vm->_features & GF_SPANISHDEMO) ? 84 : 0, 40);
 
 	for (i = 0; i < 4; i++) {
 		_slotButton[i] = new Slot(this, 114, 0, 384, 36);
@@ -1247,7 +1253,7 @@ void SaveRestoreDialog::updateSlots() {
 			slot->setText(fr, baseSlot + i, description);
 			slot->setClickable(true);
 		} else {
-			slot->setText(fr, baseSlot + i, NULL);
+			slot->setText(fr, baseSlot + i, nullptr);
 			slot->setClickable(_mode == kSaveDialog);
 		}
 
@@ -1338,7 +1344,7 @@ void SaveRestoreDialog::onAction(Widget *widget, int result) {
 			else
 				_firstPos = 4;
 
-			strcpy((char *)_editBuffer, (char *)slot->getText());
+			Common::strcpy_s(_editBuffer, (char *)slot->getText());
 			_editPos = strlen((char *)_editBuffer);
 			_cursorTick = 0;
 			_editBuffer[_editPos] = '_';
@@ -1403,7 +1409,16 @@ void SaveRestoreDialog::setResult(int result) {
 }
 
 int SaveRestoreDialog::runModal() {
+	Common::Keymapper *keymapper = _vm->_system->getEventManager()->getKeymapper();
+	Common::Keymap *engineDefault = keymapper->getKeymap("engine-default");
+
+	if (_mode == kSaveDialog)
+		engineDefault->setEnabled(false);
+
 	int result = Dialog::runModal();
+
+	if (_mode == kSaveDialog)
+		engineDefault->setEnabled(true);
 
 	if (result) {
 		switch (_mode) {
@@ -1417,6 +1432,8 @@ int SaveRestoreDialog::runModal() {
 		case kRestoreDialog:
 			if (_vm->restoreGame(_selectedSlot) != SR_OK)
 				result = 0;
+			break;
+		default:
 			break;
 		}
 	}

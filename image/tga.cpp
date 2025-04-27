@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -27,18 +26,18 @@
 #include "image/tga.h"
 
 #include "common/util.h"
+#include "common/algorithm.h"
 #include "common/stream.h"
 #include "common/textconsole.h"
 #include "common/error.h"
 
 namespace Image {
 
-TGADecoder::TGADecoder() {
+TGADecoder::TGADecoder() : _colorMap(0) {
 	_colorMapSize = 0;
 	_colorMapOrigin = 0;
 	_colorMapLength = 0;
 	_colorMapEntryLength = 0;
-	_colorMap = NULL;
 }
 
 TGADecoder::~TGADecoder() {
@@ -47,7 +46,7 @@ TGADecoder::~TGADecoder() {
 
 void TGADecoder::destroy() {
 	_surface.free();
-	delete[] _colorMap;
+	_colorMap.clear();
 }
 
 bool TGADecoder::loadStream(Common::SeekableReadStream &tga) {
@@ -152,7 +151,7 @@ bool TGADecoder::readHeader(Common::SeekableReadStream &tga, byte &imageType, by
 			// of alpha-bits, however, as the game files that use this decoder seems
 			// to ignore that fact, we force the amount to 8 for 32bpp files for now.
 			_format = Graphics::PixelFormat(4, 8, 8, 8, /* attributeBits */ 8, 16, 8, 0, 24);
-		} else if (pixelDepth == 16 && imageType == TYPE_TRUECOLOR) {
+		} else if (pixelDepth == 16) {
 			// 16bpp TGA is ARGB1555
 			_format = Graphics::PixelFormat(2, 5, 5, 5, attributeBits, 10, 5, 0, 15);
 		} else {
@@ -182,36 +181,28 @@ bool TGADecoder::readHeader(Common::SeekableReadStream &tga, byte &imageType, by
 }
 
 bool TGADecoder::readColorMap(Common::SeekableReadStream &tga, byte imageType, byte pixelDepth) {
-	_colorMap = new byte[3 * _colorMapLength];
-	for (int i = 0; i < _colorMapLength * 3; i += 3) {
+	_colorMap.resize(_colorMapLength, false);
+	for (int i = 0; i < _colorMapLength; i++) {
 		byte r, g, b;
 		if (_colorMapEntryLength == 32) {
-			byte a;
-			Graphics::PixelFormat format(4, 8, 8, 8, 0, 16, 8, 0, 24);
-			uint32 color = tga.readUint32LE();
-			format.colorToARGB(color, a, r, g, b);
-		} else if (_colorMapEntryLength == 24) {
-			r = tga.readByte();
-			g = tga.readByte();
 			b = tga.readByte();
+			g = tga.readByte();
+			r = tga.readByte();
+			tga.readByte(); // for alpha
+		} else if (_colorMapEntryLength == 24) {
+			b = tga.readByte();
+			g = tga.readByte();
+			r = tga.readByte();
 		} else if (_colorMapEntryLength == 16) {
 			byte a;
-			Graphics::PixelFormat format(2, 5, 5, 5, 0, 10, 5, 0, 15);
+			static const Graphics::PixelFormat format(2, 5, 5, 5, 0, 10, 5, 0, 15);
 			uint16 color = tga.readUint16LE();
 			format.colorToARGB(color, a, r, g, b);
 		} else {
 			warning("Unsupported image type: %d", imageType);
 			r = g = b = 0;
 		}
-#ifdef SCUMM_LITTLE_ENDIAN
-		_colorMap[i] = r;
-		_colorMap[i + 1] = g;
-		_colorMap[i + 2] = b;
-#else
-		_colorMap[i] = b;
-		_colorMap[i + 1] = g;
-		_colorMap[i + 2] = r;
-#endif
+		_colorMap.set(i, r, g, b);
 	}
 	return true;
 }
@@ -353,6 +344,13 @@ bool TGADecoder::readDataRLE(Common::SeekableReadStream &tga, byte imageType, by
 #endif
 						count--;
 					}
+				} else if (pixelDepth == 16 && imageType == TYPE_RLE_TRUECOLOR) {
+					const uint16 rgb = tga.readUint16LE();
+					while (rleCount-- > 0) {
+						*((uint16 *)data) = rgb;
+						data += 2;
+						count--;
+					}
 				} else if (pixelDepth == 8 && imageType == TYPE_RLE_BW) {
 					byte color = tga.readByte();
 					while (rleCount-- > 0) {
@@ -397,6 +395,12 @@ bool TGADecoder::readDataRLE(Common::SeekableReadStream &tga, byte imageType, by
 #endif
 						count--;
 					}
+				} else if (pixelDepth == 16 && imageType == TYPE_RLE_TRUECOLOR) {
+					while (rleCount-- > 0) {
+						*((uint16 *)data) = tga.readUint16LE();
+						data += 2;
+						count--;
+					}
 				} else if (pixelDepth == 8 && imageType == TYPE_RLE_BW) {
 					while (rleCount-- > 0) {
 						byte color = tga.readByte();
@@ -424,6 +428,22 @@ bool TGADecoder::readDataRLE(Common::SeekableReadStream &tga, byte imageType, by
 	} else {
 		return false;
 	}
+
+	// If it's a bottom origin image, we need to vertically flip the image
+	if (!_originTop) {
+		byte *tempLine = new byte[_surface.pitch];
+		byte *line1 = (byte *)_surface.getBasePtr(0, 0);
+		byte *line2 = (byte *)_surface.getBasePtr(0, _surface.h - 1);
+
+		for (int y = 0; y < (_surface.h / 2); ++y, line1 += _surface.pitch, line2 -= _surface.pitch) {
+			Common::copy(line1, line1 + _surface.pitch, tempLine);
+			Common::copy(line2, line2 + _surface.pitch, line1);
+			Common::copy(tempLine, tempLine + _surface.pitch, line2);
+		}
+
+		delete[] tempLine;
+	}
+
 	return true;
 }
 

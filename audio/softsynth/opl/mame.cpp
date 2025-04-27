@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  * LGPL licensed version of MAMEs fmopl (V0.37a modified) by
  * Tatsuyuki Satoh. Included from LGPL'ed AdPlug.
@@ -29,33 +28,39 @@
 #include <stdarg.h>
 #include <math.h>
 
+#if defined(__DS__)
+#include "dsmain.h"
+#endif
+
 #include "mame.h"
 
+#include "audio/mixer.h"
+#include "common/system.h"
 #include "common/textconsole.h"
 #include "common/util.h"
 
-#if defined(_WIN32_WCE) || defined(__SYMBIAN32__) || defined(__GP32__) || defined(GP2X) || defined(__MAEMO__) || defined(__DS__) || defined(__MINT__) || defined(__N64__)
+#if defined(__MAEMO__) || defined(__DS__) || defined(__MINT__) || defined(__N64__)
 #include "common/config-manager.h"
-#endif
-
-#if defined(__DS__)
-#include "dsmain.h"
 #endif
 
 namespace OPL {
 namespace MAME {
 
 OPL::~OPL() {
+	stop();
 	MAME::OPLDestroy(_opl);
-	_opl = 0;
+	_opl = nullptr;
 }
 
-bool OPL::init(int rate) {
-	if (_opl)
+bool OPL::init() {
+	if (_opl) {
+		stopCallbacks();
 		MAME::OPLDestroy(_opl);
+	}
 
-	_opl = MAME::makeAdLibOPL(rate);
-	return (_opl != 0);
+	_opl = MAME::makeAdLibOPL(g_system->getMixer()->getOutputRate());
+
+	return (_opl != nullptr);
 }
 
 void OPL::reset() {
@@ -66,15 +71,11 @@ void OPL::write(int a, int v) {
 	MAME::OPLWrite(_opl, a, v);
 }
 
-byte OPL::read(int a) {
-	return MAME::OPLRead(_opl, a);
-}
-
 void OPL::writeReg(int r, int v) {
 	MAME::OPLWriteReg(_opl, r, v);
 }
 
-void OPL::readBuffer(int16 *buffer, int length) {
+void OPL::generateSamples(int16 *buffer, int length) {
 	MAME::YM3812UpdateOne(_opl, buffer, length);
 }
 
@@ -91,8 +92,8 @@ void OPL::readBuffer(int16 *buffer, int length) {
 
 /* final output shift , limit minimum and maximum */
 #define OPL_OUTSB   (TL_BITS+3-16)		/* OPL output final shift 16bit */
-#define OPL_MAXOUT (0x7fff<<OPL_OUTSB)
-#define OPL_MINOUT (-0x8000<<OPL_OUTSB)
+#define OPL_MAXOUT   (0x7fff<<OPL_OUTSB)
+#define OPL_MINOUT (-(0x8000<<OPL_OUTSB))
 
 /* -------------------- quality selection --------------------- */
 
@@ -242,7 +243,7 @@ static int RATE_0[16]=
 static int num_lock = 0;
 
 /* work table */
-static void *cur_chip = NULL;	/* current chip point */
+static void *cur_chip = nullptr;	/* current chip point */
 /* currenct chip state */
 /* static OPLSAMPLE  *bufL,*bufR; */
 static OPL_CH *S_CH;
@@ -403,6 +404,8 @@ inline uint OPL_CALC_SLOT(OPL_SLOT *SLOT) {
 			SLOT->eve = EG_OFF + 1;
 			SLOT->evs = 0;
 			break;
+		default:
+			break;
 		}
 	}
 	/* calcrate envelope */
@@ -539,7 +542,7 @@ inline void OPL_CALC_CH(OPL_CH *CH) {
 	}
 }
 
-/* ---------- calcrate rythm block ---------- */
+/* ---------- calcrate rhythm block ---------- */
 #define WHITE_NOISE_db 6.0
 inline void OPL_CALC_RH(FM_OPL *OPL, OPL_CH *CH) {
 	uint env_tam, env_sd, env_top, env_hh;
@@ -673,22 +676,22 @@ static int OPLOpenTable(void) {
 #else
 
 	/* allocate dynamic tables */
-	if ((TL_TABLE = (int *)malloc(TL_MAX * 2 * sizeof(int))) == NULL)
+	if ((TL_TABLE = (int *)malloc(TL_MAX * 2 * sizeof(int))) == nullptr)
 		return 0;
 
-	if ((SIN_TABLE = (int **)malloc(SIN_ENT * 4 * sizeof(int *))) == NULL) {
+	if ((SIN_TABLE = (int **)malloc(SIN_ENT * 4 * sizeof(int *))) == nullptr) {
 		free(TL_TABLE);
 		return 0;
 	}
 #endif
 
-	if ((AMS_TABLE = (int *)malloc(AMS_ENT * 2 * sizeof(int))) == NULL) {
+	if ((AMS_TABLE = (int *)malloc(AMS_ENT * 2 * sizeof(int))) == nullptr) {
 		free(TL_TABLE);
 		free(SIN_TABLE);
 		return 0;
 	}
 
-	if ((VIB_TABLE = (int *)malloc(VIB_ENT * 2 * sizeof(int))) == NULL) {
+	if ((VIB_TABLE = (int *)malloc(VIB_ENT * 2 * sizeof(int))) == nullptr) {
 		free(TL_TABLE);
 		free(SIN_TABLE);
 		free(AMS_TABLE);
@@ -766,7 +769,7 @@ static void OPLCloseTable(void) {
 	free(ENV_CURVE);
 }
 
-/* CSM Key Controll */
+/* CSM Key Control */
 inline void CSMKeyControll(OPL_CH *CH) {
 	OPL_SLOT *slot1 = &CH->SLOT[SLOT1];
 	OPL_SLOT *slot2 = &CH->SLOT[SLOT2];
@@ -808,7 +811,7 @@ void OPLWriteReg(FM_OPL *OPL, int r, int v) {
 	uint block_fnum;
 
 	switch (r & 0xe0) {
-	case 0x00: /* 00-1f:controll */
+	case 0x00: /* 00-1f:control */
 		switch (r & 0x1f) {
 		case 0x01:
 			/* wave selector enable */
@@ -853,6 +856,8 @@ void OPLWriteReg(FM_OPL *OPL, int r, int v) {
 				}
 			}
 			return;
+		default:
+			break;
 		}
 		break;
 	case 0x20:	/* am,vib,ksr,eg type,mul */
@@ -884,11 +889,11 @@ void OPLWriteReg(FM_OPL *OPL, int r, int v) {
 		case 0xbd:
 			/* amsep,vibdep,r,bd,sd,tom,tc,hh */
 			{
-			uint8 rkey = OPL->rythm ^ v;
+			uint8 rkey = OPL->rhythm ^ v;
 			OPL->ams_table = &AMS_TABLE[v & 0x80 ? AMS_ENT : 0];
 			OPL->vib_table = &VIB_TABLE[v & 0x40 ? VIB_ENT : 0];
-			OPL->rythm  = v & 0x3f;
-			if (OPL->rythm & 0x20) {
+			OPL->rhythm  = v & 0x3f;
+			if (OPL->rhythm & 0x20) {
 				/* BD key on/off */
 				if (rkey & 0x10) {
 					if (v & 0x10) {
@@ -989,6 +994,8 @@ void OPLWriteReg(FM_OPL *OPL, int r, int v) {
 			CH->SLOT[slot&1].wavetable = &SIN_TABLE[(v & 0x03) * SIN_ENT];
 		}
 		return;
+	default:
+		break;
 	}
 }
 
@@ -998,7 +1005,7 @@ static int OPL_LockTable(void) {
 	if (num_lock>1)
 		return 0;
 	/* first time */
-	cur_chip = NULL;
+	cur_chip = nullptr;
 	/* allocate total level table (128kb space) */
 	if (!OPLOpenTable()) {
 		num_lock--;
@@ -1013,7 +1020,7 @@ static void OPL_UnLockTable(void) {
 	if (num_lock)
 		return;
 	/* last time */
-	cur_chip = NULL;
+	cur_chip = nullptr;
 	OPLCloseTable();
 }
 
@@ -1028,7 +1035,7 @@ void YM3812UpdateOne(FM_OPL *OPL, int16 *buffer, int length) {
 	int16 *buf = buffer;
 	uint amsCnt = OPL->amsCnt;
 	uint vibCnt = OPL->vibCnt;
-	uint8 rythm = OPL->rythm & 0x20;
+	uint8 rhythm = OPL->rhythm & 0x20;
 	OPL_CH *CH, *R_CH;
 
 
@@ -1037,7 +1044,7 @@ void YM3812UpdateOne(FM_OPL *OPL, int16 *buffer, int length) {
 		/* channel pointers */
 		S_CH = OPL->P_CH;
 		E_CH = &S_CH[9];
-		/* rythm slot */
+		/* rhythm slot */
 		SLOT7_1 = &S_CH[7].SLOT[SLOT1];
 		SLOT7_2 = &S_CH[7].SLOT[SLOT2];
 		SLOT8_1 = &S_CH[8].SLOT[SLOT1];
@@ -1048,7 +1055,7 @@ void YM3812UpdateOne(FM_OPL *OPL, int16 *buffer, int length) {
 		ams_table = OPL->ams_table;
 		vib_table = OPL->vib_table;
 	}
-	R_CH = rythm ? &S_CH[6] : E_CH;
+	R_CH = rhythm ? &S_CH[6] : E_CH;
 	for (i = 0; i < length; i++) {
 		/*            channel A         channel B         channel C      */
 		/* LFO */
@@ -1058,8 +1065,8 @@ void YM3812UpdateOne(FM_OPL *OPL, int16 *buffer, int length) {
 		/* FM part */
 		for (CH = S_CH; CH < R_CH; CH++)
 			OPL_CALC_CH(CH);
-		/* Rythn part */
-		if (rythm)
+		/* Rhythm part */
+		if (rhythm)
 			OPL_CALC_RH(OPL, S_CH);
 		/* limit check */
 		data = CLIP(outd[0], OPL_MINOUT, OPL_MAXOUT);
@@ -1110,15 +1117,15 @@ FM_OPL *OPLCreate(int type, int clock, int rate) {
 	int max_ch = 9; /* normaly 9 channels */
 
 	if (OPL_LockTable() == -1)
-		return NULL;
+		return nullptr;
 	/* allocate OPL state space */
 	state_size  = sizeof(FM_OPL);
 	state_size += sizeof(OPL_CH) * max_ch;
 
 	/* allocate memory block */
 	ptr = (char *)calloc(state_size, 1);
-	if (ptr == NULL)
-		return NULL;
+	if (ptr == nullptr)
+		return nullptr;
 
 	/* clear */
 	memset(ptr, 0, state_size);
@@ -1208,7 +1215,7 @@ int OPLTimerOver(FM_OPL *OPL, int c) {
 		OPL_STATUS_SET(OPL, 0x20);
 	} else {	/* Timer A */
 		OPL_STATUS_SET(OPL, 0x40);
-		/* CSM mode key,TL controll */
+		/* CSM mode key,TL control */
 		if (OPL->mode & 0x80) {	/* CSM mode total level latch and auto key on */
 			int ch;
 			if (OPL->UpdateHandler)
@@ -1227,7 +1234,7 @@ FM_OPL *makeAdLibOPL(int rate) {
 	// We need to emulate one YM3812 chip
 	int env_bits = FMOPL_ENV_BITS_HQ;
 	int eg_ent = FMOPL_EG_ENT_HQ;
-#if defined(_WIN32_WCE) || defined(__SYMBIAN32__) || defined(__GP32__) || defined(GP2X) || defined(__MAEMO__) || defined(__DS__) || defined(__MINT__) || defined(__N64__)
+#if defined(__MAEMO__) || defined(__DS__) || defined(__MINT__) || defined(__N64__)
 	if (ConfMan.hasKey("FM_high_quality") && ConfMan.getBool("FM_high_quality")) {
 		env_bits = FMOPL_ENV_BITS_HQ;
 		eg_ent = FMOPL_EG_ENT_HQ;

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -62,10 +61,55 @@ struct GameSettings {
 };
 
 ToltecsEngine::ToltecsEngine(OSystem *syst, const ToltecsGameDescription *gameDesc) : Engine(syst), _gameDescription(gameDesc) {
-	// Assign default values to the config manager, in case settings are missing
-	ConfMan.registerDefault("originalsaveload", "false");
-
 	_rnd = new Common::RandomSource("toltecs");
+
+	_sceneResIndex = 0;
+	_sceneWidth = _sceneHeight = 0;
+
+	_counter01 = _counter02 = 0;
+	_movieSceneFlag = false;
+	_flag01 = 0;
+
+	_cameraX = _cameraY = _newCameraX = _newCameraY = 0;
+	_cameraHeight = 0;
+	_guiHeight = 26;
+
+	_doSpeech = true;
+	_doText = true;
+
+	_walkSpeedY = 5;
+	_walkSpeedX = 1;
+
+	_mouseX = 0;
+	_mouseY = 0;
+	_mouseDblClickTicks = 60;
+	_mouseWaitForRelease = false;
+	_mouseButton = 0;
+	_mouseDisabled = 0;
+	_leftButtonDown = false;
+	_rightButtonDown = false;
+
+	_arc = nullptr;
+	_res = nullptr;
+	_screen = nullptr;
+	_script = nullptr;
+	_anim = nullptr;
+	_palette = nullptr;
+	_segmap = nullptr;
+	_moviePlayer = nullptr;
+	_music = nullptr;
+	_menuSystem = nullptr;
+
+	_sound = nullptr;
+
+	_cfgText = ConfMan.getBool("subtitles");
+	_cfgVoices = !ConfMan.getBool("speech_mute");
+
+	_saveLoadRequested = 0;
+	_isSaveAllowed = true;
+
+	const Common::FSNode gameDataDir(ConfMan.getPath("path"));
+	SearchMan.addSubDirectoryMatching(gameDataDir, "english.pdi");
 }
 
 ToltecsEngine::~ToltecsEngine() {
@@ -73,7 +117,7 @@ ToltecsEngine::~ToltecsEngine() {
 }
 
 Common::Error ToltecsEngine::run() {
-	initGraphics(640, 400, true);
+	initGraphics(640, 400);
 
 	_isSaveAllowed = true;
 
@@ -126,7 +170,7 @@ Common::Error ToltecsEngine::run() {
 	_menuSystem = new MenuSystem(this);
 
 	_sound = new Sound(this);
-	_console = new Console(this);
+	setDebugger(new Console(this));
 
 	_cfgText = ConfMan.getBool("subtitles");
 	_cfgVoices = !ConfMan.getBool("speech_mute");
@@ -179,7 +223,6 @@ Common::Error ToltecsEngine::run() {
 	_music->stopSequence();
 	_sound->stopAll();
 
-	delete _console;
 	delete _arc;
 	delete _res;
 	delete _screen;
@@ -308,7 +351,6 @@ void ToltecsEngine::drawScreen() {
 		_screen->_guiRefresh = false;
 	}
 
-	_console->onFrame();
 	_system->updateScreen();
 	_system->delayMillis(10);
 
@@ -319,28 +361,24 @@ void ToltecsEngine::updateInput() {
 	Common::Event event;
 	Common::EventManager *eventMan = _system->getEventManager();
 	while (eventMan->pollEvent(event)) {
-	switch (event.type) {
-		case Common::EVENT_KEYDOWN:
-			_keyState = event.kbd;
-
+		switch (event.type) {
+		case Common::EVENT_CUSTOM_ENGINE_ACTION_START:
+			_action = event.customType;
 			//debug("key: flags = %02X; keycode = %d", _keyState.flags, _keyState.keycode);
 
-			if (event.kbd.hasFlags(Common::KBD_CTRL) && event.kbd.keycode == Common::KEYCODE_d)
-				_console->attach();
-
-			switch (event.kbd.keycode) {
-			case Common::KEYCODE_F5:
+			switch (event.customType) {
+			case kActionOpenSaveMenu:
 				showMenu(kMenuIdSave);
 				break;
-			case Common::KEYCODE_F7:
+			case kActionOpenLoadMenu:
 				showMenu(kMenuIdLoad);
 				break;
-			case Common::KEYCODE_SPACE:
+			case kActionSkipDialog:
 				// Skip current dialog line, if a dialog is active
 				if (_screen->getTalkTextDuration() > 0) {
 					_sound->stopSpeech();
 					_screen->finishTalkTextItems();
-					_keyState.reset();	// event consumed
+					_action = kActionNone;	// event consumed
 				}
 				break;
 			default:
@@ -348,8 +386,8 @@ void ToltecsEngine::updateInput() {
 			}
 
 			break;
-		case Common::EVENT_KEYUP:
-			_keyState.reset();
+		case Common::EVENT_CUSTOM_ENGINE_ACTION_END:
+			_action = kActionNone;
 			break;
 		case Common::EVENT_MOUSEMOVE:
 			_mouseX = event.mouse.x;
@@ -377,8 +415,8 @@ void ToltecsEngine::updateInput() {
 			break;
 		default:
 			break;
-		}
-	}
+		}	// switch
+	}	// while
 
 	if (!_mouseDisabled) {
 
@@ -491,7 +529,7 @@ void ToltecsEngine::talk(int16 slotIndex, int16 slotOffset) {
 	byte *scanData = _script->getSlotData(slotIndex) + slotOffset;
 
 	// If there's another talk text at the requested slot and it's still
-	// active, don't overwrite it. Fixes bug #3600166.
+	// active, don't overwrite it. Fixes bug #6224.
 	if (_screen->isTalkTextActive(slotIndex))
 		return;
 
@@ -643,7 +681,7 @@ void ToltecsEngine::showMenu(MenuID menuId) {
 	_screen->finishTalkTextItems();
 	CursorMan.showMouse(true);
 	_menuSystem->run(menuId);
-	_keyState.reset();
+	_action = kActionNone;
 	_script->setSwitchLocalDataNear(true);
 }
 

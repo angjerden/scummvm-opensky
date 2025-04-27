@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -84,20 +83,6 @@ byte *Resource::data() {
 /*------------------------------------------------------------------------*/
 
 FileManager::FileManager(AccessEngine *vm) : _vm(vm) {
-	switch (vm->getGameID()) {
-	case GType_Amazon:
-		if (_vm->isDemo())
-			_filenames = &Amazon::FILENAMES_DEMO[0];
-		else
-			_filenames = &Amazon::FILENAMES[0];
-		break;
-	case GType_MartianMemorandum:
-		_filenames = &Martian::FILENAMES[0];
-		break;
-	default:
-		error("Unknown game");
-	}
-
 	_fileNumber = -1;
 	_setPaletteFlag = true;
 }
@@ -118,7 +103,7 @@ Resource *FileManager::loadFile(const FileIdent &fileIdent) {
 	return loadFile(fileIdent._fileNum, fileIdent._subfile);
 }
 
-Resource *FileManager::loadFile(const Common::String &filename) {
+Resource *FileManager::loadFile(const Common::Path &filename) {
 	Resource *res = new Resource();
 
 	// Open the file
@@ -132,25 +117,24 @@ Resource *FileManager::loadFile(const Common::String &filename) {
 	return res;
 }
 
-bool FileManager::existFile(const Common::String &filename) {
-	Common::File f;
-	return f.exists(filename);
+bool FileManager::existFile(const Common::Path &filename) {
+	return Common::File::exists(filename);
 }
 
-void FileManager::openFile(Resource *res, const Common::String &filename) {
+void FileManager::openFile(Resource *res, const Common::Path &filename) {
 	// Open up the file
 	_fileNumber = -1;
 	if (!res->_file.open(filename))
-		error("Could not open file - %s", filename.c_str());
+		error("Could not open file - %s", filename.toString().c_str());
 }
 
-void FileManager::loadScreen(Graphics::Surface *dest, int fileNum, int subfile) {
+void FileManager::loadScreen(Graphics::ManagedSurface *dest, int fileNum, int subfile) {
 	Resource *res = loadFile(fileNum, subfile);
 	handleScreen(dest, res);
 	delete res;
 }
 
-void FileManager::handleScreen(Graphics::Surface *dest, Resource *res) {
+void FileManager::handleScreen(Graphics::ManagedSurface *dest, Resource *res) {
 	_vm->_screen->loadRawPalette(res->_stream);
 	if (_setPaletteFlag)
 		_vm->_screen->setPalette();
@@ -161,27 +145,24 @@ void FileManager::handleScreen(Graphics::Surface *dest, Resource *res) {
 	res->_size -= res->_stream->pos();
 	handleFile(res);
 
-	if (dest != _vm->_screen)
-		dest->w = _vm->_screen->w;
+	Graphics::Surface destSurface = dest->getSubArea(Common::Rect(0, 0,
+		_vm->_screen->w, _vm->_screen->h));
 
-	if (dest->w == dest->pitch) {
-		res->_stream->read((byte *)dest->getPixels(), dest->w * dest->h);
+	if (destSurface.w == destSurface.pitch) {
+		res->_stream->read((byte *)destSurface.getPixels(), destSurface.w * destSurface.h);
 	} else {
-		for (int y = 0; y < dest->h; ++y) {
-			byte *pDest = (byte *)dest->getBasePtr(0, y);
-			res->_stream->read(pDest, dest->w);
+		for (int y = 0; y < destSurface.h; ++y) {
+			byte *pDest = (byte *)destSurface.getBasePtr(0, y);
+			res->_stream->read(pDest, destSurface.w);
 		}
 	}
-
-	if (dest == _vm->_screen)
-		_vm->_screen->addDirtyRect(Common::Rect(0, 0, dest->w, dest->h));
 }
 
 void FileManager::loadScreen(int fileNum, int subfile) {
 	loadScreen(_vm->_screen, fileNum, subfile);
 }
 
-void FileManager::loadScreen(const Common::String &filename) {
+void FileManager::loadScreen(const Common::Path &filename) {
 	Resource *res = loadFile(filename);
 	handleScreen(_vm->_screen, res);
 	delete res;
@@ -215,8 +196,8 @@ void FileManager::handleFile(Resource *res) {
 
 void FileManager::setAppended(Resource *res, int fileNum) {
 	// Open the file for access
-	if (!res->_file.open(_filenames[fileNum]))
-		error("Could not open file %s", _filenames[fileNum]);
+	if (!res->_file.open(_vm->_res->FILENAMES[fileNum]))
+		error("Could not open file %s", _vm->_res->FILENAMES[fileNum].toString().c_str());
 
 	// If a different file has been opened then previously, load its index
 	if (_fileNumber != fileNum) {

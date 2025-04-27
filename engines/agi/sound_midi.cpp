@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -46,7 +45,6 @@
 #include "common/file.h"
 #include "common/memstream.h"
 #include "common/stream.h"
-#include "common/textconsole.h"
 
 #include "agi/agi.h"
 
@@ -58,16 +56,6 @@
 namespace Agi {
 
 static uint32 convertSND2MIDI(byte *snddata, byte **data);
-
-MIDISound::MIDISound(uint8 *data, uint32 len, int resnum) : AgiSound() {
-	_data = data; // Save the resource pointer
-	_len  = len;  // Save the resource's length
-	_type = READ_LE_UINT16(data); // Read sound resource's type
-	_isValid = (_type == AGI_SOUND_4CHN) && (_data != NULL) && (_len >= 2);
-
-	if (!_isValid) // Check for errors
-		warning("Error creating MIDI sound from resource %d (Type %d, length %d)", resnum, _type, len);
-}
 
 SoundGenMIDI::SoundGenMIDI(AgiBase *vm, Audio::Mixer *pMixer) : SoundGen(vm, pMixer), _isGM(false) {
 	MidiPlayer::createDriver(MDT_MIDI | MDT_ADLIB);
@@ -103,8 +91,12 @@ void SoundGenMIDI::sendToChannel(byte channel, uint32 b) {
 			_channelsTable[channel]->volume(_channelsVolume[channel] * _masterVolume / 255);
 	}
 
-	if (_channelsTable[channel])
-		_channelsTable[channel]->send(b);
+	if (_channelsTable[channel]) {
+		if (_vm->getFlag(VM_FLAG_SOUND_ON))
+			_channelsTable[channel]->send(b);
+		else
+			_channelsTable[channel]->send(0x7bb0 + channel);	// all notes off
+	}
 }
 
 void SoundGenMIDI::endOfTrack() {
@@ -113,16 +105,14 @@ void SoundGenMIDI::endOfTrack() {
 }
 
 void SoundGenMIDI::play(int resnum) {
-	MIDISound *track;
-
 	stop();
 
 	_isGM = true;
 
-	track = (MIDISound *)_vm->_game.sounds[resnum];
+	AgiSound *track = _vm->_game.sounds[resnum];
 
 	// Convert AGI Sound data to MIDI
-	int midiMusicSize = convertSND2MIDI(track->_data, &_midiData);
+	int midiMusicSize = convertSND2MIDI(track->getData(), &_midiData);
 
 	MidiParser *parser = MidiParser::createParser_SMF();
 	if (parser->loadMusic(_midiData, midiMusicSize)) {
@@ -141,7 +131,7 @@ void SoundGenMIDI::play(int resnum) {
 	}
 }
 
-/* channel / intrument setup: */
+/* channel / instrument setup: */
 
 /* most songs are good with this: */
 unsigned char instr[] = {0, 0, 0};
@@ -153,9 +143,15 @@ unsigned char instr[] = {50, 51, 19};
 static void writeDelta(Common::MemoryWriteStreamDynamic *st, int32 delta) {
 	int32 i;
 
-	i = delta >> 21; if (i > 0) st->writeByte((i & 127) | 128);
-	i = delta >> 14; if (i > 0) st->writeByte((i & 127) | 128);
-	i = delta >> 7;  if (i > 0) st->writeByte((i & 127) | 128);
+	i = delta >> 21;
+	if (i > 0)
+		st->writeByte((i & 127) | 128);
+	i = delta >> 14;
+	if (i > 0)
+		st->writeByte((i & 127) | 128);
+	i = delta >> 7;
+	if (i > 0)
+		st->writeByte((i & 127) | 128);
 	st->writeByte(delta & 127);
 }
 
@@ -164,7 +160,7 @@ static uint32 convertSND2MIDI(byte *snddata, byte **data) {
 	int n;
 	double ll;
 
-	Common::MemoryWriteStreamDynamic st;
+	Common::MemoryWriteStreamDynamic st(DisposeAfterUse::NO);
 
 	ll = log10(pow(2.0, 1.0 / 12.0));
 
@@ -190,7 +186,7 @@ static uint32 convertSND2MIDI(byte *snddata, byte **data) {
 		for (pos = start; pos < end; pos += 5) {
 			uint16 freq,  dur;
 			dur = (snddata[pos + 0] | (snddata[pos + 1] << 8)) * SPEED_FACTOR;
-			freq = ((snddata[pos + 2] & 0x3F)  <<  4)  +  (snddata[pos + 3] & 0x0F);
+			freq = ((snddata[pos + 2] & 0x3F)  <<  4)  + (snddata[pos + 3] & 0x0F);
 			if (snddata[pos + 2] > 0) {
 				double fr;
 				int note;

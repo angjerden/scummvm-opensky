@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,13 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ *
+ * This file is dual-licensed.
+ * In addition to the GPLv3 license mentioned above, this code is also
+ * licensed under LGPL 2.1. See LICENSES/COPYING.LGPL file for the
+ * full text of the license.
  *
  */
 
@@ -25,9 +30,6 @@
 #include "common/translation.h"
 
 #include "gui/message.h"
-
-#include "audio/mixer.h"
-#include "audio/mods/infogrames.h"
 
 #include "gob/gob.h"
 #include "gob/inter.h"
@@ -214,7 +216,7 @@ void Inter_v2::checkSwitchTable(uint32 &offset) {
 
 			default:
 				if (!found) {
-					_vm->_game->_script->evalExpr(0);
+					_vm->_game->_script->evalExpr(nullptr);
 					if (value == _vm->_game->_script->getResultInt())
 						found = true;
 				} else
@@ -315,12 +317,12 @@ void Inter_v2::o2_initMult() {
 		delete[] _vm->_mult->_renderObjs;
 		delete[] _vm->_mult->_orderArray;
 
-		_vm->_mult->_objects = 0;
-		_vm->_mult->_renderObjs = 0;
-		_vm->_mult->_orderArray = 0;
+		_vm->_mult->_objects = nullptr;
+		_vm->_mult->_renderObjs = nullptr;
+		_vm->_mult->_orderArray = nullptr;
 	}
 
-	if (_vm->_mult->_objects == 0) {
+	if (_vm->_mult->_objects == nullptr) {
 		_vm->_mult->_renderObjs = new Mult::Mult_Object*[_vm->_mult->_objCount];
 		memset(_vm->_mult->_renderObjs, 0,
 				_vm->_mult->_objCount * sizeof(Mult::Mult_Object*));
@@ -383,7 +385,7 @@ void Inter_v2::o2_initMult() {
 	_vm->_draw->_spriteBottom = _vm->_mult->_animHeight;
 	_vm->_draw->_destSpriteX = 0;
 	_vm->_draw->_destSpriteY = 0;
-	_vm->_draw->spriteOperation(0);
+	_vm->_draw->spriteOperation(DRAW_BLITSURF);
 
 	debugC(4, kDebugGraphics, "o2_initMult: x = %d, y = %d, w = %d, h = %d",
 		  _vm->_mult->_animLeft, _vm->_mult->_animTop,
@@ -582,6 +584,13 @@ void Inter_v2::o2_totSub() {
 
 	uint8 flags = _vm->_game->_script->readByte();
 
+	// Skipping the copy protection screen in Adibou 1
+	if (!_vm->_copyProtection && (_vm->getGameType() == kGameTypeAdibou1) && totFile == "p_eleph") {
+		debugC(2, kDebugGameFlow, "Skipping copy protection screen");
+		_varStack.pushInt(1);
+		return;
+	}
+
 	_vm->_game->totSub(flags, totFile);
 }
 
@@ -612,7 +621,7 @@ void Inter_v2::o2_pushVars() {
 			if (_vm->_game->_script->evalExpr(&value) != 20)
 				value = 0;
 
-			_varStack.pushInt((uint16)value);
+			_varStack.pushInt((uint32)value);
 		}
 	}
 }
@@ -620,14 +629,14 @@ void Inter_v2::o2_pushVars() {
 void Inter_v2::o2_popVars() {
 	uint8 count = _vm->_game->_script->readByte();
 	for (int i = 0; i < count; i++) {
-		int16 varOff = _vm->_game->_script->readVarIndex();
+		uint16 varOff = _vm->_game->_script->readVarIndex();
 
 		_varStack.pop(*_variables, varOff);
 	}
 }
 
 void Inter_v2::o2_loadMapObjects() {
-	_vm->_map->loadMapObjects(0);
+	_vm->_map->loadMapObjects(nullptr);
 }
 
 void Inter_v2::o2_freeGoblins() {
@@ -760,6 +769,9 @@ void Inter_v2::o2_setGoblinState() {
 				(_vm->_scenery->_animBottom - _vm->_scenery->_animTop);
 		*(obj.pPosX) = obj.goblinX * _vm->_map->getTilesWidth();
 		break;
+
+	default:
+		break;
 	}
 }
 
@@ -773,7 +785,7 @@ void Inter_v2::o2_placeGoblin() {
 	y = _vm->_game->_script->readValExpr();
 	state = _vm->_game->_script->readValExpr();
 
-	_vm->_goblin->placeObject(0, 0, index, x, y, state);
+	_vm->_goblin->placeObject(nullptr, 0, index, x, y, state);
 }
 
 void Inter_v2::o2_initScreen() {
@@ -800,7 +812,7 @@ void Inter_v2::o2_initScreen() {
 			height = _vm->_height = 400;
 			_vm->_global->_colorCount = 16;
 
-			_vm->_video->setSize(true);
+			_vm->_video->setSize();
 
 		} else if (_vm->_global->_videoMode == 0x10) {
 
@@ -813,8 +825,15 @@ void Inter_v2::o2_initScreen() {
 			_vm->_height = 200;
 			_vm->_global->_colorCount = 256;
 
-			_vm->_video->setSize(false);
+			_vm->_video->setSize();
 
+		}
+	}
+	else if (_vm->getGameType() == kGameTypeAdibou1 || _vm->getGameType() == kGameTypeAdi2) {
+		if (_vm->is640x400() && width == 640 && height == 480) {
+			// Force height to 400: the game is mostly scaled from the 320x200 version and
+			// never makes use of the space beyond height 400, so we can get rid of it.
+			height = 400;
 		}
 	}
 
@@ -875,13 +894,13 @@ void Inter_v2::o2_scroll() {
 	int16 curX;
 	int16 curY;
 
-	startX = CLIP((int) _vm->_game->_script->readValExpr(), 0,
+	startX = CLIP((int)_vm->_game->_script->readValExpr(), 0,
 			_vm->_video->_surfWidth - _vm->_width);
-	startY = CLIP((int) _vm->_game->_script->readValExpr(), 0,
+	startY = CLIP((int)_vm->_game->_script->readValExpr(), 0,
 			_vm->_video->_surfHeight - _vm->_height);
-	endX = CLIP((int) _vm->_game->_script->readValExpr(), 0,
+	endX = CLIP((int)_vm->_game->_script->readValExpr(), 0,
 			_vm->_video->_surfWidth - _vm->_width);
-	endY = CLIP((int) _vm->_game->_script->readValExpr(), 0,
+	endY = CLIP((int)_vm->_game->_script->readValExpr(), 0,
 			_vm->_video->_surfHeight - _vm->_height);
 	stepX = _vm->_game->_script->readValExpr();
 	stepY = _vm->_game->_script->readValExpr();
@@ -889,10 +908,10 @@ void Inter_v2::o2_scroll() {
 	curX = startX;
 	curY = startY;
 	while (!_vm->shouldQuit() && ((curX != endX) || (curY != endY))) {
-		curX = stepX > 0 ? MIN(curX + stepX, (int) endX) :
-			MAX(curX + stepX, (int) endX);
-		curY = stepY > 0 ? MIN(curY + stepY, (int) endY) :
-			MAX(curY + stepY, (int) endY);
+		curX = stepX > 0 ? MIN(curX + stepX, (int)endX) :
+			MAX(curX + stepX, (int)endX);
+		curY = stepY > 0 ? MIN(curY + stepY, (int)endY) :
+			MAX(curY + stepY, (int)endY);
 
 		_vm->_draw->_scrollOffsetX = curX;
 		_vm->_draw->_scrollOffsetY = curY;
@@ -964,7 +983,11 @@ void Inter_v2::o2_playImd() {
 	bool close = (props.lastFrame == -1);
 	if (props.startFrame == -2) {
 		props.startFrame = 0;
-		props.lastFrame  = 0;
+		if (_vm->getGameType() == kGameTypeAdibou1) {
+			props.lastFrame  = -1;
+			props.noBlock    = true;
+		} else
+			props.lastFrame  = 0;
 		close = false;
 	}
 
@@ -978,11 +1001,11 @@ void Inter_v2::o2_playImd() {
 void Inter_v2::o2_getImdInfo() {
 	Common::String imd = _vm->_game->_script->evalString();
 
-	int16 varX      = _vm->_game->_script->readVarIndex();
-	int16 varY      = _vm->_game->_script->readVarIndex();
-	int16 varFrames = _vm->_game->_script->readVarIndex();
-	int16 varWidth  = _vm->_game->_script->readVarIndex();
-	int16 varHeight = _vm->_game->_script->readVarIndex();
+	uint16 varX      = _vm->_game->_script->readVarIndex();
+	uint16 varY      = _vm->_game->_script->readVarIndex();
+	uint16 varFrames = _vm->_game->_script->readVarIndex();
+	uint16 varWidth  = _vm->_game->_script->readVarIndex();
+	uint16 varHeight = _vm->_game->_script->readVarIndex();
 
 	// WORKAROUND: The nut rolling animation in the administration center
 	// in Woodruff is called "noixroul", but the scripts think it's "noixroule".
@@ -1057,6 +1080,9 @@ void Inter_v2::o2_assign(OpFuncParams &params) {
 			else
 				WRITE_VARO_STR(dest, _vm->_game->_script->getResultStr());
 			break;
+
+		default:
+			break;
 		}
 	}
 }
@@ -1085,37 +1111,41 @@ void Inter_v2::o2_printText(OpFuncParams &params) {
 	}
 
 	do {
-		for (i = 0; (_vm->_game->_script->peekChar() != '.') &&
+		for (i = 0; i < 59 && (_vm->_game->_script->peekChar() != '.') &&
 				(_vm->_game->_script->peekByte() != 200); i++) {
 			buf[i] = _vm->_game->_script->readChar();
 		}
 
+		const int limit = MAX(60 - i, 0);
 		if (_vm->_game->_script->peekByte() != 200) {
 			_vm->_game->_script->skip(1);
 			switch (_vm->_game->_script->peekByte()) {
 			case TYPE_VAR_INT8:
 			case TYPE_ARRAY_INT8:
-				sprintf(buf + i, "%d",
+				snprintf(buf + i, limit, "%d",
 						(int8) READ_VARO_UINT8(_vm->_game->_script->readVarIndex()));
 				break;
 
 			case TYPE_VAR_INT16:
 			case TYPE_VAR_INT32_AS_INT16:
 			case TYPE_ARRAY_INT16:
-				sprintf(buf + i, "%d",
+				snprintf(buf + i, limit, "%d",
 						(int16) READ_VARO_UINT16(_vm->_game->_script->readVarIndex()));
 				break;
 
 			case TYPE_VAR_INT32:
 			case TYPE_ARRAY_INT32:
-				sprintf(buf + i, "%d",
+				snprintf(buf + i, limit, "%d",
 						(int32)VAR_OFFSET(_vm->_game->_script->readVarIndex()));
 				break;
 
 			case TYPE_VAR_STR:
 			case TYPE_ARRAY_STR:
-				sprintf(buf + i, "%s",
+				snprintf(buf + i, limit, "%s",
 						GET_VARO_STR(_vm->_game->_script->readVarIndex()));
+				break;
+
+			default:
 				break;
 			}
 			_vm->_game->_script->skip(1);
@@ -1164,6 +1194,9 @@ void Inter_v2::o2_addHotspot(OpFuncParams &params) {
 
 	if (key == 0)
 		key = ABS(id) + 41960;
+
+	_vm->_draw->adjustCoords(0, &left, &top);
+	_vm->_draw->adjustCoords(2, &width, &height);
 
 	if (left < 0) {
 		width += left;
@@ -1285,6 +1318,9 @@ void Inter_v2::o2_getTotTextItemPart(OpFuncParams &params) {
 					case 3:
 					case 4:
 						totData += 2;
+						break;
+
+					default:
 						break;
 					}
 				}
@@ -1446,7 +1482,13 @@ void Inter_v2::o2_checkData(OpFuncParams &params) {
 	debugC(2, kDebugFileIO, "Requested size of file \"%s\": %d", file.c_str(), size);
 
 	WRITE_VAR_OFFSET(varOff, (size == -1) ? -1 : 50);
-	WRITE_VAR(16, (uint32) size);
+	// WORKAROUND: the "current hotspot" variable (also VAR(16)) is sometimes corrupted here before being read.
+	// We skip writing the file size into VAR(16) here as a workaround (the value is not used anyway).
+	// In some versions of Adibou 1, this sometimes triggers the "quit" action instead of starting
+	// a chosen Read/Count application.
+	// Note: a similar issue has been found in Adibou 2, see o7_checkData().
+	if (_vm->getGameType() != kGameTypeAdibou1  || !_vm->isCurrentTot("KID.TOT"))
+		WRITE_VAR(16, (uint32) size);
 }
 
 void Inter_v2::o2_readData(OpFuncParams &params) {
@@ -1467,7 +1509,7 @@ void Inter_v2::o2_readData(OpFuncParams &params) {
 
 		if (!_vm->_saveLoad->load(file, dataVar, size, offset)) {
 
-			GUI::MessageDialog dialog(_("Failed to load game state from file."));
+			GUI::MessageDialog dialog(_("Failed to load saved game from file."));
 			dialog.runModal();
 
 		} else
@@ -1496,6 +1538,15 @@ void Inter_v2::o2_readData(OpFuncParams &params) {
 
 	WRITE_VAR(1, 1);
 	Common::SeekableReadStream *stream = _vm->_dataIO->getFile(file);
+
+	// Fall back to the version from our detection tables, if the VERSION
+	// file does not exist - bug #14857
+	if (!stream && !scumm_stricmp(file, "version") && !offset && size == 5) {
+		Common::strlcpy((char *)buf, _vm->getGameVersion(), 5);
+		WRITE_VAR(1, 0);
+		return;
+	}
+
 	if (!stream)
 		return;
 
@@ -1537,7 +1588,7 @@ void Inter_v2::o2_writeData(OpFuncParams &params) {
 
 		if (!_vm->_saveLoad->save(file, dataVar, size, offset)) {
 
-			GUI::MessageDialog dialog(_("Failed to save game state to file."));
+			GUI::MessageDialog dialog(_("Failed to save game to file."));
 			dialog.runModal();
 
 		} else
@@ -1556,7 +1607,7 @@ void Inter_v2::o2_loadInfogramesIns(OpGobParams &params) {
 	varName = _vm->_game->_script->readInt16();
 
 	Common::strlcpy(fileName, GET_VAR_STR(varName), 16);
-	strcat(fileName, ".INS");
+	Common::strcat_s(fileName, ".INS");
 
 	_vm->_sound->infogramesLoadInstruments(fileName);
 }
@@ -1568,7 +1619,7 @@ void Inter_v2::o2_playInfogrames(OpGobParams &params) {
 	varName = _vm->_game->_script->readInt16();
 
 	Common::strlcpy(fileName, GET_VAR_STR(varName), 16);
-	strcat(fileName, ".DUM");
+	Common::strcat_s(fileName, ".DUM");
 
 	_vm->_sound->infogramesLoadSong(fileName);
 	_vm->_sound->infogramesPlay();
@@ -1653,9 +1704,9 @@ int16 Inter_v2::loadSound(int16 search) {
 		Common::strlcpy(sndfile, _vm->_game->_script->readString(9), 10);
 
 		if (type == SOUND_ADL)
-			strcat(sndfile, ".ADL");
+			Common::strcat_s(sndfile, ".ADL");
 		else
-			strcat(sndfile, ".SND");
+			Common::strcat_s(sndfile, ".SND");
 
 		int32 dataSize;
 		byte *dataPtr = _vm->_dataIO->getFile(sndfile, dataSize);

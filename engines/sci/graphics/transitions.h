@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -40,8 +39,8 @@ enum {
 	SCI_TRANSITIONS_STRAIGHT_FROM_LEFT			= 3,
 	SCI_TRANSITIONS_STRAIGHT_FROM_BOTTOM		= 4,
 	SCI_TRANSITIONS_STRAIGHT_FROM_TOP			= 5,
-	SCI_TRANSITIONS_DIAGONALROLL_FROMCENTER		= 6,
-	SCI_TRANSITIONS_DIAGONALROLL_TOCENTER		= 7,
+	SCI_TRANSITIONS_DIAGONALROLL_TOCENTER		= 6,
+	SCI_TRANSITIONS_DIAGONALROLL_FROMCENTER		= 7,
 	SCI_TRANSITIONS_BLOCKS						= 8,
 	SCI_TRANSITIONS_PIXELATION					= 9,
 	SCI_TRANSITIONS_FADEPALETTE					= 10,
@@ -74,7 +73,7 @@ private:
 	void doTransition(int16 number, bool blackout);
 	void setNewPalette(bool blackoutFlag);
 	void setNewScreen(bool blackoutFlag);
-	void copyRectToScreen(const Common::Rect rect, bool blackoutFlag);
+	void copyRectToScreen(const Common::Rect &rect, bool blackoutFlag);
 	void fadeOut();
 	void fadeIn();
 	void pixelation(bool blackoutFlag);
@@ -89,6 +88,7 @@ private:
 	void diagonalRollFromCenter(bool blackoutFlag);
 	void diagonalRollToCenter(bool blackoutFlag);
 	bool doCreateFrame(uint32 shouldBeAtMsec);
+	void updateScreen();
 	void updateScreenAndWait(uint32 shouldBeAtMsec);
 
 	GfxScreen *_screen;
@@ -98,11 +98,11 @@ private:
 	int16 _number;
 	bool _blackoutFlag;
 	Common::Rect _picRect;
-	byte *_oldScreen; // buffer for saving current active screen data to, has dimenions of _screen->_displayScreen
+	byte *_oldScreen; // buffer for saving current active screen data to, has dimensions of _screen->_displayScreen
 
 	uint32 _transitionStartTime; // when the current transition started in milliseconds
 };
 
 } // End of namespace Sci
 
-#endif
+#endif // SCI_GRAPHICS_TRANSITIONS_H

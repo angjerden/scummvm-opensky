@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,13 +15,12 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
-#ifndef SCI_ENGINE_SEGMAN_H
-#define SCI_ENGINE_SEGMAN_H
+#ifndef SCI_ENGINE_SEG_MANAGER_H
+#define SCI_ENGINE_SEG_MANAGER_H
 
 #include "common/scummsys.h"
 #include "common/serializer.h"
@@ -29,6 +28,9 @@
 #include "sci/engine/vm.h"
 #include "sci/engine/vm_types.h"
 #include "sci/engine/segment.h"
+#ifdef ENABLE_SCI32
+#include "sci/graphics/celobj32.h" // kLowResX, kLowResY
+#endif
 
 namespace Sci {
 
@@ -37,8 +39,8 @@ namespace Sci {
  */
 enum ScriptLoadType {
 	SCRIPT_GET_DONT_LOAD = 0, /**< Fail if not loaded */
-	SCRIPT_GET_LOAD = 1, /**< Load, if neccessary */
-	SCRIPT_GET_LOCK = 3 /**< Load, if neccessary, and lock */
+	SCRIPT_GET_LOAD = 1, /**< Load, if necessary */
+	SCRIPT_GET_LOCK = 3 /**< Load, if necessary, and lock */
 };
 
 class Script;
@@ -54,22 +56,21 @@ public:
 	/**
 	 * Deallocate all memory associated with the segment manager.
 	 */
-	~SegManager();
+	~SegManager() override;
 
 	void resetSegMan();
 
-	virtual void saveLoadWithSerializer(Common::Serializer &ser);
+	void saveLoadWithSerializer(Common::Serializer &ser) override;
 
 	// 1. Scripts
 
 	/**
 	 * Allocate a script into the segment manager.
 	 * @param script_nr		The number of the script to load
-	 * @param seg_id		The segment ID of the newly allocated segment,
-	 * 						on success
-	 * @return				0 on failure, 1 on success
+	 * @param seg_id		The segment ID of the newly allocated segment.
+	 * @return				The script
 	 */
-	Script *allocateScript(int script_nr, SegmentId *seg_id);
+	Script *allocateScript(int script_nr, SegmentId &seg_id);
 
 	// The script must then be initialized; see section (1b.), below.
 
@@ -95,10 +96,11 @@ public:
 	 * Determines the segment occupied by a certain script. Optionally
 	 * load it, or load & lock it.
 	 * @param[in] script_nr	Number of the script to look up
-	 * @param[in] load		flag determining whether to load/lock the script
-	 * @return				The script's segment ID, or 0 on failure
+	 * @param[in] load		           Flag determining whether to load/lock the script
+	 * @param[in] applyScriptPatches   Apply patches for the script, if available
+	 * @return				           The script's segment ID, or 0 on failure
 	 */
-	SegmentId getScriptSegment(int script_nr, ScriptLoadType load);
+	SegmentId getScriptSegment(int script_nr, ScriptLoadType load, bool applyScriptPatches = true);
 
 	/**
 	 * Makes sure that a script and its superclasses get loaded to the heap.
@@ -106,10 +108,11 @@ public:
 	 * increased. All scripts containing superclasses of this script are loaded
 	 * recursively as well, unless 'recursive' is set to zero. The
 	 * complementary function is "uninstantiateScript()" below.
-	 * @param[in] script_nr		The script number to load
-	 * @return					The script's segment ID or 0 if out of heap
+	 * @param[in] script_nr		       The script number to load
+	 * @param[in] applyScriptPatches   Apply patches for the script, if available
+	 * @return					       The script's segment ID or 0 if out of heap
 	 */
-	int instantiateScript(int script_nr);
+	int instantiateScript(int script_nr, bool applyScriptPatches = true);
 
 	/**
 	 * Decreases the numer of lockers of a script and unloads it if that number
@@ -125,7 +128,7 @@ private:
 
 public:
 	// TODO: document this
-	reg_t getClassAddress(int classnr, ScriptLoadType lock, uint16 callerSegment);
+	reg_t getClassAddress(int classnr, ScriptLoadType lock, uint16 callerSegment, bool applyScriptPatches = true);
 
 	/**
 	 * Return a pointer to the specified script.
@@ -165,10 +168,9 @@ public:
 	/**
 	 * Allocates a data stack
 	 * @param size	Number of stack entries to reserve
-	 * @param segid	Segment ID of the stack
-	 * @return		The physical stack
+	 * @return		The data stack
 	 */
-	DataStack *allocateStack(int size, SegmentId *segid);
+	DataStack *allocateStack(int size);
 
 
 	// 5. System Strings
@@ -301,11 +303,10 @@ public:
 	 * Return the string referenced by pointer.
 	 * pointer can point to either a raw or non-raw segment.
 	 * @param pointer The pointer to dereference
-	 * @parm entries The number of values expected (for checking)
 	 * @return The string referenced, or an empty string if not enough
 	 * entries were available.
 	 */
-	Common::String getString(reg_t pointer, int entries = 0);
+	Common::String getString(reg_t pointer);
 
 
 	/**
@@ -313,14 +314,14 @@ public:
 	 * src and dest can point to raw and non-raw segments.
 	 * Conversion is performed as required.
 	 */
-	void strcpy(reg_t dest, reg_t src);
+	void strcpy_(reg_t dest, reg_t src);
 
 	/**
 	 * Copies a string from src to dest.
 	 * dest can point to a raw or non-raw segment.
 	 * Conversion is performed as required.
 	 */
-	void strcpy(reg_t dest, const char *src);
+	void strcpy_(reg_t dest, const char *src);
 
 	/**
 	 * Copies a string from src to dest.
@@ -409,6 +410,11 @@ public:
 	const char *getObjectName(reg_t pos);
 
 	/**
+	 * Finds the addresses of all objects with the given name.
+	 */
+	Common::Array<reg_t> findObjectsByName(const Common::String &name);
+
+	/**
 	 * Find the address of an object by its name. In case multiple objects
 	 * with the same name occur, the optional index parameter can be used
 	 * to distinguish between them. If index is -1, then if there is a
@@ -421,6 +427,11 @@ public:
 	 */
 	reg_t findObjectByName(const Common::String &name, int index = -1);
 
+	/**
+	 * Finds the addresses of all objects with the superclass of the given name.
+	 */
+	Common::Array<reg_t> findObjectsBySuperClass(const Common::String &superClassName);
+
 	uint32 classTableSize() const { return _classTable.size(); }
 	Class getClass(int index) const { return _classTable[index]; }
 	void setClassOffset(int index, reg_t offset) { _classTable[index].reg = offset;	}
@@ -430,13 +441,21 @@ public:
 	reg_t getParserPtr() const { return _parserPtr; }
 
 #ifdef ENABLE_SCI32
-	SciArray<reg_t> *allocateArray(reg_t *addr);
-	SciArray<reg_t> *lookupArray(reg_t addr);
+	bool isValidAddr(reg_t reg, SegmentType expected) const {
+		SegmentObj *mobj = getSegmentObj(reg.getSegment());
+		return (mobj &&
+				mobj->getType() == expected &&
+				mobj->isValidOffset(reg.getOffset()));
+	}
+
+	SciArray *allocateArray(SciArrayType type, uint16 size, reg_t *addr);
+	SciArray *lookupArray(reg_t addr);
 	void freeArray(reg_t addr);
-	SciString *allocateString(reg_t *addr);
-	SciString *lookupString(reg_t addr);
-	void freeString(reg_t addr);
-	SegmentId getStringSegmentId() { return _stringSegId; }
+	bool isArray(reg_t addr) const;
+
+	SciBitmap *allocateBitmap(reg_t *addr, const int16 width, const int16 height, const uint8 skipColor = kDefaultSkipColor, const int16 originX = 0, const int16 originY = 0, const int16 xResolution = kLowResX, const int16 yResolution = kLowResY, const uint32 paletteSize = 0, const bool remap = false, const bool gc = true);
+	SciBitmap *lookupBitmap(reg_t addr);
+	void freeBitmap(reg_t addr);
 #endif
 
 	const Common::Array<SegmentObj *> &getSegments() const { return _heap; }
@@ -461,19 +480,31 @@ private:
 
 #ifdef ENABLE_SCI32
 	SegmentId _arraysSegId;
-	SegmentId _stringSegId;
+	SegmentId _bitmapSegId;
 #endif
 
 public:
-	SegmentObj *allocSegment(SegmentObj *mem, SegmentId *segid);
+	SegmentId allocSegment(SegmentObj *mobj);
 
 private:
 	void deallocate(SegmentId seg);
 	void createClassTable();
 
 	SegmentId findFreeSegment() const;
+
+	/**
+	 * This implements our handling of scripts greater than 64K in size.
+	 * They occur sporadically in SCI3 games (and in The Realm (SCI2.1),
+	 * if we ever decide to support it). It works by "stealing" the upper
+	 * two bits of the segment value to use as extra offset bits, making
+	 * the maximum offset 0x3FFFF (262143). This is enough.
+	 *
+	 * The "actual" segment, then, is the segment value with the upper two
+	 * bits masked out.
+	 */
+	SegmentId getActualSegment(SegmentId seg) const;
 };
 
 } // End of namespace Sci
 
-#endif // SCI_ENGINE_SEGMAN_H
+#endif // SCI_ENGINE_SEG_MANAGER_H

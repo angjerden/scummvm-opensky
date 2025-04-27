@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,13 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ *
+ * This file is dual-licensed.
+ * In addition to the GPLv3 license mentioned above, this code is also
+ * licensed under LGPL 2.1. See LICENSES/COPYING.LGPL file for the
+ * full text of the license.
  *
  */
 
@@ -35,6 +40,7 @@
 #include "common/rational.h"
 #include "common/str.h"
 
+#include "graphics/palette.h"
 #include "graphics/surface.h"
 
 #include "video/video_decoder.h"
@@ -43,6 +49,7 @@
 
 namespace Common {
 struct Rect;
+class MemoryReadWriteStream;
 class SeekableReadStream;
 }
 namespace Audio {
@@ -97,6 +104,8 @@ public:
 	virtual void setXY(uint16 x, uint16 y);
 	/** Draw the video at the default position. */
 	void setXY();
+
+	void setDouble(bool isDouble); // double the size of the video, to accommodate higher resolutions
 
 	/** Override the video's frame rate. */
 	void setFrameRate(Common::Rational frameRate);
@@ -176,6 +185,7 @@ public:
 
 	uint16 getWidth()  const;
 	uint16 getHeight() const;
+	virtual uint32 getFlags() const = 0;
 	virtual Graphics::PixelFormat getPixelFormat() const = 0;
 
 	uint32 getFrameCount() const;
@@ -185,6 +195,7 @@ public:
 
 	uint32 getTimeToNextFrame() const;
 	uint32 getStaticTimeToNextFrame() const;
+	int32 getExpectedFrameFromCurrentTime() const;
 
 	void pauseVideo(bool pause);
 
@@ -226,8 +237,10 @@ protected:
 
 	uint32 _startTime;
 
-	byte _palette[768];
+	Graphics::Palette _palette;
 	bool _paletteDirty;
+
+	bool _isDouble;
 
 	bool    _ownSurface;
 	Graphics::Surface _surface;
@@ -256,12 +269,14 @@ protected:
 	void deRLE(byte *&destPtr, const byte *&srcPtr, int16 destLen, int16 srcLen);
 
 	// Block rendering
-	void renderBlockWhole   (Graphics::Surface &dstSurf, const byte *src, Common::Rect &rect);
-	void renderBlockWhole4X (Graphics::Surface &dstSurf, const byte *src, Common::Rect &rect);
-	void renderBlockWhole2Y (Graphics::Surface &dstSurf, const byte *src, Common::Rect &rect);
-	void renderBlockSparse  (Graphics::Surface &dstSurf, const byte *src, Common::Rect &rect);
-	void renderBlockSparse2Y(Graphics::Surface &dstSurf, const byte *src, Common::Rect &rect);
-	void renderBlockRLE     (Graphics::Surface &dstSurf, const byte *src, Common::Rect &rect);
+	void renderBlockWhole       (Graphics::Surface &dstSurf, const byte *src, Common::Rect &rect);
+	void renderBlockWholeDouble (Graphics::Surface &dstSurf, const byte *src, Common::Rect &rect);
+	void renderBlockWhole4X     (Graphics::Surface &dstSurf, const byte *src, Common::Rect &rect);
+	void renderBlockWhole2Y     (Graphics::Surface &dstSurf, const byte *src, Common::Rect &rect);
+	void renderBlockSparse      (Graphics::Surface &dstSurf, const byte *src, Common::Rect &rect);
+	void renderBlockSparseDouble(Graphics::Surface &dstSurf, const byte *src, Common::Rect &rect);
+	void renderBlockSparse2Y    (Graphics::Surface &dstSurf, const byte *src, Common::Rect &rect);
+	void renderBlockRLE         (Graphics::Surface &dstSurf, const byte *src, Common::Rect &rect);
 
 	// Sound helper functions
 	inline void unsignedToSigned(byte *buffer, int length);
@@ -287,6 +302,8 @@ public:
 	bool isVideoLoaded() const;
 
 	const Graphics::Surface *decodeNextFrame();
+
+	uint32 getFlags() const;
 
 	Graphics::PixelFormat getPixelFormat() const;
 
@@ -319,6 +336,8 @@ public:
 	bool isVideoLoaded() const;
 
 	const Graphics::Surface *decodeNextFrame();
+
+	uint32 getFlags() const;
 
 	Graphics::PixelFormat getPixelFormat() const;
 
@@ -425,6 +444,8 @@ public:
 
 	const Graphics::Surface *decodeNextFrame();
 
+	uint32 getFlags() const;
+
 	Graphics::PixelFormat getPixelFormat() const;
 
 protected:
@@ -503,6 +524,17 @@ private:
 	AudioFormat _audioFormat;
 	bool   _autoStartSound;
 
+	/**
+	 * Old stereo format packs a DPCM stream into audio packets without ensuring
+	 * that each packet contains an even amount of samples. In order for the
+	 * stream to play back correctly, all audio data needs to be pushed into a
+	 * single data buffer and read from there.
+	 *
+	 * This buffer is owned by _audioStream and will be disposed when
+	 * _audioStream is disposed.
+	 */
+	Common::MemoryReadWriteStream *_oldStereoBuffer;
+
 	// Video properties
 	bool   _hasVideo;
 	uint32 _videoCodec;
@@ -545,6 +577,7 @@ private:
 	void emptySoundSlice  (uint32 size);
 	void filledSoundSlice (uint32 size);
 	void filledSoundSlices(uint32 size, uint32 mask);
+	void createAudioStream();
 
 	uint8 evaluateMask(uint32 mask, bool *fillInfo, uint8 &max);
 
@@ -567,6 +600,8 @@ public:
 
 	bool loadStream(Common::SeekableReadStream *stream);
 	void close();
+
+	void setSurfaceMemory(void *mem, uint16 width, uint16 height, uint8 bpp);
 
 private:
 	class VMDVideoTrack : public FixedRateVideoTrack {
@@ -592,8 +627,6 @@ private:
 	class VMDAudioTrack : public AudioTrack {
 	public:
 		VMDAudioTrack(VMDDecoder *decoder);
-
-		Audio::Mixer::SoundType getSoundType() const;
 
 	protected:
 		virtual Audio::AudioStream *getAudioStream() const;

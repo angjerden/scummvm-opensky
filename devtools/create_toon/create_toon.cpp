@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  * This is a utility for storing all the hardcoded data of Toonstruck in a separate
  * data file, used by the game engine
@@ -24,12 +23,6 @@
 
 // Disable symbol overrides so that we can use system headers.
 #define FORBIDDEN_SYMBOL_ALLOW_ALL
-
-// HACK to allow building with the SDL backend on MinGW
-// see bug #1800764 "TOOLS: MinGW tools building broken"
-#ifdef main
-#undef main
-#endif // main
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -96,6 +89,9 @@ int main(int argc, char *argv[]) {
 	nbrElem = sizeof(locationDirNotVisited_SP) / sizeof(char *);
 	writeTextArray(outFile, locationDirNotVisited_SP, nbrElem);
 
+	nbrElem = sizeof(locationDirNotVisited_HE) / sizeof(char *);
+	writeTextArray(outFile, locationDirNotVisited_HE, nbrElem);
+
 	// Write locationDirVisited
 	nbrElem = sizeof(locationDirVisited_EN) / sizeof(char *);
 	writeTextArray(outFile, locationDirVisited_EN, nbrElem);
@@ -112,6 +108,9 @@ int main(int argc, char *argv[]) {
 	nbrElem = sizeof(locationDirVisited_SP) / sizeof(char *);
 	writeTextArray(outFile, locationDirVisited_SP, nbrElem);
 
+	nbrElem = sizeof(locationDirVisited_HE) / sizeof(char *);
+	writeTextArray(outFile, locationDirVisited_HE, nbrElem);
+
 	// Write specialInfoLine
 	nbrElem = sizeof(specialInfoLine_EN) / sizeof(char *);
 	writeTextArray(outFile, specialInfoLine_EN, nbrElem);
@@ -127,6 +126,9 @@ int main(int argc, char *argv[]) {
 
 	nbrElem = sizeof(specialInfoLine_SP) / sizeof(char *);
 	writeTextArray(outFile, specialInfoLine_SP, nbrElem);
+
+	nbrElem = sizeof(specialInfoLine_HE) / sizeof(char *);
+	writeTextArray(outFile, specialInfoLine_HE, nbrElem);
 
 	// Not yet handled: miscTexts, endingLine and exitLine. Are they useful?
 

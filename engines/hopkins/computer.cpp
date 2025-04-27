@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -43,9 +42,9 @@ ComputerManager::ComputerManager(HopkinsEngine *vm) {
 		memset(_menuText[i]._line, 0, ARRAYSIZE(_menuText[0]._line));
 	}
 	Common::fill(&_inputBuf[0], &_inputBuf[200], '\0');
-	_breakoutSpr = NULL;
+	_breakoutSpr = nullptr;
 	_textColor = 0;
-	_breakoutLevel = (int16 *)NULL;
+	_breakoutLevel = (int16 *)nullptr;
 	_breakoutBrickNbr = 0;
 	_breakoutScore = 0;
 	_breakoutLives = 0;
@@ -77,7 +76,7 @@ void ComputerManager::setTextMode() {
 	_vm->_graphicsMan->_lineNbr = SCREEN_WIDTH;
 	_vm->_fontMan->_font = _vm->_globals->freeMemory(_vm->_fontMan->_font);
 
-	Common::String filename = "STFONT.SPR";
+	Common::Path filename("STFONT.SPR");
 	Common::File f;
 	if (!f.exists(filename))
 		filename = "FONTE.SPR"; // Used by the BeOS and OS/2 versions as an alternative
@@ -229,6 +228,8 @@ void ComputerManager::showComputer(ComputerEnum mode) {
 				case '5':
 					readText(4);
 					break;
+				default:
+					break;
 				}
 			} else if (mode == COMPUTER_SAMANTHA) {
 				clearScreen();
@@ -252,6 +253,8 @@ void ComputerManager::showComputer(ComputerEnum mode) {
 				case '6':
 					readText(10);
 					_vm->_globals->_saveData->_data[svField270] = 4;
+					break;
+				default:
 					break;
 				}
 			}
@@ -325,13 +328,13 @@ static const char _spanishText[] =
 "% **** ORDENADOR DEL FBI NUMERO 4985 **** ORDENADOR J.HOPKINS *****\n"
 "% **** ORDENADOR DEL FBI NUMERO 4998 **** ORDENADOR S.COLLINS *****\n"
 "% *** ORDENADOR DEL FBI NUMERO 4997 *** ORDENADOR DE ACCESO LIBRE ***\n"
-"% LA CONTRASE\0245A ES: ALLFREE\n"
-"% ESCRIBE CONTRASE\0245A ACTUAL\n"
+"% LA CONTRASE\xA5" "A ES: ALLFREE\n"
+"% ESCRIBE CONTRASE\xA5" "A ACTUAL\n"
 "% **** ACCESO DENEGADO ****\n"
 "% 1) *** JUEGO ***\n"
 "% 0) SALIR DEL ORDENADOR\n"
-"% 2) CADAVER EXTRA\0245O\n"
-"% 3) CADAVER EXTRA\0245O\n"
+"% 2) CADAVER EXTRA\xA5" "O\n"
+"% 3) CADAVER EXTRA\xA5" "O\n"
 "% 4) SENADOR FERGUSSON\n"
 "% 5) MATAPERROS\n"
 "% 2) CIENTIFICO SECUESTRADO.\n"
@@ -490,7 +493,7 @@ void ComputerManager::restoreFBIRoom() {
 void ComputerManager::readText(int idx) {
 	_vm->_events->_escKeyFl = false;
 
-	Common::String filename;
+	Common::Path filename;
 	switch (_vm->_globals->_language) {
 	case LANG_EN:
 		filename = "THOPKAN.TXT";
@@ -500,6 +503,8 @@ void ComputerManager::readText(int idx) {
 		break;
 	case LANG_SP:
 		filename = "THOPKES.TXT";
+		break;
+	default:
 		break;
 	}
 
@@ -549,9 +554,9 @@ void ComputerManager::displayGamesSubMenu() {
 
 	_vm->_globals->_speed = 1;
 	_vm->_events->changeMouseCursor(0);
-	_breakoutSpr = NULL;
+	_breakoutSpr = nullptr;
 	_vm->_events->_breakoutFl = true;
-	_breakoutLevel = (int16 *)NULL;
+	_breakoutLevel = (int16 *)nullptr;
 	_breakoutBrickNbr = 0;
 	_breakoutScore = 0;
 	_breakoutLives = 5;
@@ -647,10 +652,10 @@ void ComputerManager::newLevel() {
 	_breakoutLevel = (int16 *)_vm->_globals->freeMemory((byte *)_breakoutLevel);
 
 	++_breakoutLevelNbr;
-	Common::String file;
+	Common::Path file;
 	Common::File f;
 	while (!_vm->shouldQuit()) {
-		file = Common::String::format("TAB%d.TAB", _breakoutLevelNbr);
+		file = Common::Path(Common::String::format("TAB%d.TAB", _breakoutLevelNbr));
 		if (f.open(file))
 			break;
 
@@ -712,6 +717,8 @@ void ComputerManager::displayBricks() {
 			break;
 		case 31:
 			_vm->_graphicsMan->fastDisplay2(_breakoutSpr, cellLeft, cellTop, 23);
+			break;
+		default:
 			break;
 		}
 	}
@@ -916,11 +923,11 @@ void ComputerManager::getScoreName() {
 	_score[scoreLine]._score = "         ";
 
 	char score[16];
-	sprintf(score, "%d", _breakoutScore);
+	Common::sprintf_s(score, "%d", _breakoutScore);
 	int scoreLen = 0;
-	do
+	do {
 		++scoreLen;
-	while (score[scoreLen]);
+	} while (score[scoreLen]);
 
 	for (int i = scoreLen - 1, scorePos = 8; i >= 0; i--) {
 		_score[scoreLine]._score.setChar(score[i], scorePos--);
@@ -1069,6 +1076,8 @@ int ComputerManager::moveBall() {
 	case 4:
 		_minBreakoutMoveSpeed = 3;
 		_maxBreakoutMoveSpeed = 2;
+		break;
+	default:
 		break;
 	}
 
@@ -1241,6 +1250,8 @@ void ComputerManager::checkBallCollisions() {
 						break;
 					case 6:
 						_breakoutScore += 40;
+						break;
+					default:
 						break;
 					}
 					displayScore();

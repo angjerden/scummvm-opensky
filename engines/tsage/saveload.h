@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -99,10 +98,10 @@ public:
 class SavedObject : public Serialisable {
 public:
 	SavedObject();
-	virtual ~SavedObject();
+	~SavedObject() override;
 
 	virtual Common::String getClassName() { return "SavedObject"; }
-	virtual void synchronize(Serializer &s) {}
+	void synchronize(Serializer &s) override {}
 
 	static SavedObject *createInstance(const Common::String &className);
 };
@@ -201,6 +200,7 @@ public:
 typedef SavedObject *(*SavedObjectFactory)(const Common::String &className);
 
 class Saver {
+	typedef Common::List<SavedObject *> DynObjects;
 private:
 	Common::List<SavedObject *> _objList;
 	FunctionList<bool> _saveNotifiers;
@@ -213,14 +213,14 @@ private:
 	bool _macroSaveFlag;
 	bool _macroRestoreFlag;
 
-	void resolveLoadPointers();
+	void resolveLoadPointers(DynObjects &dynObjects);
 public:
 	Saver();
 	~Saver();
 
 	Common::Error save(int slot, const Common::String &saveName);
 	Common::Error restore(int slot);
-	static bool readSavegameHeader(Common::InSaveFile *in, tSageSavegameHeader &header);
+	WARN_UNUSED_RESULT static bool readSavegameHeader(Common::InSaveFile *in, tSageSavegameHeader &header, bool skipThumbnail = true);
 	static void writeSavegameHeader(Common::OutSaveFile *out, tSageSavegameHeader &header);
 
 	void addListener(SaveListener *obj);

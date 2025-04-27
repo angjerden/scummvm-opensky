@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -35,8 +34,8 @@ class MohawkEngine_Myst;
 
 class MystConsole : public GUI::Debugger {
 public:
-	MystConsole(MohawkEngine_Myst *vm);
-	virtual ~MystConsole(void);
+	explicit MystConsole(MohawkEngine_Myst *vm);
+	~MystConsole() override;
 
 private:
 	MohawkEngine_Myst *_vm;
@@ -55,6 +54,7 @@ private:
 	bool Cmd_DisableInitOpcodes(int argc, const char **argv);
 	bool Cmd_Cache(int argc, const char **argv);
 	bool Cmd_Resources(int argc, const char **argv);
+	bool Cmd_QuickTest(int argc, const char **argv);
 };
 
 #endif
@@ -65,8 +65,8 @@ class MohawkEngine_Riven;
 
 class RivenConsole : public GUI::Debugger {
 public:
-	RivenConsole(MohawkEngine_Riven *vm);
-	virtual ~RivenConsole(void);
+	explicit RivenConsole(MohawkEngine_Riven *vm);
+	~RivenConsole() override;
 
 private:
 	MohawkEngine_Riven *_vm;
@@ -81,20 +81,22 @@ private:
 	bool Cmd_ChangeStack(int argc, const char **argv);
 	bool Cmd_Hotspots(int argc, const char **argv);
 	bool Cmd_ZipMode(int argc, const char **argv);
-	bool Cmd_RunAllBlocks(int argc, const char **argv);
+	bool Cmd_DumpCard(int argc, const char **argv);
+	bool Cmd_DumpStack(int argc, const char **argv);
 	bool Cmd_DumpScript(int argc, const char **argv);
 	bool Cmd_ListZipCards(int argc, const char **argv);
 	bool Cmd_GetRMAP(int argc, const char **argv);
 	bool Cmd_Combos(int argc, const char **argv);
 	bool Cmd_SliderState(int argc, const char **argv);
+	bool Cmd_QuickTest(int argc, const char **argv);
 };
 
 #endif
 
 class LivingBooksConsole : public GUI::Debugger {
 public:
-	LivingBooksConsole(MohawkEngine_LivingBooks *vm);
-	virtual ~LivingBooksConsole(void);
+	explicit LivingBooksConsole(MohawkEngine_LivingBooks *vm);
+	~LivingBooksConsole() override;
 
 private:
 	MohawkEngine_LivingBooks *_vm;
@@ -103,6 +105,7 @@ private:
 	bool Cmd_StopSound(int argc, const char **argv);
 	bool Cmd_DrawImage(int argc, const char **argv);
 	bool Cmd_ChangePage(int argc, const char **argv);
+	bool Cmd_ChangeCursor(int argc, const char **argv);
 };
 
 #ifdef ENABLE_CSTIME
@@ -112,7 +115,7 @@ class MohawkEngine_CSTime;
 class CSTimeConsole : public GUI::Debugger {
 public:
 	CSTimeConsole(MohawkEngine_CSTime *vm);
-	virtual ~CSTimeConsole(void);
+	~CSTimeConsole(void) override;
 
 private:
 	MohawkEngine_CSTime *_vm;

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,13 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ *
+ * This file is dual-licensed.
+ * In addition to the GPLv3 license mentioned above, this code is also
+ * licensed under LGPL 2.1. See LICENSES/COPYING.LGPL file for the
+ * full text of the license.
  *
  */
 
@@ -27,8 +32,8 @@
 
 namespace Gob {
 
-MUSPlayer::MUSPlayer(Audio::Mixer &mixer) : AdLib(mixer),
-	_songData(0), _songDataSize(0), _playPos(0), _songID(0) {
+MUSPlayer::MUSPlayer() : AdLib(60),
+	_songData(nullptr), _songDataSize(0), _playPos(nullptr), _songID(0) {
 
 }
 
@@ -41,15 +46,6 @@ void MUSPlayer::unload() {
 
 	unloadSND();
 	unloadMUS();
-}
-
-uint32 MUSPlayer::getSampleDelay(uint16 delay) const {
-	if (delay == 0)
-		return 0;
-
-	uint32 freq = (_ticksPerBeat * _tempo) / 60;
-
-	return ((uint32)delay * getSamplesPerSecond()) / freq;
 }
 
 void MUSPlayer::skipToTiming() {
@@ -66,8 +62,12 @@ uint32 MUSPlayer::pollMusic(bool first) {
 		return 0;
 	}
 
-	if (first)
-		return getSampleDelay(*_playPos++);
+	if (first) {
+		// Set the timer frequency on first run.
+		// Do not set it in rewind() for thread safety reasons.
+		setTimerFrequency((_ticksPerBeat * _tempo) / 60);
+		return *_playPos++;
+	}
 
 	uint16 delay = 0;
 	while (delay == 0) {
@@ -100,6 +100,7 @@ uint32 MUSPlayer::pollMusic(bool first) {
 				uint32 denom = *_playPos++;
 
 				_tempo = _baseTempo * num + ((_baseTempo * denom) >> 7);
+				setTimerFrequency((_ticksPerBeat * _tempo) / 60);
 
 				_playPos++;
 			} else {
@@ -182,7 +183,7 @@ uint32 MUSPlayer::pollMusic(bool first) {
 			delay += *_playPos++;
 	}
 
-	return getSampleDelay(delay);
+	return delay;
 }
 
 void MUSPlayer::rewind() {
@@ -224,7 +225,7 @@ bool MUSPlayer::readString(Common::SeekableReadStream &stream, Common::String &s
 bool MUSPlayer::readSNDHeader(Common::SeekableReadStream &snd, int &timbreCount, int &timbrePos) {
 	// Sanity check
 	if (snd.size() <= 6) {
-		warning("MUSPlayer::readSNDHeader(): File too small (%d)", snd.size());
+		warning("MUSPlayer::readSNDHeader(): File too small (%d)", (int)snd.size());
 		return false;
 	}
 
@@ -267,8 +268,8 @@ bool MUSPlayer::readSNDTimbres(Common::SeekableReadStream &snd, int timbreCount,
 
 	// Read names
 	byte nameBuffer[10];
-	for (Common::Array<Timbre>::iterator t = _timbres.begin(); t != _timbres.end(); ++t) {
-		if (!readString(snd, t->name, nameBuffer, 9)) {
+	for (auto &timbre : _timbres) {
+		if (!readString(snd, timbre.name, nameBuffer, 9)) {
 			warning("MUSPlayer::readMUSTimbres(): Failed to read timbre name");
 			return false;
 		}
@@ -280,9 +281,9 @@ bool MUSPlayer::readSNDTimbres(Common::SeekableReadStream &snd, int timbreCount,
 	}
 
 	// Read parameters
-	for (Common::Array<Timbre>::iterator t = _timbres.begin(); t != _timbres.end(); ++t) {
+	for (auto &timbre : _timbres) {
 		for (int i = 0; i < (kOperatorsPerVoice * kParamCount); i++)
-			t->params[i] = snd.readUint16LE();
+			timbre.params[i] = snd.readUint16LE();
 	}
 
 	return true;
@@ -367,10 +368,10 @@ void MUSPlayer::unloadSND() {
 void MUSPlayer::unloadMUS() {
 	delete[] _songData;
 
-	_songData     = 0;
+	_songData     = nullptr;
 	_songDataSize = 0;
 
-	_playPos = 0;
+	_playPos = nullptr;
 }
 
 uint32 MUSPlayer::getSongID() const {

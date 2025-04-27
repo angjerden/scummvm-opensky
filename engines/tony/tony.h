@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,13 +15,12 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
-#ifndef TONY_H
-#define TONY_H
+#ifndef TONY_TONY_H
+#define TONY_TONY_H
 
 #include "common/scummsys.h"
 #include "common/system.h"
@@ -57,11 +56,11 @@ using namespace MPAL;
 class Globals;
 
 enum {
-	kTonyDebugAnimations = 1 << 0,
-	kTonyDebugActions = 1 << 1,
-	kTonyDebugSound = 1 << 2,
-	kTonyDebugMusic = 1 << 3,
-	kTonyDebugMPAL = 1 << 4
+	kTonyDebugAnimations = 1,
+	kTonyDebugActions,
+	kTonyDebugSound,
+	kTonyDebugMusic,
+	kTonyDebugMPAL,
 };
 
 #define DEBUG_BASIC 1
@@ -95,8 +94,8 @@ private:
 
 protected:
 	// Engine APIs
-	virtual Common::Error run();
-	virtual bool hasFeature(EngineFeature f) const;
+	Common::Error run() override;
+	bool hasFeature(EngineFeature f) const override;
 public:
 	LPCUSTOMFUNCTION _funcList[300];
 	Common::String _funcListStrings[300];
@@ -104,12 +103,11 @@ public:
 	RMResUpdate _resUpdate;
 	uint32 _hEndOfFrame;
 	Common::File _vdbFP;
+	SoundCodecs _vdbCodec;
 	Common::Array<VoiceHeader> _voices;
 	FPSound _theSound;
 	Common::List<FPSfx *> _activeSfx;
 	Globals _globals;
-	Debugger *_debugger;
-	GUI::Debugger *getDebugger() { return _debugger; }
 
 	int16 _cTableDialog[256];
 	int16 _lTableDialog[256];
@@ -151,7 +149,7 @@ public:
 	int  _nTimeFreezed;
 public:
 	TonyEngine(OSystem *syst, const TonyGameDescription *gameDesc);
-	virtual ~TonyEngine();
+	~TonyEngine() override;
 
 	const TonyGameDescription *_gameDescription;
 	uint32 getFeatures() const;
@@ -162,12 +160,11 @@ public:
 	RMGfxEngine *getEngine() {
 		return &_theEngine;
 	}
-	void GUIError(const Common::String &msg);
 
-	virtual bool canLoadGameStateCurrently();
-	virtual bool canSaveGameStateCurrently();
-	Common::Error loadGameState(int slot);
-	Common::Error saveGameState(int slot, const Common::String &desc);
+	bool canLoadGameStateCurrently(Common::U32String *msg = nullptr) override;
+	bool canSaveGameStateCurrently(Common::U32String *msg = nullptr) override;
+	Common::Error loadGameState(int slot) override;
+	Common::Error saveGameState(int slot, const Common::String &desc, bool isAutosave = false) override;
 
 	void play();
 	void close();
@@ -218,6 +215,7 @@ public:
 	void saveState(int n, const char *name);
 	void loadState(CORO_PARAM, int n);
 	static Common::String getSaveStateFileName(int n);
+	Common::String getSaveStateName(int slot) const override;
 
 	/**
 	 * Get a thumbnail
@@ -230,7 +228,7 @@ public:
 	void openInitLoadMenu(CORO_PARAM);
 	void openInitOptions(CORO_PARAM);
 
-	virtual void syncSoundSettings();
+	void syncSoundSettings() override;
 	void saveSoundSettings();
 };
 
@@ -241,4 +239,4 @@ extern TonyEngine *g_vm;
 
 } // End of namespace Tony
 
-#endif /* TONY_H */
+#endif /* TONY_TONY_H */

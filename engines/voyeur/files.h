@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -27,7 +26,7 @@
 #include "common/file.h"
 #include "common/rect.h"
 #include "common/str.h"
-#include "voyeur/graphics.h"
+#include "voyeur/screen.h"
 
 namespace Voyeur {
 
@@ -103,7 +102,7 @@ private:
 public:
 	Common::File _file;
 
-	BoltFile(const Common::String &filename, BoltFilesState &state);
+	BoltFile(const char *filename, BoltFilesState &state);
 	virtual ~BoltFile();
 
 	BoltGroup *getBoltGroup(uint16 id);
@@ -112,7 +111,7 @@ public:
 	byte *memberAddr(uint32 id);
 	byte *memberAddrOffset(uint32 id);
 	void resolveIt(uint32 id, byte **p);
-	void resolveFunction(uint32 id, GraphicMethodPtr *fn);
+	void resolveFunction(uint32 id, ScreenMethodPtr *fn);
 
 	BoltEntry &boltEntry(uint16 id);
 	BoltEntry &getBoltEntryFromLong(uint32 id);
@@ -133,7 +132,7 @@ private:
 	void initFont();
 	void initSoundMap();
 protected:
-	virtual void initResource(int resType);
+	void initResource(int resType) override;
 public:
 	BVoyBoltFile(BoltFilesState &state);
 };
@@ -145,7 +144,7 @@ private:
 	void initPtr();
 	void initControl();
 protected:
-	virtual void initResource(int resType);
+	void initResource(int resType) override;
 public:
 	StampBoltFile(BoltFilesState &state);
 };
@@ -210,8 +209,8 @@ public:
 	FilesManager(VoyeurEngine *vm);
 	~FilesManager();
 
-	bool openBoltLib(const Common::String &filename, BoltFile *&boltFile);
-	byte *fload(const Common::String &filename, int *size);
+	bool openBoltLib(const char *filename, BoltFile *&boltFile);
+	byte *fload(const char *filename, int *size);
 };
 
 class RectEntry: public Common::Rect {
@@ -248,7 +247,7 @@ enum DisplayFlag {
 	DISPFLAG_NONE = 0};
 
 class DisplayResource {
-private:
+protected:
 	VoyeurEngine *_vm;
 public:
 	uint32 _flags;
@@ -325,9 +324,13 @@ private:
 		ViewPortAddPtr addFn, ViewPortRestorePtr restoreFn);
 public:
 	ViewPortResource *_parent;
+	ViewPortSetupPtr _setupFn;
 	int _pageCount;
+	ViewPortAddPtr _addFn;
 	int _pageIndex;
+	ViewPortRestorePtr _restoreFn;
 	int _lastPage;
+	ScreenMethodPtr _fn1;
 	Common::Rect _bounds;
 	PictureResource *_currentPic;
 	PictureResource *_activePage;
@@ -340,17 +343,13 @@ public:
 	int _rectListCount[3];
 
 	Common::Rect _clipRect;
-	GraphicMethodPtr _fn1;
-	ViewPortSetupPtr _setupFn;
-	ViewPortAddPtr _addFn;
-	ViewPortRestorePtr _restoreFn;
 	Common::Rect _fontRect;
 public:
 	ViewPortResource(BoltFilesState &state, const byte *src);
 	virtual ~ViewPortResource();
 
 	void setupViewPort();
-	void setupViewPort(PictureResource *pic, Common::Rect *clippingRect = NULL);
+	void setupViewPort(PictureResource *pic, Common::Rect *clippingRect = nullptr);
 	void addSaveRect(int pageIndex, const Common::Rect &r);
 	void fillPic(byte onOff);
 	void drawIfaceTime();

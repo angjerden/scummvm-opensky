@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -32,7 +31,7 @@
 
 #include "common/str.h"
 #include "common/system.h"
-#include "graphics/palette.h"
+#include "graphics/paletteman.h"
 #include "graphics/surface.h"
 
 #include "gui/message.h"
@@ -41,9 +40,7 @@
 #include "video/avi_decoder.h"
 #endif
 
-#ifdef USE_ZLIB
 #include "video/dxa_decoder.h"
-#endif
 
 #include "video/psx_decoder.h"
 #include "video/smk_decoder.h"
@@ -104,8 +101,8 @@ static const char *const sequenceListPSX[20] = {
 // Basic movie player
 ///////////////////////////////////////////////////////////////////////////////
 
-MoviePlayer::MoviePlayer(SwordEngine *vm, Text *textMan, ResMan *resMan, OSystem *system, Video::VideoDecoder *decoder, DecoderType decoderType)
-	: _vm(vm), _textMan(textMan), _resMan(resMan), _system(system), _textX(0), _textY(0), _textWidth(0), _textHeight(0), _textColor(1) {
+MoviePlayer::MoviePlayer(SwordEngine *vm, Text *textMan, ResMan *resMan, Sound *sound, OSystem *system, Video::VideoDecoder *decoder, DecoderType decoderType)
+	: _vm(vm), _textMan(textMan), _resMan(resMan), _sound(sound), _system(system), _textX(0), _textY(0), _textWidth(0), _textHeight(0), _textColor(1), _modeChange(false) {
 	_decoderType = decoderType;
 	_decoder = decoder;
 
@@ -121,12 +118,12 @@ MoviePlayer::~MoviePlayer() {
  * Plays an animated cutscene.
  * @param id the id of the file
  */
-bool MoviePlayer::load(uint32 id) {
-	Common::String filename;
+Common::Error MoviePlayer::load(uint32 id) {
+	Common::Path filename;
 
 	if (SwordEngine::_systemVars.showText) {
 		Common::File f;
-		filename = Common::String::format("%s.txt", sequenceList[id]);
+		filename = Common::Path(Common::String::format("%s.txt", sequenceList[id]));
 
 		if (f.open(filename)) {
 			Common::String line;
@@ -151,12 +148,12 @@ bool MoviePlayer::load(uint32 id) {
 					ptr++;
 
 				if (startFrame > endFrame) {
-					warning("%s:%d: startFrame (%d) > endFrame (%d)", filename.c_str(), lineNo, startFrame, endFrame);
+					warning("%s:%d: startFrame (%d) > endFrame (%d)", filename.toString().c_str(), lineNo, startFrame, endFrame);
 					continue;
 				}
 
 				if (startFrame <= lastEnd) {
-					warning("%s:%d startFrame (%d) <= lastEnd (%d)", filename.c_str(), lineNo, startFrame, lastEnd);
+					warning("%s:%d startFrame (%d) <= lastEnd (%d)", filename.toString().c_str(), lineNo, startFrame, lastEnd);
 					continue;
 				}
 
@@ -176,29 +173,38 @@ bool MoviePlayer::load(uint32 id) {
 
 	switch (_decoderType) {
 	case kVideoDecoderDXA:
-		filename = Common::String::format("%s.dxa", sequenceList[id]);
+		filename = Common::Path(Common::String::format("%s.dxa", sequenceList[id]));
 		break;
 	case kVideoDecoderSMK:
-		filename = Common::String::format("%s.smk", sequenceList[id]);
+		filename = Common::Path(Common::String::format("%s.smk", sequenceList[id]));
 		break;
 	case kVideoDecoderPSX:
-		filename = Common::String::format("%s.str", (_vm->_systemVars.isDemo) ? sequenceList[id] : sequenceListPSX[id]);
+		filename = Common::Path(Common::String::format("%s.str", (_vm->_systemVars.isDemo && id == 4) ? "intro" : sequenceListPSX[id]));
 		break;
 	case kVideoDecoderMP2:
-		filename = Common::String::format("%s.mp2", sequenceList[id]);
+		filename = Common::Path(Common::String::format("%s.mp2", sequenceList[id]));
+		break;
+	default:
 		break;
 	}
 
-	// Need to switch to true color for PSX/MP2 videos
-	if (_decoderType == kVideoDecoderPSX || _decoderType == kVideoDecoderMP2)
-		initGraphics(g_system->getWidth(), g_system->getHeight(), true, 0);
-
 	if (!_decoder->loadFile(filename)) {
-		// Go back to 8bpp color
-		if (_decoderType == kVideoDecoderPSX || _decoderType == kVideoDecoderMP2)
-			initGraphics(g_system->getWidth(), g_system->getHeight(), true);
+		return Common::Error(Common::kPathDoesNotExist, filename.toString());
+	}
 
-		return false;
+	// Need to switch to true color for PSX/MP2 videos
+	if (!_decoder->getPixelFormat().isCLUT8()) {
+		if (!_decoder->setOutputPixelFormats(g_system->getSupportedFormats()))
+			return Common::kUnsupportedColorMode;
+
+		Graphics::PixelFormat format = _decoder->getPixelFormat();
+		initGraphics(g_system->getWidth(), g_system->getHeight(), &format);
+
+		if (g_system->getScreenFormat() != format) {
+			return Common::kUnsupportedColorMode;
+		} else {
+			_modeChange = true;
+		}
 	}
 
 	// For DXA/MP2, also add the external sound file
@@ -206,7 +212,7 @@ bool MoviePlayer::load(uint32 id) {
 		_decoder->addStreamFileTrack(sequenceList[id]);
 
 	_decoder->start();
-	return true;
+	return Common::kNoError;
 }
 
 void MoviePlayer::play() {
@@ -232,7 +238,7 @@ void MoviePlayer::play() {
 void MoviePlayer::performPostProcessing(byte *screen) {
 	// TODO: We don't support displaying these in true color yet,
 	// nor using the PSX fonts to display subtitles.
-	if (_vm->isPsx() || _decoderType == kVideoDecoderMP2)
+	if (_vm->isPsx() || _modeChange)
 		return;
 
 	if (!_movieTexts.empty()) {
@@ -267,6 +273,8 @@ void MoviePlayer::performPostProcessing(byte *screen) {
 					break;
 				case LETTER_COL:
 					dst[x] = findTextColor();
+					break;
+				default:
 					break;
 				}
 			}
@@ -316,6 +324,9 @@ bool MoviePlayer::playVideo() {
 				else
 					_vm->_system->copyRectToScreen(frame->getPixels(), frame->pitch, x, y, frame->w, frame->h);
 			}
+
+			_sound->setCrossFadeIncrement();
+			_sound->updateMusicStreaming();
 
 			if (_decoder->hasDirtyPalette()) {
 				_vm->_system->getPaletteManager()->setPalette(_decoder->getPalette(), 0, 256);
@@ -414,25 +425,27 @@ bool MoviePlayer::playVideo() {
 
 		Common::Event event;
 		while (_vm->_system->getEventManager()->pollEvent(event))
-			if ((event.type == Common::EVENT_KEYDOWN && event.kbd.keycode == Common::KEYCODE_ESCAPE) || event.type == Common::EVENT_LBUTTONUP)
+			if ((event.type == Common::EVENT_CUSTOM_ENGINE_ACTION_START && event.customType == kActionEscape) || event.type == Common::EVENT_LBUTTONUP)
 				skipped = true;
 
 		_vm->_system->delayMillis(10);
 	}
 
 	// Need to jump back to paletted color
-	if (_decoderType == kVideoDecoderPSX || _decoderType == kVideoDecoderMP2)
-		initGraphics(g_system->getWidth(), g_system->getHeight(), true);
+	if (_modeChange) {
+		initGraphics(g_system->getWidth(), g_system->getHeight());
+		_modeChange = false;
+	}
 
 	return !_vm->shouldQuit() && !skipped;
 }
 
 uint32 MoviePlayer::getBlackColor() {
-	return (_decoderType == kVideoDecoderPSX || _decoderType == kVideoDecoderMP2) ? g_system->getScreenFormat().RGBToColor(0x00, 0x00, 0x00) : _black;
+	return (_modeChange) ? g_system->getScreenFormat().RGBToColor(0x00, 0x00, 0x00) : _black;
 }
 
 uint32 MoviePlayer::findTextColor() {
-	if (_decoderType == kVideoDecoderPSX || _decoderType == kVideoDecoderMP2) {
+	if (_modeChange) {
 		// We're in true color mode, so return the actual colors
 		switch (_textColor) {
 		case 1:
@@ -443,6 +456,8 @@ uint32 MoviePlayer::findTextColor() {
 			return g_system->getScreenFormat().RGBToColor(200, 120, 184);
 		case 4:
 			return g_system->getScreenFormat().RGBToColor(80, 152, 184);
+		default:
+			break;
 		}
 
 		return g_system->getScreenFormat().RGBToColor(0xFF, 0xFF, 0xFF);
@@ -457,6 +472,8 @@ uint32 MoviePlayer::findTextColor() {
 		return _c3Color;
 	case 4:
 		return _c4Color;
+	default:
+		break;
 	}
 	return _c1Color;
 }
@@ -507,56 +524,44 @@ void MoviePlayer::drawFramePSX(const Graphics::Surface *frame) {
 // Factory function for creating the appropriate cutscene player
 ///////////////////////////////////////////////////////////////////////////////
 
-MoviePlayer *makeMoviePlayer(uint32 id, SwordEngine *vm, Text *textMan, ResMan *resMan, OSystem *system) {
-	Common::String filename;
+MoviePlayer *makeMoviePlayer(uint32 id, SwordEngine *vm, Text *textMan, ResMan *resMan, Sound *sound, OSystem *system) {
+	Common::Path filename;
 
 	// For the PSX version, we'll try the PlayStation stream files
 	if (vm->isPsx()) {
-		// The demo uses the normal file names
-		filename = ((vm->_systemVars.isDemo) ? Common::String(sequenceList[id]) : Common::String(sequenceListPSX[id])) + ".str";
+		// The demo uses the normal file names for the intro cutscene
+		filename = ((vm->_systemVars.isDemo && id == 4) ? Common::Path("intro.str") : Common::Path(Common::String(sequenceListPSX[id]) + ".str"));
 
 		if (Common::File::exists(filename)) {
-#ifdef USE_RGB_COLOR
 			// All BS1 PSX videos run the videos at 2x speed
 			Video::VideoDecoder *psxDecoder = new Video::PSXStreamDecoder(Video::PSXStreamDecoder::kCD2x);
-			return new MoviePlayer(vm, textMan, resMan, system, psxDecoder, kVideoDecoderPSX);
-#else
-			GUI::MessageDialog dialog(Common::String::format(_("PSX stream cutscene '%s' cannot be played in paletted mode"), filename.c_str()), _("OK"));
-			dialog.runModal();
-			return 0;
-#endif
+			return new MoviePlayer(vm, textMan, resMan, sound, system, psxDecoder, kVideoDecoderPSX);
 		}
 	}
 
-	filename = Common::String::format("%s.smk", sequenceList[id]);
+	filename = Common::Path(Common::String::format("%s.smk", sequenceList[id]));
 
 	if (Common::File::exists(filename)) {
 		Video::SmackerDecoder *smkDecoder = new Video::SmackerDecoder();
-		return new MoviePlayer(vm, textMan, resMan, system, smkDecoder, kVideoDecoderSMK);
+		return new MoviePlayer(vm, textMan, resMan, sound, system, smkDecoder, kVideoDecoderSMK);
 	}
 
-	filename = Common::String::format("%s.dxa", sequenceList[id]);
+	filename = Common::Path(Common::String::format("%s.dxa", sequenceList[id]));
 
 	if (Common::File::exists(filename)) {
-#ifdef USE_ZLIB
 		Video::VideoDecoder *dxaDecoder = new Video::DXADecoder();
-		return new MoviePlayer(vm, textMan, resMan, system, dxaDecoder, kVideoDecoderDXA);
-#else
-		GUI::MessageDialog dialog(_("DXA cutscenes found but ScummVM has been built without zlib"), _("OK"));
-		dialog.runModal();
-		return 0;
-#endif
+		return new MoviePlayer(vm, textMan, resMan, sound, system, dxaDecoder, kVideoDecoderDXA);
 	}
 
 	// Old MPEG2 cutscenes
-	filename = Common::String::format("%s.mp2", sequenceList[id]);
+	filename = Common::Path(Common::String::format("%s.mp2", sequenceList[id]));
 
 	if (Common::File::exists(filename)) {
 #ifdef USE_MPEG2
 		// HACK: Old ScummVM builds ignored the AVI frame rate field and forced the video
 		// to be played back at 12fps.
 		Video::VideoDecoder *aviDecoder = new Video::AVIDecoder(12);
-		return new MoviePlayer(vm, textMan, resMan, system, aviDecoder, kVideoDecoderMP2);
+		return new MoviePlayer(vm, textMan, resMan, sound, system, aviDecoder, kVideoDecoderMP2);
 #else
 		GUI::MessageDialog dialog(_("MPEG-2 cutscenes found but ScummVM has been built without MPEG-2 support"), _("OK"));
 		dialog.runModal();
@@ -565,7 +570,7 @@ MoviePlayer *makeMoviePlayer(uint32 id, SwordEngine *vm, Text *textMan, ResMan *
 	}
 
 	if (!vm->isPsx() || scumm_stricmp(sequenceList[id], "enddemo") != 0) {
-		Common::String buf = Common::String::format(_("Cutscene '%s' not found"), sequenceList[id]);
+		Common::U32String buf = Common::U32String::format(_("Cutscene '%s' not found"), sequenceList[id]);
 		GUI::MessageDialog dialog(buf, _("OK"));
 		dialog.runModal();
 	}

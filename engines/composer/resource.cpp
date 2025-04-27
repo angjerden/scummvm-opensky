@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -27,6 +26,7 @@
 #include "common/substream.h"
 #include "common/util.h"
 #include "common/textconsole.h"
+#include "common/macresman.h"
 
 namespace Composer {
 
@@ -34,18 +34,18 @@ namespace Composer {
 // (copied from clone2727's mohawk code)
 
 Archive::Archive() {
-	_stream = 0;
+	_stream = nullptr;
 }
 
 Archive::~Archive() {
 	close();
 }
 
-bool Archive::openFile(const Common::String &fileName) {
-	Common::File *file = new Common::File();
+bool Archive::openFile(const Common::Path &fileName) {
+	Common::SeekableReadStream *file
+		= Common::MacResManager::openFileOrDataFork(fileName);
 
-	if (!file->open(fileName)) {
-		delete file;
+	if (!file) {
 		return false;
 	}
 
@@ -59,7 +59,7 @@ bool Archive::openFile(const Common::String &fileName) {
 
 void Archive::close() {
 	_types.clear();
-	delete _stream; _stream = 0;
+	delete _stream; _stream = nullptr;
 }
 
 bool Archive::hasResource(uint32 tag, uint16 id) const {
@@ -248,10 +248,11 @@ bool ComposerArchive::openStream(Common::SeekableReadStream *stream) {
 	return true;
 }
 
-Pipe::Pipe(Common::SeekableReadStream *stream) {
+Pipe::Pipe(Common::SeekableReadStream *stream, uint16 id) {
 	_offset = 0;
 	_stream = stream;
-	_anim = NULL;
+	_anim = nullptr;
+	_pipeId = id;
 }
 
 Pipe::~Pipe() {
@@ -312,8 +313,14 @@ Common::SeekableReadStream *Pipe::getResource(uint32 tag, uint16 id, bool buffer
 	if (res.entries.size() == 1) {
 		Common::SeekableReadStream *stream = new Common::SeekableSubReadStream(_stream,
 			res.entries[0].offset, res.entries[0].offset + res.entries[0].size);
-		if (buffering)
+		if (buffering) {
 			_types[tag].erase(id);
+			bool found = false;
+			for (Common::List<uint16>::const_iterator i = _bufferedResources[tag].begin(); !found && (i != _bufferedResources[tag].end()); i++)
+				if ((*i) == id) found = true;
+			if (!found)
+				_bufferedResources[tag].push_back(id);
+		}
 		return stream;
 	}
 
@@ -330,12 +337,18 @@ Common::SeekableReadStream *Pipe::getResource(uint32 tag, uint16 id, bool buffer
 		_stream->read(buffer + offset, res.entries[i].size);
 		offset += res.entries[i].size;
 	}
-	if (buffering)
+	if (buffering) {
 		_types[tag].erase(id);
+		bool found = false;
+		for (Common::List<uint16>::const_iterator i = _bufferedResources[tag].begin(); !found && (i != _bufferedResources[tag].end()); i++)
+			if ((*i) == id) found = true;
+		if (!found)
+			_bufferedResources[tag].push_back(id);
+	}
 	return new Common::MemoryReadStream(buffer, size, DisposeAfterUse::YES);
 }
 
-OldPipe::OldPipe(Common::SeekableReadStream *stream) : Pipe(stream), _currFrame(0) {
+OldPipe::OldPipe(Common::SeekableReadStream *stream, uint16 pipeId) : Pipe(stream, pipeId), _currFrame(0) {
 	uint32 tag = _stream->readUint32BE();
 	if (tag != ID_PIPE)
 		error("invalid tag for pipe (%08x)", tag);

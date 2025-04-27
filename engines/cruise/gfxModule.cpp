@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -26,7 +25,7 @@
 #include "common/list.h"
 #include "common/rect.h"
 
-#include "graphics/palette.h"
+#include "graphics/paletteman.h"
 
 #include "cruise/cruise.h"
 #include "cruise/cruise_main.h"
@@ -36,7 +35,6 @@ namespace Cruise {
 uint8 page00[320 * 200];
 uint8 page10[320 * 200];
 
-char screen[320 * 200];
 palEntry lpalette[256];
 
 int palDirtyMin = 256;
@@ -289,8 +287,6 @@ void gfxModuleData_updateScreen() {
 }
 
 void flip() {
-	CruiseEngine::RectList::iterator dr;
-
 	// Update the palette
 	gfxModuleData_updatePalette();
 
@@ -299,8 +295,7 @@ void flip() {
 	_vm->_priorFrameRects = _vm->_dirtyRects;
 
 	// Merge the prior frame's dirty rects into the current frame's list
-	for (dr = tempList.begin(); dr != tempList.end(); ++dr) {
-		Common::Rect &r = *dr;
+	for (auto &r : tempList) {
 		_vm->_dirtyRects.push_back(Common::Rect(r.left, r.top, r.right, r.bottom));
 	}
 
@@ -308,8 +303,7 @@ void flip() {
 	mergeClipRects();
 
 	// Copy any modified areas
-	for (dr = _vm->_dirtyRects.begin(); dr != _vm->_dirtyRects.end(); ++dr) {
-		Common::Rect &r = *dr;
+	for (auto &r : _vm->_dirtyRects) {
 		g_system->copyRectToScreen(globalScreen + 320 * r.top + r.left, 320,
 			r.left, r.top, r.width(), r.height());
 	}

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -84,6 +83,20 @@ protected:
 
 public:
 	/**
+	 * Construct a FSNode object from an AbstractFSNode object.
+	 *
+	 * This is a helper to create Common::FSNode objects when the backend's
+	 * FileSystemFactory cannot create the given AbstractFSNode object itself.
+	 * All other code is supposed to use Common::FSNode's constructor itself.
+	 *
+	 * @param realNode Pointer to a heap allocated instance. FSNode will take
+	 *                 ownership of the pointer.
+	 */
+	static Common::FSNode makeFSNode(AbstractFSNode *realNode) {
+		return Common::FSNode(realNode);
+	}
+
+	/**
 	 * Destructor.
 	 */
 	virtual ~AbstractFSNode() {}
@@ -110,7 +123,7 @@ public:
 	 *
 	 * @note By default, this method returns the value of getName().
 	 */
-	virtual Common::String getDisplayName() const { return getName(); }
+	virtual Common::U32String getDisplayName() const = 0;
 
 	/**
 	 * Returns the last component of the path pointed by this FSNode.
@@ -170,13 +183,35 @@ public:
 	virtual Common::SeekableReadStream *createReadStream() = 0;
 
 	/**
+	 * Creates a SeekableReadStream instance corresponding to an alternate
+	 * stream of the file referred by this node. This assumes that the node
+	 * actually refers to a readable file and the alt stream exists.
+	 * If either is not the case, 0 is returned.
+	 *
+	 * @return pointer to the stream object, 0 in case of a failure
+	 */
+	virtual Common::SeekableReadStream *createReadStreamForAltStream(Common::AltStreamType altStreamType);
+
+	/**
 	 * Creates a WriteStream instance corresponding to the file
 	 * referred by this node. This assumes that the node actually refers
 	 * to a readable file. If this is not the case, 0 is returned.
 	 *
+	 * When an atomic write stream is requested, the backend will write
+	 * the data in a temporary file before moving it to its final destination.
+	 *
+	 * @param atomic Request for an atomic file write when closing.
+	 *
 	 * @return pointer to the stream object, 0 in case of a failure
 	 */
-	virtual Common::WriteStream *createWriteStream() = 0;
+	virtual Common::SeekableWriteStream *createWriteStream(bool atomic) = 0;
+
+	/**
+	* Creates a directory referred by this node.
+	*
+	* @return true if the directory is created successfully
+	*/
+	virtual bool createDirectory() = 0;
 };
 
 

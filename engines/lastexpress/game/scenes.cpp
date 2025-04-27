@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -41,7 +40,7 @@ namespace LastExpress {
 
 SceneManager::SceneManager(LastExpressEngine *engine) : _engine(engine),
 	_flagNoEntity(false), _flagDrawEntities(false), _flagDrawSequences(false), _flagCoordinates(false),
-	_coords(0, 0, 480, 640), _clockHours(NULL), _clockMinutes(NULL) {
+	_coords(0, 0, 480, 640), _clockHours(nullptr), _clockMinutes(nullptr) {
 	_sceneLoader = new SceneLoader();
 }
 
@@ -61,7 +60,7 @@ SceneManager::~SceneManager() {
 	SAFE_DELETE(_sceneLoader);
 
 	// Zero-out passed pointers
-	_engine = NULL;
+	_engine = nullptr;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -76,7 +75,7 @@ void SceneManager::loadSceneDataFile(ArchiveIndex archive) {
 	case kArchiveCd1:
 	case kArchiveCd2:
 	case kArchiveCd3:
-		if (!_sceneLoader->load(getArchive(Common::String::format("CD%iTRAIN.DAT", archive))))
+		if (!_sceneLoader->load(getArchiveMember(Common::String::format("CD%iTRAIN.DAT", archive))))
 			error("[SceneManager::loadSceneDataFile] Cannot load data file CD%iTRAIN.DAT", archive);
 		break;
 
@@ -344,43 +343,43 @@ LastExpress::SceneIndex SceneManager::processIndex(SceneIndex index) {
 			case 51:
 				if (!getEntities()->getPosition(car, 39))
 					return getSceneIndexFromPosition(car, 39);
-				// Fallback to next case
+				// fall through
 
 			case 42:
 			case 52:
 				if (!getEntities()->getPosition(car, 14))
 					return getSceneIndexFromPosition(car, 14);
-				// Fallback to next case
+				// fall through
 
 			case 43:
 			case 53:
 				if (!getEntities()->getPosition(car, 35))
 					return getSceneIndexFromPosition(car, 35);
-				// Fallback to next case
+				// fall through
 
 			case 44:
 			case 54:
 				if (!getEntities()->getPosition(car, 10))
 					return getSceneIndexFromPosition(car, 10);
-				// Fallback to next case
+				// fall through
 
 			case 45:
 			case 55:
 				if (!getEntities()->getPosition(car, 32))
 					return getSceneIndexFromPosition(car, 32);
-				// Fallback to next case
+				// fall through
 
 			case 46:
 			case 56:
 				if (!getEntities()->getPosition(car, 7))
 					return getSceneIndexFromPosition(car, 7);
-				// Fallback to next case
+				// fall through
 
 			case 47:
 			case 57:
 				if (!getEntities()->getPosition(car, 27))
 					return getSceneIndexFromPosition(car, 27);
-				// Fallback to next case
+				// fall through
 
 			case 48:
 			case 58:
@@ -401,7 +400,7 @@ LastExpress::SceneIndex SceneManager::processIndex(SceneIndex index) {
 		case 54:
 			if (!getEntities()->getPosition(car, 51))
 				return getSceneIndexFromPosition(car, 51);
-			// Fallback to next case
+			// fall through
 
 		case 50:
 		case 56:
@@ -409,31 +408,31 @@ LastExpress::SceneIndex SceneManager::processIndex(SceneIndex index) {
 		case 58:
 			if (!getEntities()->getPosition(car, 55))
 				return getSceneIndexFromPosition(car, 55);
-			// Fallback to next case
+			// fall through
 
 		case 59:
 			if (!getEntities()->getPosition(car, 60))
 				return getSceneIndexFromPosition(car, 60);
-			// Fallback to next case
+			// fall through
 
 		case 60:
 			if (!getEntities()->getPosition(car, 59))
 				return getSceneIndexFromPosition(car, 59);
-			// Fallback to next case
+			// fall through
 
 		case 62:
 		case 63:
 		case 64:
 			if (!getEntities()->getPosition(car, 61))
 				return getSceneIndexFromPosition(car, 61);
-			// Fallback to next case
+			// fall through
 
 		case 66:
 		case 67:
 		case 68:
 			if (!getEntities()->getPosition(car, 65))
 				return getSceneIndexFromPosition(car, 65);
-			// Fallback to next case
+			// fall through
 
 		case 69:
 		case 71:
@@ -1064,7 +1063,7 @@ void SceneManager::preProcessScene(SceneIndex *index) {
 	Scene *newScene = getScenes()->get(*index);
 	if (getSoundQueue()->isBuffered(kEntityTables4)) {
 		if (newScene->type != Scene::kTypeReadText || newScene->param1)
-			getSoundQueue()->processEntry(kEntityTables4);
+			getSoundQueue()->fade(kEntityTables4);
 	}
 
 	// Cleanup beetle sequences
@@ -1116,14 +1115,14 @@ void SceneManager::postProcessScene() {
 		// If several entities are there, choose one to sound "Excuse me"
 		EntityPosition entityPosition = getEntityData(kEntityPlayer)->entityPosition;
 		if (getEntityData(kEntityPlayer)->car == kCar9 && (entityPosition == kPosition_4 || entityPosition == kPosition_3)) {
-			EntityIndex entities[39];
+			EntityIndex entities[40] = {(EntityIndex)0};
 
 			// Init entities
 			entities[0] = kEntityPlayer;
 
 			uint progress = 0;
 
-			for (uint i = 1; i < 40 /* number of entities */; i++) {
+			for (uint i = 1; i < 40 /* number of entities */; ++i) {
 				CarIndex car = getEntityData((EntityIndex)i)->car;
 				EntityPosition position = getEntityData((EntityIndex)i)->entityPosition;
 
@@ -1137,7 +1136,7 @@ void SceneManager::postProcessScene() {
 			}
 
 			if (progress)
-				getSound()->excuseMe((progress == 1) ? entities[0] : entities[rnd(progress)], kEntityPlayer, kFlagDefault);
+				getSound()->excuseMe((progress == 1) ? entities[0] : entities[rnd(progress)], kEntityPlayer, kVolumeFull);
 		}
 
 		if (hotspot->scene)
@@ -1162,8 +1161,8 @@ void SceneManager::postProcessScene() {
 		if (getState()->time >= kTimeCityGalanta || getProgress().field_18 == 4)
 			break;
 
-		getSoundQueue()->processEntry(kSoundType7);
-		getSound()->playSound(kEntityTrain, "LIB050", kFlagDefault);
+		getSoundQueue()->fade(kSoundTagLink);
+		getSound()->playSound(kEntityTrain, "LIB050", kVolumeFull);
 
 		switch (getProgress().chapter) {
 		default:

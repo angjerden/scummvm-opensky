@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,27 +15,26 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "mohawk/installer_archive.h"
 
-#include "common/dcl.h"
+#include "common/compression/dcl.h"
 #include "common/debug.h"
 
 namespace Mohawk {
 
 InstallerArchive::InstallerArchive() : Common::Archive() {
-	_stream = 0;
+	_stream = nullptr;
 }
 
 InstallerArchive::~InstallerArchive() {
 	close();
 }
 
-bool InstallerArchive::open(const Common::String &filename) {
+bool InstallerArchive::open(const Common::Path &filename) {
 	close();
 
 	_stream = SearchMan.createReadStreamForMember(filename);
@@ -93,7 +92,7 @@ bool InstallerArchive::open(const Common::String &filename) {
 
 		_stream->skip(13); // Unknown
 
-		_map[name] = entry;
+		_map[Common::Path(name, '\\')] = entry;
 
 		debug(3, "Found file '%s' at 0x%08x (Comp: 0x%08x, Uncomp: 0x%08x)", name.c_str(),
 				entry.offset, entry.compressedSize, entry.uncompressedSize);
@@ -103,12 +102,12 @@ bool InstallerArchive::open(const Common::String &filename) {
 }
 
 void InstallerArchive::close() {
-	delete _stream; _stream = 0;
+	delete _stream; _stream = nullptr;
 	_map.clear();
 }
 
-bool InstallerArchive::hasFile(const Common::String &name) const {
-	return _map.contains(name);
+bool InstallerArchive::hasFile(const Common::Path &path) const {
+	return _map.contains(path);
 }
 
 int InstallerArchive::listMembers(Common::ArchiveMemberList &list) const {
@@ -118,15 +117,15 @@ int InstallerArchive::listMembers(Common::ArchiveMemberList &list) const {
 	return _map.size();
 }
 
-const Common::ArchiveMemberPtr InstallerArchive::getMember(const Common::String &name) const {
-	return Common::ArchiveMemberPtr(new Common::GenericArchiveMember(name, this));
+const Common::ArchiveMemberPtr InstallerArchive::getMember(const Common::Path &path) const {
+	return Common::ArchiveMemberPtr(new Common::GenericArchiveMember(path, *this));
 }
 
-Common::SeekableReadStream *InstallerArchive::createReadStreamForMember(const Common::String &name) const {
-	if (!_stream || !_map.contains(name))
-		return 0;
+Common::SeekableReadStream *InstallerArchive::createReadStreamForMember(const Common::Path &path) const {
+	if (!_stream || !_map.contains(path))
+		return nullptr;
 
-	const FileEntry &entry = _map[name];
+	const FileEntry &entry = _map[path];
 
 	// Seek to our offset and then send it off to the decompressor
 	_stream->seek(entry.offset);

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -24,6 +23,8 @@
 #include "common/config-manager.h"
 #include "common/debug.h"
 #include "common/file.h"
+
+#include "audio/audiostream.h"
 
 #include "dreamweb/dreamweb.h"
 #include "dreamweb/sound.h"
@@ -184,11 +185,11 @@ void DreamWebSound::stopSound(uint8 channel) {
 }
 
 bool DreamWebSound::loadSpeech(const Common::String &filename) {
-	if (!_vm->hasSpeech())
+	if (ConfMan.getBool("tts_enabled_speech") || !_vm->hasSpeech())
 		return false;
 
 	Common::File file;
-	if (!file.open(_vm->getSpeechDirName() + "/" + filename))
+	if (!file.open(_vm->getSpeechDirName().appendComponent(filename)))
 		return false;
 
 	debug(1, "loadSpeech(%s)", filename.c_str());
@@ -242,11 +243,11 @@ void DreamWebSound::soundHandler() {
 }
 
 void DreamWebSound::loadSounds(uint bank, const Common::String &suffix) {
-	Common::String filename = _vm->getDatafilePrefix() + suffix;
-	debug(1, "loadSounds(%u, %s)", bank, filename.c_str());
+	Common::Path filename(_vm->getDatafilePrefix() + suffix);
+	debug(1, "loadSounds(%u, %s)", bank, filename.toString(Common::Path::kNativeSeparator).c_str());
 	Common::File file;
 	if (!file.open(filename)) {
-		warning("cannot open %s", filename.c_str());
+		warning("cannot open %s", filename.toString(Common::Path::kNativeSeparator).c_str());
 		return;
 	}
 

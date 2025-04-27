@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -56,9 +55,10 @@ void MSRLEDecoder::decode8(Common::SeekableReadStream &stream) {
 	byte *data = (byte *) _surface->getPixels();
 	uint16 width  = _surface->w;
 	uint16 height = _surface->h;
+	uint16 pitch = _surface->pitch;
 
-	byte *output     = data + ((height - 1) * width);
-	byte *output_end = data + ((height)     * width);
+	byte *output     = data + ((height - 1) * pitch);
+	byte *output_end = data + ((height)     * pitch) - (pitch - width);
 
 	while (!stream.eos()) {
 		byte count = stream.readByte();
@@ -70,17 +70,12 @@ void MSRLEDecoder::decode8(Common::SeekableReadStream &stream) {
 
 				x = 0;
 				y--;
-				output = data + (y * width);
-
-				if (y < 0) {
-					warning("MS RLE Codec: Next line is beyond picture bounds");
-					return;
-				}
+				output = data + (y * pitch);
 
 			} else if (value == 1) {
 				// End of image
-
 				return;
+
 			} else if (value == 2) {
 				// Skip
 
@@ -95,13 +90,20 @@ void MSRLEDecoder::decode8(Common::SeekableReadStream &stream) {
 					return;
 				}
 
-				output = data + ((y * width) + x);
+				output = data + ((y * pitch) + x);
 
 			} else {
 				// Copy data
+				if (y < 0) {
+					warning("MS RLE Codec: Copy data is beyond picture bounds");
+					return;
+				}
 
 				if (output + value > output_end) {
-					stream.skip(value);
+					if (stream.pos() + value >= stream.size())
+						break;
+					else
+						stream.skip(value);
 					continue;
 				}
 
@@ -116,6 +118,10 @@ void MSRLEDecoder::decode8(Common::SeekableReadStream &stream) {
 
 		} else {
 			// Run data
+			if (y < 0) {
+				warning("MS RLE Codec: Run data is beyond picture bounds");
+				return;
+			}
 
 			if (output + count > output_end)
 				continue;

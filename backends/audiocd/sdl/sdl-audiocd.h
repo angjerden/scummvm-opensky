@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -27,7 +26,7 @@
 
 #include "backends/platform/sdl/sdl-sys.h"
 
-#if !SDL_VERSION_ATLEAST(1, 3, 0)
+#if !SDL_VERSION_ATLEAST(2, 0, 0)
 
 /**
  * The SDL audio cd manager. Implements real audio cd playback.
@@ -37,18 +36,22 @@ public:
 	SdlAudioCDManager();
 	virtual ~SdlAudioCDManager();
 
+	bool open() override;
+	void close() override;
+	bool play(int track, int numLoops, int startFrame, int duration, bool onlyEmulate,
+			Audio::Mixer::SoundType soundType) override;
+	void stop() override;
+	bool isPlaying() const override;
+	void update() override;
+
 protected:
-	virtual bool openCD(int drive);
-	virtual void updateCD();
-	virtual bool pollCD() const;
-	virtual void playCD(int track, int num_loops, int start_frame, int duration);
-	virtual void stopCD();
+	bool openCD(int drive) override;
 
 	SDL_CD *_cdrom;
 	int _cdTrack, _cdNumLoops, _cdStartFrame, _cdDuration;
 	uint32 _cdEndTime, _cdStopTime;
 };
 
-#endif // !SDL_VERSION_ATLEAST(1, 3, 0)
+#endif // !SDL_VERSION_ATLEAST(2, 0, 0)
 
 #endif

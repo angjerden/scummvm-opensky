@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -32,6 +31,7 @@
 #include "dosbox.h"
 #include "dbopl.h"
 
+#include "audio/mixer.h"
 #include "common/system.h"
 #include "common/scummsys.h"
 #include "common/util.h"
@@ -91,36 +91,40 @@ bool Chip::write(uint32 reg, uint8 val) {
 		timer[1].counter = val;
 		return true;
 	case 0x04:
-		double time = g_system->getMillis() / 1000.0;
+		{
+			double time = g_system->getMillis() / 1000.0;
 
-		if (val & 0x80) {
-			timer[0].reset(time);
-			timer[1].reset(time);
-		} else {
-			timer[0].update(time);
-			timer[1].update(time);
+			if (val & 0x80) {
+				timer[0].reset(time);
+				timer[1].reset(time);
+			} else {
+				timer[0].update(time);
+				timer[1].update(time);
 
-			if (val & 0x1)
-				timer[0].start(time, 80);
-			else
-				timer[0].stop();
+				if (val & 0x1)
+					timer[0].start(time, 80);
+				else
+					timer[0].stop();
 
-			timer[0].masked = (val & 0x40) > 0;
+				timer[0].masked = (val & 0x40) > 0;
 
-			if (timer[0].masked)
-				timer[0].overflow = false;
+				if (timer[0].masked)
+					timer[0].overflow = false;
 
-			if (val & 0x2)
-				timer[1].start(time, 320);
-			else
-				timer[1].stop();
+				if (val & 0x2)
+					timer[1].start(time, 320);
+				else
+					timer[1].stop();
 
-			timer[1].masked = (val & 0x20) > 0;
+				timer[1].masked = (val & 0x20) > 0;
 
-			if (timer[1].masked)
-				timer[1].overflow = false;
+				if (timer[1].masked)
+					timer[1].overflow = false;
+			}
 		}
 		return true;
+	default:
+		break;
 	}
 	return false;
 }
@@ -144,42 +148,43 @@ uint8 Chip::read() {
 	return ret;
 }
 
-OPL::OPL(Config::OplType type) : _type(type), _rate(0), _emulator(0) {
+OPL::OPL(Config::OplType type) : _type(type), _rate(0), _emulator(nullptr) {
 }
 
 OPL::~OPL() {
+	stop();
 	free();
 }
 
 void OPL::free() {
 	delete _emulator;
-	_emulator = 0;
+	_emulator = nullptr;
 }
 
-bool OPL::init(int rate) {
+bool OPL::init() {
 	free();
 
 	memset(&_reg, 0, sizeof(_reg));
-	memset(_chip, 0, sizeof(_chip));
+	ARRAYCLEAR(_chip);
 
 	_emulator = new DBOPL::Chip();
 	if (!_emulator)
 		return false;
 
 	DBOPL::InitTables();
-	_emulator->Setup(rate);
+	_rate = g_system->getMixer()->getOutputRate();
+	_emulator->Setup(_rate);
 
 	if (_type == Config::kDualOpl2) {
 		// Setup opl3 mode in the hander
 		_emulator->WriteReg(0x105, 1);
 	}
 
-	_rate = rate;
 	return true;
 }
 
 void OPL::reset() {
-	init(_rate);
+	init();
 }
 
 void OPL::write(int port, int val) {
@@ -200,6 +205,8 @@ void OPL::write(int port, int val) {
 				dualWrite(0, _reg.dual[0], val);
 				dualWrite(1, _reg.dual[1], val);
 			}
+			break;
+		default:
 			break;
 		}
 	} else {
@@ -222,29 +229,10 @@ void OPL::write(int port, int val) {
 				_reg.dual[1] = val & 0xff;
 			}
 			break;
+		default:
+			break;
 		}
 	}
-}
-
-byte OPL::read(int port) {
-	switch (_type) {
-	case Config::kOpl2:
-		if (!(port & 1))
-			//Make sure the low bits are 6 on opl2
-			return _chip[0].read() | 0x6;
-		break;
-	case Config::kOpl3:
-		if (!(port & 1))
-			return _chip[0].read();
-		break;
-	case Config::kDualOpl2:
-		// Only return for the lower ports
-		if (port & 1)
-			return 0xff;
-		// Make sure the low bits are 6 on opl2
-		return _chip[(port >> 1) & 1].read() | 0x6;
-	}
-	return 0;
 }
 
 void OPL::writeReg(int r, int v) {
@@ -280,6 +268,8 @@ void OPL::writeReg(int r, int v) {
 			write(0x388, tempReg);
 		}
 		break;
+	default:
+		break;
 	};
 }
 
@@ -307,28 +297,45 @@ void OPL::dualWrite(uint8 index, uint8 reg, uint8 val) {
 	_emulator->WriteReg(fullReg, val);
 }
 
-void OPL::readBuffer(int16 *buffer, int length) {
-	// For stereo OPL cards, we divide the sample count by 2,
-	// to match stereo AudioStream behavior.
-	if (_type != Config::kOpl2)
-		length >>= 1;
-
+void OPL::generateSamples(int16 *buffer, int length) {
 	const uint bufferLength = 512;
 	int32 tempBuffer[bufferLength * 2];
 
-	if (_emulator->opl3Active) {
-		while (length > 0) {
-			const uint readSamples = MIN<uint>(length, bufferLength);
+	if (isStereo()) {
+		// For stereo OPL cards, we divide the sample count by 2,
+		// to match stereo AudioStream behavior.
+		length >>= 1;
+		if (_emulator->opl3Active) {
+			// DUAL_OPL2 or OPL3 in OPL3 mode (stereo)
+			while (length > 0) {
+				const uint readSamples = MIN<uint>(length, bufferLength);
+				const uint readSamples2 = (readSamples << 1);
 
-			_emulator->GenerateBlock3(readSamples, tempBuffer);
+				_emulator->GenerateBlock3(readSamples, tempBuffer);
 
-			for (uint i = 0; i < (readSamples << 1); ++i)
-				buffer[i] = tempBuffer[i];
+				for (uint i = 0; i < readSamples2; ++i)
+					buffer[i] = tempBuffer[i];
 
-			buffer += (readSamples << 1);
-			length -= readSamples;
+				buffer += readSamples2;
+				length -= readSamples;
+			}
+		} else {
+			// OPL3 (stereo) in OPL2 compatibility mode (mono)
+			while (length > 0) {
+				const uint readSamples = MIN<uint>(length, bufferLength);
+				const uint readSamples2 = (readSamples << 1);
+
+				_emulator->GenerateBlock2(readSamples, tempBuffer);
+
+				for (uint i = 0, j = 0; i < readSamples; ++i, j += 2)
+					buffer[j] = buffer[j + 1] = tempBuffer[i];
+
+				buffer += readSamples2;
+				length -= readSamples;
+			}
 		}
 	} else {
+		// OPL2
 		while (length > 0) {
 			const uint readSamples = MIN<uint>(length, bufferLength << 1);
 

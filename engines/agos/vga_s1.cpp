@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -24,6 +23,7 @@
 
 #include "agos/agos.h"
 #include "agos/intern.h"
+#include "agos/sound.h"
 #include "agos/vga.h"
 
 namespace AGOS {
@@ -94,7 +94,7 @@ static const uint8 customPalette[96] = {
 };
 
 void AGOSEngine_Simon1::vc22_setPalette() {
-	byte *offs, *palptr = 0, *src;
+	byte *offs, *palptr = nullptr, *src;
 	uint16 a = 0, b, num, palSize = 0;
 
 	a = vcReadNextWord();
@@ -179,6 +179,15 @@ void AGOSEngine::vc47_addToVar() {
 
 void AGOSEngine::vc48_setPathFinder() {
 	uint16 a = (uint16)_variableArrayPtr[12];
+	// WORKAROUND: Check if the selected path is valid. There are cases
+	// where an invalid path is selected, such as when loading a save in
+	// the Dwarf Cave in Simon 1 (bug #6356). In such cases, we select
+	// the first available path, which fixes the problem in Simon 1.
+	if (!_pathFindArray[a - 1]) {
+		warning("vc48_setPathFinder: Invalid path, attempting to correct");
+		a = 1;
+	}
+
 	const uint16 *p = _pathFindArray[a - 1];
 
 	uint b = (uint16)_variableArray[13];

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -28,6 +27,7 @@
 #include "sci/sci.h"
 #include "sci/event.h"
 #include "sci/engine/kernel.h"
+#include "sci/engine/script_patches.h"
 #include "sci/engine/state.h"
 #include "sci/engine/selector.h"
 #include "sci/engine/vm.h"
@@ -36,7 +36,7 @@
 #include "sci/graphics/cursor.h"
 #include "sci/graphics/ports.h"
 #include "sci/graphics/paint16.h"
-#include "sci/graphics/palette.h"
+#include "sci/graphics/palette16.h"
 #include "sci/graphics/view.h"
 #include "sci/graphics/screen.h"
 #include "sci/graphics/transitions.h"
@@ -44,8 +44,8 @@
 
 namespace Sci {
 
-GfxAnimate::GfxAnimate(EngineState *state, GfxCache *cache, GfxPorts *ports, GfxPaint16 *paint16, GfxScreen *screen, GfxPalette *palette, GfxCursor *cursor, GfxTransitions *transitions)
-	: _s(state), _cache(cache), _ports(ports), _paint16(paint16), _screen(screen), _palette(palette), _cursor(cursor), _transitions(transitions) {
+GfxAnimate::GfxAnimate(EngineState *state, ScriptPatcher *scriptPatcher, GfxCache *cache, GfxCompare *compare, GfxPorts *ports, GfxPaint16 *paint16, GfxScreen *screen, GfxPalette *palette, GfxCursor *cursor, GfxTransitions *transitions)
+	: _s(state), _scriptPatcher(scriptPatcher), _cache(cache), _compare(compare), _ports(ports), _paint16(paint16), _screen(screen), _palette(palette), _cursor(cursor), _transitions(transitions) {
 	init();
 }
 
@@ -55,16 +55,77 @@ GfxAnimate::~GfxAnimate() {
 void GfxAnimate::init() {
 	_lastCastData.clear();
 
-	_ignoreFastCast = false;
-	// fastCast object is not found in any SCI games prior SCI1
-	if (getSciVersion() <= SCI_VERSION_01)
-		_ignoreFastCast = true;
-	// Also if fastCast object exists at gamestartup, we can assume that the interpreter doesnt do kAnimate aborts
-	//  (found in Larry 1)
-	if (getSciVersion() > SCI_VERSION_0_EARLY) {
-		if (!_s->_segMan->findObjectByName("fastCast").isNull())
-			_ignoreFastCast = true;
+	_fastCastEnabled = false;
+	if (getSciVersion() == SCI_VERSION_1_1) {
+		// Seems to have been available for all SCI1.1 games
+		_fastCastEnabled = true;
+	} else if (getSciVersion() >= SCI_VERSION_1_EARLY) {
+		// fastCast only exists for some games between SCI1 early and SCI1 late
+		// Try to detect it by code signature
+		// It's extremely important, that we only enable it for games that actually need it
+		if (detectFastCast()) {
+			_fastCastEnabled = true;
+		}
 	}
+}
+
+// Signature for fastCast detection
+static const uint16 fastCastSignature[] = {
+	SIG_MAGICDWORD,
+	0x35, 0x00,                      // ldi 00
+	0xa1, 84,                        // sag global[84d]
+	SIG_END
+};
+
+// Fast cast in games:
+
+// SCI1 Early:
+// KQ5 - no fastcast, LSL1 (demo) - no fastcast, Mixed Up Fairy Tales - *has fastcast*, XMas Card 1990 - no fastcast,
+// SQ4Floppy - no fastcast, Mixed Up Mother Goose - no fastcast
+//
+// SCI1 Middle:
+// LSL5 demo - no fastfast, Conquest of the Longbow demo - no fastcast, LSL1 - no fastcast,
+// Astro Chicken II - no fastcast
+//
+// SCI1 Late:
+// Castle of Dr. Brain demo - has fastcast, Castle of Dr. Brain - has fastcast,
+// Conquests of the Longbow - has fastcast, Space Quest 1 EGA - has fastcast,
+// King's Quest 5 multilingual - *NO* fastcast, Police Quest 3 demo - *NO* fastcast,
+// LSL5 multilingual - has fastcast, Police Quest 3 - has fastcast,
+// EcoQuest 1 - has fastcast, Mixed Up Fairy Tales demo - has fastcast,
+// Space Quest 4 multilingual - *NO* fastcast
+//
+// SCI1.1
+// Quest for Glory 3 demo - has fastcast, Police Quest 1 - hast fastcast, Quest for Glory 1 - has fastcast
+// Laura Bow 2 Floppy - has fastcast, Mixed Up Mother Goose - has fastcast, Quest for Glory 3 - has fastcast
+// Island of Dr. Brain - has fastcast, King's Quest 6 - has fastcast, Space Quest 5 - has fastcast
+// Hoyle 4 - has fastcast, Laura Bow 2 CD - has fastcast, Freddy Pharkas CD - has fastcast
+bool GfxAnimate::detectFastCast() {
+	SegManager *segMan = _s->_segMan;
+	const reg_t gameVMObject = g_sci->getGameObject();
+	reg_t gameSuperVMObject = segMan->getObject(gameVMObject)->getSuperClassSelector();
+	uint32 magicDWord = 0; // platform-specific BE/LE for performance
+	int    magicDWordOffset = 0;
+
+	if (gameSuperVMObject.isNull()) {
+		gameSuperVMObject = gameVMObject; // Just in case. According to sci.cpp this may happen in KQ5CD, when loading saved games before r54510
+	}
+
+	Script *objectScript = segMan->getScript(gameSuperVMObject.getSegment());
+	byte *scriptData = const_cast<byte *>(objectScript->getBuf(0));
+	uint32 scriptSize = objectScript->getBufSize();
+
+	_scriptPatcher->calculateMagicDWordAndVerify("fast cast detection", fastCastSignature, true, magicDWord, magicDWordOffset);
+
+	// Signature is found for multilingual King's Quest 5 too, but it looks as if the fast cast global is never set
+	// within that game. Which means even though we detect it as having the capability, it's never actually used.
+	// The original multilingual KQ5 interpreter did have this feature disabled.
+	// Sierra probably used latest system scripts and that's why we detect it.
+	if (_scriptPatcher->findSignature(magicDWord, magicDWordOffset, fastCastSignature, "fast cast detection", SciSpan<const byte>(scriptData, scriptSize)) >= 0) {
+		// Signature found, game seems to use fast cast for kAnimate
+		return true;
+	}
+	return false;
 }
 
 void GfxAnimate::disposeLastCast() {
@@ -74,22 +135,22 @@ void GfxAnimate::disposeLastCast() {
 bool GfxAnimate::invoke(List *list, int argc, reg_t *argv) {
 	reg_t curAddress = list->first;
 	Node *curNode = _s->_segMan->lookupNode(curAddress);
-	reg_t curObject;
-	uint16 signal;
 
 	while (curNode) {
-		curObject = curNode->value;
+		reg_t curObject = curNode->value;
 
-		if (!_ignoreFastCast) {
+		if (_fastCastEnabled) {
 			// Check if the game has a fastCast object set
 			//  if we don't abort kAnimate processing, at least in kq5 there will be animation cels drawn into speech boxes.
-			if (!_s->variables[VAR_GLOBAL][84].isNull()) {
-				if (!strcmp(_s->_segMan->getObjectName(_s->variables[VAR_GLOBAL][84]), "fastCast"))
-					return false;
+			if (!_s->variables[VAR_GLOBAL][kGlobalVarFastCast].isNull()) {
+				// This normally points to an object called "fastCast",
+				// but for example in Eco Quest 1 it may also point to an object called "EventHandler" (see bug #5170)
+				// Original SCI only checked, if this global was not 0.
+				return false;
 			}
 		}
 
-		signal = readSelectorValue(_s->_segMan, curObject, SELECTOR(signal));
+		uint16 signal = readSelectorValue(_s->_segMan, curObject, SELECTOR(signal));
 		if (!(signal & kSignalFrozen)) {
 			// Call .doit method of that object
 			invokeSelector(_s, curObject, SELECTOR(doit), argc, argv, 0);
@@ -136,7 +197,7 @@ void GfxAnimate::makeSortedList(List *list) {
 	_lastCastData.clear();
 
 	// Fill the list
-	for (listNr = 0; curNode != 0; listNr++) {
+	for (listNr = 0; curNode != nullptr; listNr++) {
 		AnimateEntry listEntry;
 		const reg_t curObject = curNode->value;
 		listEntry.object = curObject;
@@ -191,7 +252,7 @@ void GfxAnimate::makeSortedList(List *list) {
 }
 
 void GfxAnimate::fill(byte &old_picNotValid) {
-	GfxView *view = NULL;
+	GfxView *view = nullptr;
 	AnimateList::iterator it;
 	const AnimateList::iterator end = _list.end();
 
@@ -255,7 +316,7 @@ void GfxAnimate::adjustInvalidCels(GfxView *view, AnimateList::iterator it) {
 
 void GfxAnimate::processViewScaling(GfxView *view, AnimateList::iterator it) {
 	if (!view->isScaleable()) {
-		// Laura Bow 2 (especially floppy) depends on this, some views are not supposed to be scaleable
+		// Laura Bow 2 (especially floppy) depends on this, some views are not supposed to be scalable
 		//  this "feature" was removed in later versions of SCI1.1
 		it->scaleSignal = 0;
 		it->scaleY = it->scaleX = 128;
@@ -274,7 +335,7 @@ void GfxAnimate::applyGlobalScaling(AnimateList::iterator entry, GfxView *view) 
 	int16 maxScale = readSelectorValue(_s->_segMan, entry->object, SELECTOR(maxScale));
 	int16 celHeight = view->getHeight(entry->loopNo, entry->celNo);
 	int16 maxCelHeight = (maxScale * celHeight) >> 7;
-	reg_t globalVar2 = _s->variables[VAR_GLOBAL][2]; // current room object
+	reg_t globalVar2 = _s->variables[VAR_GLOBAL][kGlobalVarCurrentRoom]; // current room object
 	int16 vanishingY = readSelectorValue(_s->_segMan, globalVar2, SELECTOR(vanishingY));
 
 	int16 fixedPortY = _ports->getPort()->rect.bottom - vanishingY;
@@ -308,7 +369,7 @@ void GfxAnimate::setNsRect(GfxView *view, AnimateList::iterator it) {
 		//  This special handling is not included in the other SCI1.1 interpreters and MUST NOT be
 		//  checked in those cases, otherwise we will break games (e.g. EcoQuest 2, room 200)
 		if ((g_sci->getGameId() == GID_HOYLE4) && (it->scaleSignal & kScaleSignalHoyle4SpecialHandling)) {
-			it->celRect = g_sci->_gfxCompare->getNSRect(it->object);
+			it->celRect = _compare->getNSRect(it->object);
 			view->getCelSpecialHoyle4Rect(it->loopNo, it->celNo, it->x, it->y, it->z, it->celRect);
 			shouldSetNsRect = false;
 		} else {
@@ -317,7 +378,7 @@ void GfxAnimate::setNsRect(GfxView *view, AnimateList::iterator it) {
 	}
 
 	if (shouldSetNsRect) {
-		g_sci->_gfxCompare->setNSRect(it->object, it->celRect);
+		_compare->setNSRect(it->object, it->celRect);
 	}
 }
 
@@ -410,7 +471,7 @@ void GfxAnimate::drawCels() {
 			writeSelector(_s->_segMan, it->object, SELECTOR(underBits), bitsHandle);
 
 			// draw corresponding cel
-			_paint16->drawCel(it->viewId, it->loopNo, it->celNo, it->celRect, it->priority, it->paletteNo, it->scaleX, it->scaleY);
+			_paint16->drawCel(it->viewId, it->loopNo, it->celNo, it->celRect, it->priority, it->paletteNo, it->scaleX, it->scaleY, it->scaleSignal);
 			it->showBitsFlag = true;
 
 			if (it->signal & kSignalRemoveView)
@@ -512,7 +573,7 @@ void GfxAnimate::reAnimate(Common::Rect rect) {
 
 void GfxAnimate::addToPicDrawCels() {
 	reg_t curObject;
-	GfxView *view = NULL;
+	GfxView *view = nullptr;
 	AnimateList::iterator it;
 	const AnimateList::iterator end = _list.end();
 
@@ -539,7 +600,7 @@ void GfxAnimate::addToPicDrawCels() {
 				applyGlobalScaling(it, view);
 			}
 			view->getCelScaledRect(it->loopNo, it->celNo, it->x, it->y, it->z, it->scaleX, it->scaleY, it->celRect);
-			g_sci->_gfxCompare->setNSRect(curObject, it->celRect);
+			_compare->setNSRect(curObject, it->celRect);
 		} else {
 			view->getCelRect(it->loopNo, it->celNo, it->x, it->y, it->z, it->celRect);
 		}
@@ -586,6 +647,11 @@ void GfxAnimate::animateShowPic() {
 }
 
 void GfxAnimate::kernelAnimate(reg_t listReference, bool cycle, int argc, reg_t *argv) {
+	// If necessary, delay this kAnimate for a running PalVary.
+	// See delayForPalVaryWorkaround() for details.
+	if (_screen->_picNotValid)
+		_palette->delayForPalVaryWorkaround();
+
 	byte old_picNotValid = _screen->_picNotValid;
 
 	if (getSciVersion() >= SCI_VERSION_1_1)
@@ -642,52 +708,7 @@ void GfxAnimate::kernelAnimate(reg_t listReference, bool cycle, int argc, reg_t 
 	_ports->setPort(oldPort);
 
 	// Now trigger speed throttler
-	throttleSpeed();
-}
-
-void GfxAnimate::throttleSpeed() {
-	switch (_lastCastData.size()) {
-	case 0:
-		// No entries drawn -> no speed throttler triggering
-		break;
-	case 1: {
-
-		// One entry drawn -> check if that entry was a speed benchmark view, if not enable speed throttler
-		AnimateEntry *onlyCast = &_lastCastData[0];
-		if ((onlyCast->viewId == 0) && (onlyCast->loopNo == 13) && (onlyCast->celNo == 0)) {
-			// this one is used by jones talkie
-			if ((onlyCast->celRect.height() == 8) && (onlyCast->celRect.width() == 8)) {
-				_s->_gameIsBenchmarking = true;
-				return;
-			}
-		}
-		// first loop and first cel used?
-		if ((onlyCast->loopNo == 0) && (onlyCast->celNo == 0)) {
-			// and that cel has a known speed benchmark resolution
-			int16 onlyHeight = onlyCast->celRect.height();
-			int16 onlyWidth = onlyCast->celRect.width();
-			if (((onlyWidth == 12) && (onlyHeight == 35)) || // regular benchmark view ("fred", "Speedy", "ego")
-				((onlyWidth == 29) && (onlyHeight == 45)) || // King's Quest 5 french "fred"
-				((onlyWidth == 1) && (onlyHeight == 5)) || // Freddy Pharkas "fred"
-				((onlyWidth == 1) && (onlyHeight == 1))) { // Laura Bow 2 Talkie
-				// check further that there is only one cel in that view
-				GfxView *onlyView = _cache->getView(onlyCast->viewId);
-				if ((onlyView->getLoopCount() == 1) && (onlyView->getCelCount(0))) {
-					_s->_gameIsBenchmarking = true;
-					return;
-				}
-			}
-		}
-		_s->_gameIsBenchmarking = false;
-		_s->_throttleTrigger = true;
-		break;
-	}
-	default:
-		// More than 1 entry drawn -> time for speed throttling
-		_s->_gameIsBenchmarking = false;
-		_s->_throttleTrigger = true;
-		break;
-	}
+	_s->_throttleTrigger = true;
 }
 
 void GfxAnimate::addToPicSetPicNotValid() {

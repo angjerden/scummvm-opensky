@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -38,6 +37,9 @@ Background::Background(AvalancheEngine *vm) {
 	_vm = vm;
 	_spriteNum = 0;
 	_nextBell = 0;
+
+	for (int i = 0; i < 40; ++i)
+		_offsets[i] = 0;
 }
 
 Background::~Background() {
@@ -90,6 +92,8 @@ void Background::update() {
 			case 33:
 				_vm->_malagauche = 0;
 				break;
+			default:
+				break;
 			}
 		}
 
@@ -141,6 +145,8 @@ void Background::update() {
 			case 2:
 				draw(-1, -1, 2);
 				break;
+			default:
+				break;
 			}
 		}
 		break;
@@ -153,9 +159,9 @@ void Background::update() {
 			// Bearing of Avvy from du Lustie.
 			else if ((angle <= 45) || ((angle >= 315) && (angle <= 360)))
 					direction = 1; // Middle.
-			else if ((angle >= 45) && (angle <= 180))
+			else if (angle <= 180)
 					direction = 2; // Left.
-			else if ((angle >= 181) && (angle <= 314))
+			else if (angle <= 314)
 				direction = 3; // Right.
 
 			if (direction != _vm->_npcFacing) { // du Lustie.
@@ -173,6 +179,8 @@ void Background::update() {
 			case 1:
 				draw(-1, -1, 2); // Frame 1: Natural.
 				break;
+			default:
+				break;
 			}
 		}
 		break;
@@ -185,6 +193,8 @@ void Background::update() {
 			case 23:
 				draw(-1, -1, 1); // Frame 1: Back to normal.
 				break;
+			default:
+				break;
 			}
 		}
 		break;
@@ -194,9 +204,9 @@ void Background::update() {
 		uint16 angle = _vm->bearing(4);
 		if ((angle <= 45) || ((angle >= 315) && (angle <= 360)))
 			direction = 2; // Middle.
-		else if ((angle >= 45) && (angle <= 180))
+		else if (angle <= 180)
 			direction = 6; // Left.
-		else if ((angle >= 181) && (angle <= 314))
+		else if (angle <= 314)
 			direction = 8; // Right.
 
 		if ((_vm->_roomCycles % 60) > 57)
@@ -214,6 +224,8 @@ void Background::update() {
 		case 49 :
 			draw(-1, -1, 9);
 			break;
+		default:
+			break;
 		}
 		break;
 	  }
@@ -226,9 +238,9 @@ void Background::update() {
 		uint16 angle = _vm->bearing(1);
 		if ((angle <= 45) || ((angle >= 315) && (angle <= 360)))
 			direction = 4; // Middle.
-		else if ((angle >= 45) && (angle <= 180))
+		else if (angle <= 180)
 			direction = 6; // Left.
-		else if ((angle >= 181) && (angle <= 314))
+		else if (angle <= 314)
 			direction = 8; // Right.
 
 		if ((_vm->_roomCycles % 45) > 42)
@@ -257,13 +269,15 @@ void Background::update() {
 		case 2:
 			_vm->_sound->stopSound();
 			break;
+		default:
+			break;
 		}
 	}
 }
 
 void Background::loadSprites(byte number) {
 	Common::File f;
-	_filename = _filename.format("chunk%d.avd", number);
+	_filename = Common::Path(Common::String::format("chunk%d.avd", number));
 	if (!f.open(_filename))
 		return; // We skip because some rooms don't have sprites in the background.
 

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -335,6 +334,45 @@ static int r_setY(lua_State *L) {
 	return 0;
 }
 
+static void drawPolygon(const Polygon &polygon, uint color, const Vertex &offset) {
+	GraphicEngine *pGE = Kernel::getInstance()->getGfx();
+	assert(pGE);
+
+	for (int i = 0; i < polygon.vertexCount - 1; i++)
+		pGE->drawDebugLine(polygon.vertices[i] + offset, polygon.vertices[i + 1] + offset, color);
+
+	pGE->drawDebugLine(polygon.vertices[polygon.vertexCount - 1] + offset, polygon.vertices[0] + offset, color);
+}
+
+static void drawRegion(const Region &region, uint color, const Vertex &offset) {
+	drawPolygon(region.getContour(), color, offset);
+	for (int i = 0; i < region.getHoleCount(); i++)
+		drawPolygon(region.getHole(i), color, offset);
+}
+
+static int r_draw(lua_State *L) {
+	Region *pR = checkRegion(L);
+	assert(pR);
+
+	switch (lua_gettop(L)) {
+	case 3: {
+		Vertex offset;
+		Vertex::luaVertexToVertex(L, 3, offset);
+		drawRegion(*pR, GraphicEngine::luaColorToARGBColor(L, 2), offset);
+	}
+	break;
+
+	case 2:
+		drawRegion(*pR, GraphicEngine::luaColorToARGBColor(L, 2), Vertex(0, 0));
+		break;
+
+	default:
+		drawRegion(*pR, BS_RGB(255, 255, 255), Vertex(0, 0));
+	}
+
+	return 0;
+}
+
 static int r_getCentroid(lua_State *L) {
 	Region *RPtr = checkRegion(L);
 	assert(RPtr);
@@ -351,12 +389,6 @@ static int r_delete(lua_State *L) {
 	return 0;
 }
 
-// Marks a function that should never be used
-static int dummyFuncError(lua_State *L) {
-	error("Dummy function invoked by LUA");
-	return 1;
-}
-
 static const luaL_reg REGION_METHODS[] = {
 	{"SetPos", r_setPos},
 	{"SetX", r_setX},
@@ -366,7 +398,7 @@ static const luaL_reg REGION_METHODS[] = {
 	{"GetX", r_getX},
 	{"GetY", r_getY},
 	{"IsValid", r_isValid},
-	{"Draw", dummyFuncError},
+	{"Draw", r_draw},
 	{"GetCentroid", r_getCentroid},
 	{0, 0}
 };

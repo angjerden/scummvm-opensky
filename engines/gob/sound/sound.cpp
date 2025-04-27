@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,13 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ *
+ * This file is dual-licensed.
+ * In addition to the GPLv3 license mentioned above, this code is also
+ * licensed under LGPL 2.1. See LICENSES/COPYING.LGPL file for the
+ * full text of the license.
  *
  */
 
@@ -28,6 +33,7 @@
 #include "gob/game.h"
 #include "gob/inter.h"
 
+#include "gob/sound/bgatmosphere.h"
 #include "gob/sound/pcspeaker.h"
 #include "gob/sound/soundblaster.h"
 #include "gob/sound/adlplayer.h"
@@ -42,12 +48,12 @@ Sound::Sound(GobEngine *vm) : _vm(vm) {
 	_pcspeaker = new PCSpeaker(*_vm->_mixer);
 	_blaster = new SoundBlaster(*_vm->_mixer);
 
-	_adlPlayer = 0;
-	_mdyPlayer = 0;
-	_infogrames = 0;
-	_protracker = 0;
-	_cdrom = 0;
-	_bgatmos = 0;
+	_adlPlayer = nullptr;
+	_mdyPlayer = nullptr;
+	_infogrames = nullptr;
+	_protracker = nullptr;
+	_cdrom = nullptr;
+	_bgatmos = nullptr;
 
 	_hasAdLib = (!_vm->_noMusic && _vm->hasAdLib());
 
@@ -89,14 +95,14 @@ void Sound::convToSigned(byte *buffer, int length) {
 
 SoundDesc *Sound::sampleGetBySlot(int slot) {
 	if ((slot < 0) || (slot >= kSoundsCount))
-		return 0;
+		return nullptr;
 
 	return &_sounds[slot];
 }
 
 const SoundDesc *Sound::sampleGetBySlot(int slot) const {
 	if ((slot < 0) || (slot >= kSoundsCount))
-		return 0;
+		return nullptr;
 
 	return &_sounds[slot];
 }
@@ -234,7 +240,7 @@ bool Sound::adlibLoadADL(const char *fileName) {
 		return false;
 
 	if (!_adlPlayer)
-		_adlPlayer = new ADLPlayer(*_vm->_mixer);
+		_adlPlayer = new ADLPlayer();
 
 	debugC(1, kDebugSound, "AdLib: Loading ADL data (\"%s\")", fileName);
 
@@ -256,7 +262,7 @@ bool Sound::adlibLoadADL(byte *data, uint32 size, int index) {
 		return false;
 
 	if (!_adlPlayer)
-		_adlPlayer = new ADLPlayer(*_vm->_mixer);
+		_adlPlayer = new ADLPlayer();
 
 	debugC(1, kDebugSound, "AdLib: Loading ADL data (%d)", index);
 
@@ -331,7 +337,7 @@ void Sound::adlibPlayTrack(const char *trackname) {
 }
 
 void Sound::adlibPlayBgMusic() {
-	if (!_hasAdLib || _hasAdLibBg)
+	if (!_hasAdLib || !_hasAdLibBg) // If one of those is disabled, then stop there 
 		return;
 
 	createADLPlayer();
@@ -353,7 +359,7 @@ void Sound::adlibPlayBgMusic() {
 		"musmac5.mid"
 	};
 
-	const char *track = 0;
+	const char *track = nullptr;
 	if (_vm->getPlatform() == Common::kPlatformWindows)
 		track = tracksWin[_vm->_util->getRandom(ARRAYSIZE(tracksWin))];
 	else
@@ -423,6 +429,16 @@ int32 Sound::adlibGetRepeating() const {
 		return _mdyPlayer->getRepeating();
 
 	return false;
+}
+
+void Sound::adlibSyncVolume() {
+	if (!_hasAdLib)
+		return;
+
+	if (_adlPlayer)
+		_adlPlayer->syncVolume();
+	if (_mdyPlayer)
+		_mdyPlayer->syncVolume();
 }
 
 void Sound::adlibSetRepeating(int32 repCount) {
@@ -614,7 +630,13 @@ void Sound::cdPlay(const Common::String &trackName) {
 // name in the scripts, and therefore doesn't play. This fixes the problem.
 	if ((_vm->getGameType() == kGameTypeFascination) && trackName.equalsIgnoreCase("boscle"))
 		_cdrom->startTrack("bosscle");
-	else
+// WORKAROUND - In Goblins 3 CD, in the chess room, a couple of tracks have the wrong name
+// in the scripts, and therefore don't play. This fixes the problem (ticket #11335).
+	else if ((_vm->getGameType() == kGameTypeGob3) && trackName.matchString("ECHEQUI?")) {
+		char name[] = "ECHIQUI1";
+		name[7] = trackName[7];
+		_cdrom->startTrack(name);
+	} else
 		_cdrom->startTrack(trackName.c_str());
 }
 
@@ -707,7 +729,7 @@ void Sound::bgStop() {
 	_bgatmos->queueClear();
 }
 
-void Sound::bgSetPlayMode(BackgroundAtmosphere::PlayMode mode) {
+void Sound::bgSetPlayMode(Sound::BackgroundPlayMode mode) {
 	if (!_bgatmos)
 		return;
 
@@ -737,9 +759,9 @@ void Sound::createMDYPlayer() {
 		return;
 
 	delete _adlPlayer;
-	_adlPlayer = 0;
+	_adlPlayer = nullptr;
 
-	_mdyPlayer = new MUSPlayer(*_vm->_mixer);
+	_mdyPlayer = new MUSPlayer();
 }
 
 void Sound::createADLPlayer() {
@@ -747,9 +769,9 @@ void Sound::createADLPlayer() {
 		return;
 
 	delete _mdyPlayer;
-	_mdyPlayer= 0;
+	_mdyPlayer= nullptr;
 
-	_adlPlayer = new ADLPlayer(*_vm->_mixer);
+	_adlPlayer = new ADLPlayer();
 }
 
 } // End of namespace Gob

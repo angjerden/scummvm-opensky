@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -34,7 +33,7 @@
 #include "common/system.h"
 #include "common/memstream.h"
 
-#include "graphics/palette.h"
+#include "graphics/paletteman.h"
 
 #include "engines/util.h"
 
@@ -77,8 +76,8 @@ Common::Rect MohawkEngine_LivingBooks::readRect(Common::ReadStreamEndian *stream
 }
 
 LBPage::LBPage(MohawkEngine_LivingBooks *vm) : _vm(vm) {
-	_code = NULL;
-	_mhk = NULL;
+	_code = nullptr;
+	_mhk = nullptr;
 
 	_baseId = 0;
 	_cascade = false;
@@ -133,6 +132,8 @@ LBPage::~LBPage() {
 }
 
 MohawkEngine_LivingBooks::MohawkEngine_LivingBooks(OSystem *syst, const MohawkGameDescription *gamedesc) : MohawkEngine(syst, gamedesc) {
+	DebugMan.addDebugChannel(kDebugCode, "Code", "Track Script Execution");
+
 	_needsUpdate = false;
 	_needsRedraw = false;
 	_screenWidth = _screenHeight = 0;
@@ -144,20 +145,26 @@ MohawkEngine_LivingBooks::MohawkEngine_LivingBooks(OSystem *syst, const MohawkGa
 
 	_rnd = new Common::RandomSource("livingbooks");
 
-	_page = NULL;
+	_sound = nullptr;
+	_video = nullptr;
+	_page = nullptr;
 
-	const Common::FSNode gameDataDir(ConfMan.get("path"));
+	const Common::FSNode gameDataDir(ConfMan.getPath("path"));
 	// Rugrats
 	SearchMan.addSubDirectoryMatching(gameDataDir, "program", 0, 2);
 	SearchMan.addSubDirectoryMatching(gameDataDir, "Rugrats Adventure Game", 0, 2);
 	// CarmenTQ
 	SearchMan.addSubDirectoryMatching(gameDataDir, "95instal", 0, 4);
+
+	// Sheila Rae, the Brave (Europe version) contains a junk line (bug #13920) 
+	_bookInfoFile.requireKeyValueDelimiter();
 }
 
 MohawkEngine_LivingBooks::~MohawkEngine_LivingBooks() {
 	destroyPage();
 
-	delete _console;
+	delete _sound;
+	delete _video;
 	delete _gfx;
 	delete _rnd;
 	_bookInfoFile.clear();
@@ -166,7 +173,11 @@ MohawkEngine_LivingBooks::~MohawkEngine_LivingBooks() {
 Common::Error MohawkEngine_LivingBooks::run() {
 	MohawkEngine::run();
 
-	_console = new LivingBooksConsole(this);
+	if (!_mixer->isReady()) {
+		return Common::kAudioDeviceInitFailed;
+	}
+
+	setDebugger(new LivingBooksConsole(this));
 	// Load the book info from the detected file
 	loadBookInfo(getBookInfoFileName());
 
@@ -182,6 +193,8 @@ Common::Error MohawkEngine_LivingBooks::run() {
 		error("Could not find xRes/yRes variables");
 
 	_gfx = new LBGraphics(this, _screenWidth, _screenHeight);
+	_video = new VideoManager(this);
+	_sound = new Sound(this);
 
 	if (getGameType() != GType_LIVINGBOOKSV1)
 		_cursor = new LivingBooksCursorManager_v2();
@@ -199,7 +212,7 @@ Common::Error MohawkEngine_LivingBooks::run() {
 	Common::Event event;
 	while (!shouldQuit()) {
 		while (_eventMan->pollEvent(event)) {
-			LBItem *found = NULL;
+			LBItem *found = nullptr;
 
 			switch (event.type) {
 			case Common::EVENT_MOUSEMOVE:
@@ -225,13 +238,6 @@ Common::Error MohawkEngine_LivingBooks::run() {
 
 			case Common::EVENT_KEYDOWN:
 				switch (event.kbd.keycode) {
-				case Common::KEYCODE_d:
-					if (event.kbd.flags & Common::KBD_CTRL) {
-						_console->attach();
-						_console->onFrame();
-					}
-					break;
-
 				case Common::KEYCODE_SPACE:
 					pauseGame();
 					break;
@@ -284,9 +290,25 @@ Common::Error MohawkEngine_LivingBooks::run() {
 	return Common::kNoError;
 }
 
-void MohawkEngine_LivingBooks::loadBookInfo(const Common::String &filename) {
+void MohawkEngine_LivingBooks::pauseEngineIntern(bool pause) {
+	MohawkEngine::pauseEngineIntern(pause);
+
+	if (pause) {
+		if (_video != nullptr) {
+			_video->pauseVideos();
+		}
+	} else {
+		if (_video != nullptr) {
+			_video->resumeVideos();
+		}
+		_system->updateScreen();
+	}
+}
+
+void MohawkEngine_LivingBooks::loadBookInfo(const Common::Path &filename) {
+	_bookInfoFile.allowNonEnglishCharacters();
 	if (!_bookInfoFile.loadFromFile(filename))
-		error("Could not open %s as a config file", filename.c_str());
+		error("Could not open %s as a config file", filename.toString().c_str());
 
 	_title = getStringFromConfig("BookInfo", "title");
 	_copyright = getStringFromConfig("BookInfo", "copyright");
@@ -316,7 +338,7 @@ void MohawkEngine_LivingBooks::loadBookInfo(const Common::String &filename) {
 			Common::String command = Common::String::format("%s = %s", i->key.c_str(), i->value.c_str());
 			LBCode tempCode(this, 0);
 			uint offset = tempCode.parseCode(command);
-			tempCode.runCode(NULL, offset);
+			tempCode.runCode(nullptr, offset);
 		}
 	}
 }
@@ -356,11 +378,49 @@ void MohawkEngine_LivingBooks::destroyPage() {
 	delete _page;
 	assert(_items.empty());
 	assert(_orderedItems.empty());
-	_page = NULL;
+	_page = nullptr;
 
 	_notifyEvents.clear();
 
-	_focus = NULL;
+	_focus = nullptr;
+}
+
+// Replace any colons (originally a slash) with another character
+static Common::String replaceColons(const Common::String &in, char replace) {
+	Common::String out;
+
+	for (uint32 i = 0; i < in.size(); i++) {
+		if (in[i] == ':')
+			out += replace;
+		else
+			out += in[i];
+	}
+
+	return out;
+}
+
+// Helper function to assist in opening pages
+static bool tryOpenPage(Archive *archive, const Common::String &fileName) {
+	// Try the plain file name first
+	if (archive->openFile(Common::Path(fileName)))
+		return true;
+
+	// No colons, then bail out
+	if (!fileName.contains(':'))
+		return false;
+
+	// Try replacing colons with underscores (in case the original was
+	// a Mac version and had slashes not as a separator).
+	if (archive->openFile(Common::Path(replaceColons(fileName, '_'))))
+		return true;
+
+	// Try replacing colons with slashes (in case the original was a Mac
+	// version and had slashes as a separator).
+	if (archive->openFile(Common::Path(replaceColons(fileName, '/'))))
+		return true;
+
+	// Failed to open the archive
+	return false;
 }
 
 bool MohawkEngine_LivingBooks::loadPage(LBMode mode, uint page, uint subpage) {
@@ -410,7 +470,7 @@ bool MohawkEngine_LivingBooks::loadPage(LBMode mode, uint page, uint subpage) {
 	}
 
 	Archive *pageArchive = createArchive();
-	if (!filename.empty() && pageArchive->openFile(filename)) {
+	if (!filename.empty() && tryOpenPage(pageArchive, filename)) {
 		_page = new LBPage(this);
 		_page->open(pageArchive, 1000);
 	} else {
@@ -543,6 +603,9 @@ void MohawkEngine_LivingBooks::updatePage() {
 				if (item)
 					item->setVisible(false);
 				break;
+
+			default:
+				break;
 			}
 		}
 		_phase++;
@@ -570,6 +633,9 @@ void MohawkEngine_LivingBooks::updatePage() {
 
 		_phase++;
 		break;
+
+	default:
+		break;
 	}
 
 	while (_eventQueue.size()) {
@@ -586,13 +652,15 @@ void MohawkEngine_LivingBooks::updatePage() {
 				_page->itemDestroyed(delayedEvent.item);
 				delete delayedEvent.item;
 				if (_focus == delayedEvent.item)
-					_focus = NULL;
+					_focus = nullptr;
 				break;
 			case kLBDelayedEventSetNotVisible:
 				_items[i]->setVisible(false);
 				break;
 			case kLBDelayedEventDone:
 				_items[i]->done(true);
+				break;
+			default:
 				break;
 			}
 
@@ -653,7 +721,7 @@ LBItem *MohawkEngine_LivingBooks::getItemById(uint16 id) {
 		if (_items[i]->getId() == id)
 			return _items[i];
 
-	return NULL;
+	return nullptr;
 }
 
 LBItem *MohawkEngine_LivingBooks::getItemByName(Common::String name) {
@@ -661,7 +729,7 @@ LBItem *MohawkEngine_LivingBooks::getItemByName(Common::String name) {
 		if (_items[i]->getName() == name)
 			return _items[i];
 
-	return NULL;
+	return nullptr;
 }
 
 void MohawkEngine_LivingBooks::setFocus(LBItem *focus) {
@@ -745,7 +813,7 @@ uint16 LBPage::getResourceVersion() {
 }
 
 void LBPage::loadBITL(uint16 resourceId) {
-	Common::SeekableSubReadStreamEndian *bitlStream = _vm->wrapStreamEndian(ID_BITL, resourceId);
+	Common::SeekableReadStreamEndian *bitlStream = _vm->wrapStreamEndian(ID_BITL, resourceId);
 
 	while (true) {
 		Common::Rect rect = _vm->readRect(bitlStream);
@@ -782,6 +850,7 @@ void LBPage::loadBITL(uint16 resourceId) {
 			break;
 		default:
 			warning("Unknown item type %04x", type);
+			// fall through
 		case 3: // often used for buttons
 			res = new LBItem(_vm, this, rect);
 			break;
@@ -797,9 +866,9 @@ void LBPage::loadBITL(uint16 resourceId) {
 	delete bitlStream;
 }
 
-Common::SeekableSubReadStreamEndian *MohawkEngine_LivingBooks::wrapStreamEndian(uint32 tag, uint16 id) {
+Common::SeekableReadStreamEndian *MohawkEngine_LivingBooks::wrapStreamEndian(uint32 tag, uint16 id) {
 	Common::SeekableReadStream *dataStream = getResource(tag, id);
-	return new Common::SeekableSubReadStreamEndian(dataStream, 0, dataStream->size(), isBigEndian(), DisposeAfterUse::YES);
+	return new Common::SeekableReadStreamEndianWrapper(dataStream, isBigEndian(), DisposeAfterUse::YES);
 }
 
 Common::String MohawkEngine_LivingBooks::getStringFromConfig(const Common::String &section, const Common::String &key) {
@@ -824,18 +893,18 @@ int MohawkEngine_LivingBooks::getIntFromConfig(const Common::String &section, co
 
 Common::String MohawkEngine_LivingBooks::getFileNameFromConfig(const Common::String &section, const Common::String &key, Common::String &leftover) {
 	Common::String string = getStringFromConfig(section, key, leftover);
-	Common::String x;
 
-	uint32 i = 0;
 	if (string.hasPrefix("//")) {
 		// skip "//CD-ROM Title/" prefixes which we don't care about
-		i = 3;
+		uint i = 3;
 		while (i < string.size() && string[i - 1] != '/')
 			i++;
-	}
-	x = string.c_str() + i;
 
-	return (getPlatform() == Common::kPlatformMacintosh) ? convertMacFileName(x) : convertWinFileName(x);
+		// Already uses slashes, no need to convert further
+		return string.c_str() + i;
+	}
+
+	return (getPlatform() == Common::kPlatformMacintosh) ? convertMacFileName(string) : convertWinFileName(string);
 }
 
 Common::String MohawkEngine_LivingBooks::removeQuotesFromString(const Common::String &string, Common::String &leftover) {
@@ -866,8 +935,10 @@ Common::String MohawkEngine_LivingBooks::convertMacFileName(const Common::String
 	for (uint32 i = 0; i < string.size(); i++) {
 		if (i == 0 && string[i] == ':') // First character should be ignored (another colon)
 			continue;
-		if (string[i] == ':')
+		if (string[i] == ':') // Directory separator
 			filename += '/';
+		else if (string[i] == '/') // Literal slash
+			filename += ':'; // Replace by colon, as used by macOS for slash
 		else
 			filename += string[i];
 	}
@@ -1159,6 +1230,9 @@ void MohawkEngine_LivingBooks::handleUIQuitClick(uint controlId) {
 		if (!tryLoadPageStart(kLBControlMode, 1))
 			error("couldn't return to menu");
 		break;
+
+	default:
+		break;
 	}
 }
 
@@ -1231,6 +1305,9 @@ void MohawkEngine_LivingBooks::handleUIOptionsClick(uint controlId) {
 		if (!tryLoadPageStart(kLBPlayMode, _curSelectedPage))
 			error("failed to load page %d", _curSelectedPage);
 		break;
+
+	default:
+		break;
 	}
 }
 
@@ -1274,6 +1351,9 @@ void MohawkEngine_LivingBooks::handleNotify(NotifyEvent &event) {
 		case 3:
 			// options screen
 			handleUIOptionsClick(event.param);
+			break;
+
+		default:
 			break;
 		}
 		break;
@@ -1344,7 +1424,7 @@ void MohawkEngine_LivingBooks::handleNotify(NotifyEvent &event) {
 		debug(2, "kLBNotifyChangeMode: v2 type %d", event.param);
 		switch (event.param) {
 		case 1:
-			debug(2, "kLBNotifyChangeMode:, mode %d, page %d.%d",
+			debug(2, "kLBNotifyChangeMode: mode %d, page %d.%d",
 				event.newMode, event.newPage, event.newSubpage);
 			// TODO: what is entry.newUnknown?
 			if (!event.newMode)
@@ -1399,7 +1479,7 @@ LBAnimationNode::~LBAnimationNode() {
 }
 
 void LBAnimationNode::loadScript(uint16 resourceId) {
-	Common::SeekableSubReadStreamEndian *scriptStream = _vm->wrapStreamEndian(ID_SCRP, resourceId);
+	Common::SeekableReadStreamEndian *scriptStream = _vm->wrapStreamEndian(ID_SCRP, resourceId);
 
 	reset();
 
@@ -1411,7 +1491,7 @@ void LBAnimationNode::loadScript(uint16 resourceId) {
 		entry.size = size;
 
 		if (!size) {
-			entry.data = NULL;
+			entry.data = nullptr;
 		} else {
 			entry.data = new byte[entry.size];
 			scriptStream->read(entry.data, entry.size);
@@ -1523,6 +1603,8 @@ NodeState LBAnimationNode::update(bool seeking) {
 				debug(4, "d: ResetSound(%0d)", soundResourceId);
 				// TODO
 				_vm->_sound->stopSound(soundResourceId);
+				break;
+			default:
 				break;
 			}
 			}
@@ -1653,9 +1735,10 @@ bool LBAnimationNode::transparentAt(int x, int y) {
 }
 
 LBAnimation::LBAnimation(MohawkEngine_LivingBooks *vm, LBAnimationItem *parent, uint16 resourceId) : _vm(vm), _parent(parent) {
-	Common::SeekableSubReadStreamEndian *aniStream = _vm->wrapStreamEndian(ID_ANI, resourceId);
+	Common::SeekableReadStreamEndian *aniStream = _vm->wrapStreamEndian(ID_ANI, resourceId);
 
-	if (aniStream->size() != 30)
+	// ANI records in the Wanderful sampler are 32 bytes, extra bytes are just NULs
+	if (aniStream->size() != 30 && aniStream->size() != 32)
 		warning("ANI Record size mismatch");
 
 	uint16 version = aniStream->readUint16();
@@ -1673,16 +1756,19 @@ LBAnimation::LBAnimation(MohawkEngine_LivingBooks *vm, LBAnimationItem *parent, 
 	debug(5, "ANI clip: (%d, %d), (%d, %d)", _clip.left, _clip.top, _clip.right, _clip.bottom);
 	debug(5, "ANI color id: %d", colorId);
 	debug(5, "ANI SPRResourceId: %d, offset %d", sprResourceId, sprResourceOffset);
+	if (aniStream->size() == 32) {
+		debug(5, "ANI extra bytes: (%d)", aniStream->readUint16());
+	}
 
 	if (aniStream->pos() != aniStream->size())
-		error("Still %d bytes at the end of anim stream", aniStream->size() - aniStream->pos());
+		error("Still %d bytes at the end of anim stream", (int)(aniStream->size() - aniStream->pos()));
 
 	delete aniStream;
 
 	if (sprResourceOffset)
 		error("Cannot handle non-zero ANI offset yet");
 
-	Common::SeekableSubReadStreamEndian *sprStream = _vm->wrapStreamEndian(ID_SPR, sprResourceId);
+	Common::SeekableReadStreamEndian *sprStream = _vm->wrapStreamEndian(ID_SPR, sprResourceId);
 
 	uint16 numBackNodes = sprStream->readUint16();
 	uint16 numFrontNodes = sprStream->readUint16();
@@ -1714,7 +1800,7 @@ LBAnimation::LBAnimation(MohawkEngine_LivingBooks *vm, LBAnimationItem *parent, 
 		error("Ignoring %d back nodes", numBackNodes);
 
 	if (sprStream->pos() != sprStream->size())
-		error("Still %d bytes at the end of sprite stream", sprStream->size() - sprStream->pos());
+		error("Still %d bytes at the end of sprite stream", (int)(sprStream->size() - sprStream->pos()));
 
 	delete sprStream;
 
@@ -1741,11 +1827,11 @@ void LBAnimation::loadShape(uint16 resourceId) {
 	if (resourceId == 0)
 		return;
 
-	Common::SeekableSubReadStreamEndian *shapeStream = _vm->wrapStreamEndian(ID_SHP, resourceId);
+	Common::SeekableReadStreamEndian *shapeStream = _vm->wrapStreamEndian(ID_SHP, resourceId);
 
 	if (_vm->isPreMohawk()) {
 		if (shapeStream->size() < 6)
-			error("V1 SHP Record size too short (%d)", shapeStream->size());
+			error("V1 SHP Record size too short (%d)", (int)shapeStream->size());
 
 		uint16 u0 = shapeStream->readUint16();
 		if (u0 != 3)
@@ -1759,7 +1845,7 @@ void LBAnimation::loadShape(uint16 resourceId) {
 		debug(8, "V1 SHP: idCount: %d", idCount);
 
 		if (shapeStream->size() != (idCount * 2) + 6)
-			error("V1 SHP Record size mismatch (%d)", shapeStream->size());
+			error("V1 SHP Record size mismatch (%d)", (int)shapeStream->size());
 
 		for (uint16 i = 0; i < idCount; i++) {
 			_shapeResources.push_back(shapeStream->readUint16());
@@ -1770,7 +1856,7 @@ void LBAnimation::loadShape(uint16 resourceId) {
 		debug(8, "SHP: idCount: %d", idCount);
 
 		if (shapeStream->size() != (idCount * 6) + 2)
-			error("SHP Record size mismatch (%d)", shapeStream->size());
+			error("SHP Record size mismatch (%d)", (int)shapeStream->size());
 
 		for (uint16 i = 0; i < idCount; i++) {
 			_shapeResources.push_back(shapeStream->readUint16());
@@ -1946,9 +2032,9 @@ uint16 LBAnimation::getParentId() {
 
 LBScriptEntry::LBScriptEntry() {
 	state = 0;
-	data = NULL;
-	argvParam = NULL;
-	argvTarget = NULL;
+	data = nullptr;
+	argvParam = nullptr;
+	argvTarget = nullptr;
 }
 
 LBScriptEntry::~LBScriptEntry() {
@@ -1994,7 +2080,7 @@ LBItem::~LBItem() {
 		delete _scriptEntries[i];
 }
 
-void LBItem::readFrom(Common::SeekableSubReadStreamEndian *stream) {
+void LBItem::readFrom(Common::SeekableReadStreamEndian *stream) {
 	_resourceId = stream->readUint16();
 	_itemId = stream->readUint16();
 	uint16 size = stream->readUint16();
@@ -2009,7 +2095,7 @@ void LBItem::readFrom(Common::SeekableSubReadStreamEndian *stream) {
 
 	int endPos = stream->pos() + size;
 	if (endPos > stream->size())
-		error("Item is larger (should end at %d) than stream (size %d)", endPos, stream->size());
+		error("Item is larger (should end at %d) than stream (size %d)", endPos, (int)stream->size());
 
 	while (true) {
 		if (stream->pos() == endPos)
@@ -2031,7 +2117,7 @@ void LBItem::readFrom(Common::SeekableSubReadStreamEndian *stream) {
 				(int)stream->pos() - (int)(oldPos + 4 + (uint)dataSize), dataType, dataSize);
 
 		if (stream->pos() > endPos)
-			error("Read off the end (at %d) of data (ends at %d)", stream->pos(), endPos);
+			error("Read off the end (at %d) of data (ends at %d)", (int)stream->pos(), endPos);
 
 		assert(!stream->eos());
 	}
@@ -2484,7 +2570,7 @@ void LBItem::handleMouseMove(Common::Point pos) {
 }
 
 void LBItem::handleMouseUp(Common::Point pos) {
-	_vm->setFocus(NULL);
+	_vm->setFocus(nullptr);
 	runScript(kLBEventMouseUp);
 	runScript(kLBEventMouseUpIn);
 }
@@ -2622,6 +2708,8 @@ void LBItem::startPhase(uint phase) {
 			debug(2, "Phase main: time startup");
 			setNextTime(_periodMin, _periodMax);
 		}
+		break;
+	default:
 		break;
 	}
 }
@@ -2773,6 +2861,8 @@ int LBItem::runScriptEntry(LBScriptEntry *entry) {
 			case 2:
 				// Loop.
 				entry->state = 0;
+				break;
+			default:
 				break;
 			}
 		}
@@ -2999,6 +3089,8 @@ int LBItem::runScriptEntry(LBScriptEntry *entry) {
 					debug(2, "JumpToExpression got %d (on %d, of %d)", e, i, entry->subentries.size());
 					i = e - 1;
 					break;
+				default:
+					break;
 				}
 			}
 			break;
@@ -3125,7 +3217,11 @@ void LBGroupItem::readData(uint16 type, uint16 size, Common::MemoryReadStreamEnd
 			// TODO: is type important for any game? at the moment, we ignore it
 			entry.entryType = stream->readUint16();
 			entry.entryId = stream->readUint16();
-			_groupEntries.push_back(entry);
+			// HACK: The Living Books v3 sampler includes the ID for the group as
+			// one of the entries in the Green Eggs and Ham section, which leads
+			// to infinite recursion when the group is loaded.
+			if (entry.entryId != getId())
+				_groupEntries.push_back(entry);
 			debug(3, "group entry: id %d, type %d", entry.entryId, entry.entryType);
 		}
 		}
@@ -3261,7 +3357,7 @@ LBPaletteItem::LBPaletteItem(MohawkEngine_LivingBooks *vm, LBPage *page, Common:
 	debug(3, "new LBPaletteItem");
 
 	_fadeInStart = 0;
-	_palette = NULL;
+	_palette = nullptr;
 }
 
 LBPaletteItem::~LBPaletteItem() {
@@ -3652,7 +3748,7 @@ LBItem *LBPictureItem::createClone() {
 }
 
 LBAnimationItem::LBAnimationItem(MohawkEngine_LivingBooks *vm, LBPage *page, Common::Rect rect) : LBItem(vm, page, rect) {
-	_anim = NULL;
+	_anim = nullptr;
 	_running = false;
 	debug(3, "new LBAnimationItem");
 }
@@ -3771,8 +3867,8 @@ LBMovieItem::~LBMovieItem() {
 
 void LBMovieItem::update() {
 	if (_playing) {
-		VideoHandle videoHandle = _vm->_video->findVideoHandle(_resourceId);
-		if (videoHandle == NULL_VID_HANDLE || _vm->_video->endOfVideo(videoHandle))
+		VideoEntryPtr video = _vm->_video->findVideo(_resourceId);
+		if (!video || video->endOfVideo())
 			done(true);
 	}
 
@@ -3783,8 +3879,11 @@ bool LBMovieItem::togglePlaying(bool playing, bool restart) {
 	if (playing) {
 		if ((_loaded && _enabled && _globalEnabled) || _phase == kLBPhaseNone) {
 			debug("toggled video for phase %d", _phase);
-			_vm->_video->playMovie(_resourceId, _rect.left, _rect.top);
+			VideoEntryPtr video = _vm->_video->playMovie(_resourceId);
+			if (!video)
+				error("Failed to open tMOV %d", _resourceId);
 
+			video->moveTo(_rect.left, _rect.top);
 			return true;
 		}
 	}
@@ -3808,9 +3907,9 @@ bool LBMiniGameItem::togglePlaying(bool playing, bool restart) {
 	// just skip to the most logical page. For optional minigames, this
 	// will return the player to the previous page. For mandatory minigames,
 	// this will send the player to the next page.
-	// TODO: Document mini games from Arthur's Reading Race
 
-	uint16 destPage;
+	uint16 destPage = 0;
+	bool returnToMenu = false;
 
 	// Figure out what minigame we have and bring us back to a page where
 	// the player can continue
@@ -3820,13 +3919,31 @@ bool LBMiniGameItem::togglePlaying(bool playing, bool restart) {
 		destPage = 5;
 	else if (_desc == "Fall") // Green Eggs and Ham: Fall minigame
 		destPage = 13;
+	else if (_desc == "MagicWrite3") // Arthur's Reading Race: "Let Me Write" minigame (Page 3)
+		destPage = 3;
+	else if (_desc == "MagicWrite4") // Arthur's Reading Race: "Let Me Write" minigame (Page 4)
+		destPage = 4;
+	else if (_desc == "MagicSpy5") // Arthur's Reading Race: "I Spy" minigame (Page 5)
+		destPage = 5;
+	else if (_desc == "MagicSpy6") // Arthur's Reading Race: "I Spy" minigame (Page 6)
+		destPage = 6;
+	else if (_desc == "MagicWrite7") // Arthur's Reading Race: "Let Me Write" minigame (Page 7)
+		destPage = 7;
+	else if (_desc == "MagicSpy8") // Arthur's Reading Race: "I Spy" minigame (Page 8)
+		destPage = 8;
+	else if (_desc == "MagicRace") // Arthur's Reading Race: Race minigame
+		returnToMenu = true;
 	else
 		error("Unknown minigame '%s'", _desc.c_str());
 
 	GUI::MessageDialog dialog(Common::String::format("The '%s' minigame is not supported yet.", _desc.c_str()));
 	dialog.runModal();
 
-	_vm->addNotifyEvent(NotifyEvent(kLBNotifyChangePage, destPage));
+	// Go back to the menu if requested, otherwise go to the requested page
+	if (returnToMenu)
+		_vm->addNotifyEvent(NotifyEvent(kLBNotifyGoToControls, 1));
+	else
+		_vm->addNotifyEvent(NotifyEvent(kLBNotifyChangePage, destPage));
 
 	return false;
 }
@@ -3838,7 +3955,7 @@ LBItem *LBMiniGameItem::createClone() {
 LBProxyItem::LBProxyItem(MohawkEngine_LivingBooks *vm, LBPage *page, Common::Rect rect) : LBItem(vm, page, rect) {
 	debug(3, "new LBProxyItem");
 
-	_page = NULL;
+	_page = nullptr;
 }
 
 LBProxyItem::~LBProxyItem() {
@@ -3863,7 +3980,7 @@ void LBProxyItem::load() {
 
 	debug(1, "LBProxyItem loading archive '%s' with id %d", filename.c_str(), baseId);
 	Archive *pageArchive = _vm->createArchive();
-	if (!pageArchive->openFile(filename))
+	if (!tryOpenPage(pageArchive, filename))
 		error("failed to open archive '%s' (for proxy '%s')", filename.c_str(), _desc.c_str());
 	_page = new LBPage(_vm);
 	_page->open(pageArchive, baseId);
@@ -3873,7 +3990,7 @@ void LBProxyItem::load() {
 
 void LBProxyItem::unload() {
 	delete _page;
-	_page = NULL;
+	_page = nullptr;
 
 	LBItem::unload();
 }

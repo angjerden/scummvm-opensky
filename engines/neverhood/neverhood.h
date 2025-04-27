@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,13 +15,12 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
-#ifndef NEVERHOOD_H
-#define NEVERHOOD_H
+#ifndef NEVERHOOD_NEVERHOOD_H
+#define NEVERHOOD_NEVERHOOD_H
 
 #include "common/scummsys.h"
 #include "common/events.h"
@@ -30,18 +29,14 @@
 #include "common/savefile.h"
 #include "common/str-array.h"
 #include "common/system.h"
-#include "audio/mixer.h"
 #include "engines/engine.h"
 #include "gui/debugger.h"
 #include "neverhood/console.h"
 #include "neverhood/messages.h"
 
+struct ADGameDescription;
+
 namespace Neverhood {
-
-enum NeverhoodGameFeatures {
-};
-
-struct NeverhoodGameDescription;
 
 class GameModule;
 class GameVars;
@@ -57,25 +52,29 @@ struct GameState {
 	int which;
 };
 
+struct SubtitleGlyph {
+	byte bitmap[16];
+	byte outline[16];
+};
+
 class NeverhoodEngine : public ::Engine {
 protected:
 
-	Common::Error run();
+	Common::Error run() override;
 	void mainLoop();
 
 public:
-	NeverhoodEngine(OSystem *syst, const NeverhoodGameDescription *gameDesc);
-	virtual ~NeverhoodEngine();
+	NeverhoodEngine(OSystem *syst, const ADGameDescription *gameDesc);
+	~NeverhoodEngine() override;
 
 	// Detection related functions
-	const NeverhoodGameDescription *_gameDescription;
+	const ADGameDescription *_gameDescription;
 	const char *getGameId() const;
-	uint32 getFeatures() const;
-	uint16 getVersion() const;
 	Common::Platform getPlatform() const;
 	Common::Language getLanguage() const;
-	bool hasFeature(EngineFeature f) const;
+	bool hasFeature(EngineFeature f) const override;
 	bool isDemo() const;
+	bool isBigDemo() const;
 	bool applyResourceFixes() const;
 	Common::String getTargetName() { return _targetName; };
 
@@ -90,8 +89,6 @@ public:
 	ResourceMan *_res;
 	GameModule *_gameModule;
 	StaticData *_staticData;
-	Console *_console;
-	GUI::Debugger *getDebugger() { return _console; }
 
 	SoundMan *_soundMan;
 	AudioResourceMan *_audioResourceMan;
@@ -120,17 +117,17 @@ public:
 
 	bool _isSaveAllowed;
 
-	bool canLoadGameStateCurrently() { return _isSaveAllowed; }
-	bool canSaveGameStateCurrently() { return _isSaveAllowed; }
+	bool canLoadGameStateCurrently(Common::U32String *msg = nullptr) override { return _isSaveAllowed; }
+	bool canSaveGameStateCurrently(Common::U32String *msg = nullptr) override { return _isSaveAllowed; }
 
-	Common::Error loadGameState(int slot);
-	Common::Error saveGameState(int slot, const Common::String &description);
+	Common::Error loadGameState(int slot) override;
+	Common::Error saveGameState(int slot, const Common::String &description, bool isAutosave = false) override;
 	Common::Error removeGameState(int slot);
 	bool savegame(const char *filename, const char *description);
 	bool loadgame(const char *filename);
-	const char *getSavegameFilename(int num);
+	Common::String getSaveStateName(int slot) const override;
 	static Common::String getSavegameFilename(const Common::String &target, int num);
-	static kReadSaveHeaderError readSaveHeader(Common::SeekableReadStream *in, bool loadThumbnail, SaveHeader &header);
+	WARN_UNUSED_RESULT static kReadSaveHeaderError readSaveHeader(Common::SeekableReadStream *in, SaveHeader &header, bool skipThumbnail = true);
 
 	GameState& gameState() { return _gameState; }
 	GameModule *gameModule() { return _gameModule; }
@@ -141,13 +138,21 @@ public:
 	void toggleSoundUpdate(bool state) { _updateSound = state; }
 	void toggleMusic(bool state) { _enableMusic = state; }
 	bool musicIsEnabled() { return _enableMusic; }
+	bool shouldOffsetFontNhc() const { return _nhcOffsetFont; }
+
+	const SubtitleGlyph *getSubfont() const {
+		return _haveSubtitles ? _subFont : nullptr;
+	}
 
 private:
 	bool _updateSound;
 	bool _enableMusic;
+	bool _nhcOffsetFont;
 
+	SubtitleGlyph _subFont[256];
+	bool _haveSubtitles;
 };
 
 } // End of namespace Neverhood
 
-#endif /* NEVERHOOD_H */
+#endif /* NEVERHOOD_NEVERHOOD_H */

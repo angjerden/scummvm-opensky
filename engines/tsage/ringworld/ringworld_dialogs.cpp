@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,13 +15,9 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
-
-#include "gui/dialog.h"
-#include "gui/widget.h"
 
 #include "tsage/tsage.h"
 #include "tsage/core.h"
@@ -181,7 +177,7 @@ void RightClickDialog::execute() {
 		}
 
 		g_system->delayMillis(10);
-		GLOBALS._screenSurface.updateScreen();
+		GLOBALS._screen.update();
 	}
 
 	_gfxManager.deactivate();
@@ -212,6 +208,8 @@ void RightClickDialog::execute() {
 		// Dialog options
 		Ringworld::OptionsDialog::show();
 		break;
+	default:
+		break;
 	}
 }
 
@@ -225,7 +223,15 @@ void OptionsDialog::show() {
 
 	if (btn == &dlg->_btnQuit) {
 		// Quit game
-		if (MessageDialog::show(QUIT_CONFIRM_MSG, CANCEL_BTN_STRING, QUIT_BTN_STRING) == 1) {
+		int rc;
+		if (g_vm->getLanguage() == Common::ES_ESP) {
+			rc = MessageDialog::show(ESP_QUIT_CONFIRM_1_MSG, ESP_CANCEL_BTN_STRING, ESP_QUIT_BTN_STRING);
+		} else if (g_vm->getLanguage() == Common::RU_RUS) {
+			rc = MessageDialog::show(RUS_QUIT_CONFIRM_MSG, RUS_CANCEL_BTN_STRING, RUS_QUIT_BTN_STRING);
+		} else {
+			rc = MessageDialog::show(QUIT_CONFIRM_MSG, CANCEL_BTN_STRING, QUIT_BTN_STRING);
+		}
+		if (rc == 1) {
 			g_vm->quitGame();
 		}
 	} else if (btn == &dlg->_btnRestart) {
@@ -248,13 +254,31 @@ void OptionsDialog::show() {
 
 OptionsDialog::OptionsDialog() {
 	// Set the element text
-	_gfxMessage.set(OPTIONS_MSG, 140, ALIGN_LEFT);
-	_btnRestore.setText(RESTORE_BTN_STRING);
-	_btnSave.setText(SAVE_BTN_STRING);
-	_btnRestart.setText(RESTART_BTN_STRING);
-	_btnQuit.setText(QUIT_BTN_STRING);
-	_btnSound.setText(SOUND_BTN_STRING);
-	_btnResume.setText(RESUME_BTN_STRING);
+	if (g_vm->getLanguage() == Common::ES_ESP) {
+		_gfxMessage.set(ESP_OPTIONS_MSG, 140, ALIGN_LEFT);
+		_btnRestore.setText(ESP_RESTORE_BTN_STRING);
+		_btnSave.setText(ESP_SAVE_BTN_STRING);
+		_btnRestart.setText(ESP_RESTART_BTN_1_STRING);
+		_btnQuit.setText(ESP_QUIT_BTN_STRING);
+		_btnSound.setText(ESP_SOUND_BTN_STRING);
+		_btnResume.setText(ESP_RESUME_BTN_STRING);
+	} else if (g_vm->getLanguage() == Common::RU_RUS) {
+		_gfxMessage.set(RUS_OPTIONS_MSG, 140, ALIGN_LEFT);
+		_btnRestore.setText(RUS_RESTORE_BTN_STRING);
+		_btnSave.setText(RUS_SAVE_BTN_STRING);
+		_btnRestart.setText(RUS_RESTART_BTN_STRING);
+		_btnQuit.setText(RUS_QUIT_BTN_STRING);
+		_btnSound.setText(RUS_SOUND_BTN_STRING);
+		_btnResume.setText(RUS_RESUME_BTN_STRING);
+	} else {
+		_gfxMessage.set(OPTIONS_MSG, 140, ALIGN_LEFT);
+		_btnRestore.setText(RESTORE_BTN_STRING);
+		_btnSave.setText(SAVE_BTN_STRING);
+		_btnRestart.setText(RESTART_BTN_STRING);
+		_btnQuit.setText(QUIT_BTN_STRING);
+		_btnSound.setText(SOUND_BTN_STRING);
+		_btnResume.setText(RESUME_BTN_STRING);
+	}
 
 	// Set position of the elements
 	_gfxMessage._bounds.moveTo(0, 1);
@@ -304,7 +328,13 @@ void InventoryDialog::show() {
 	}
 
 	if (itemCount == 0) {
-		MessageDialog::show(INV_EMPTY_MSG, OK_BTN_STRING);
+		if (g_vm->getLanguage() == Common::ES_ESP) {
+			MessageDialog::show(ESP_INV_EMPTY_MSG, ESP_OK_BTN_STRING);
+		} else if (g_vm->getLanguage() == Common::RU_RUS) {
+			MessageDialog::show(RUS_INV_EMPTY_MSG, RUS_OK_BTN_STRING);
+		} else {
+			MessageDialog::show(INV_EMPTY_MSG, OK_BTN_STRING);
+		}
 		return;
 	}
 
@@ -364,9 +394,17 @@ InventoryDialog::InventoryDialog() {
 
 	// Set up the buttons
 	pt.y += imgHeight + 2;
-	_btnOk.setText(OK_BTN_STRING);
+	if (g_vm->getLanguage() == Common::ES_ESP) {
+		_btnOk.setText(ESP_OK_BTN_STRING);
+		_btnLook.setText(ESP_LOOK_BTN_STRING);
+	} else if (g_vm->getLanguage() == Common::RU_RUS) {
+		_btnOk.setText(RUS_OK_BTN_STRING);
+		_btnLook.setText(RUS_LOOK_BTN_STRING);
+	} else {
+		_btnOk.setText(OK_BTN_STRING);
+		_btnLook.setText(LOOK_BTN_STRING);
+	}
 	_btnOk._bounds.moveTo((imgWidth + 2) * cellsSize - _btnOk._bounds.width(), pt.y);
-	_btnLook.setText(LOOK_BTN_STRING);
 	_btnLook._bounds.moveTo(_btnOk._bounds.left - _btnLook._bounds.width() - 2, _btnOk._bounds.top);
 	addElements(&_btnLook, &_btnOk, NULL);
 
@@ -391,7 +429,7 @@ void InventoryDialog::execute() {
 		Event event;
 		while (!g_globals->_events.getEvent(event) && !g_vm->shouldQuit()) {
 			g_system->delayMillis(10);
-			GLOBALS._screenSurface.updateScreen();
+			GLOBALS._screen.update();
 		}
 		if (g_vm->shouldQuit())
 			break;
@@ -409,8 +447,8 @@ void InventoryDialog::execute() {
 				hiliteObj = *i;
 		}
 
-		if (!event.handled && event.eventType == EVENT_KEYPRESS) {
-			if ((event.kbd.keycode == Common::KEYCODE_RETURN) || (event.kbd.keycode == Common::KEYCODE_ESCAPE)) {
+		if (!event.handled && (event.eventType == EVENT_CUSTOM_ACTIONSTART)) {
+			if ((event.customType == kActionReturn) || (event.customType == kActionEscape)) {
 				// Exit the dialog
 				//hiliteObj = &_btnOk;
 				break;
@@ -424,14 +462,36 @@ void InventoryDialog::execute() {
 			break;
 		} else if (hiliteObj == &_btnLook) {
 			// Look button clicked
-			if (_btnLook._message == LOOK_BTN_STRING) {
-				_btnLook._message = PICK_BTN_STRING;
-				lookFlag = 1;
-				g_globals->_events.setCursor(CURSOR_LOOK);
+			if (g_vm->getLanguage() == Common::ES_ESP) {
+				if (_btnLook._message == ESP_LOOK_BTN_STRING) {
+					_btnLook._message = ESP_PICK_BTN_STRING;
+					lookFlag = 1;
+					g_globals->_events.setCursor(CURSOR_LOOK);
+				} else {
+					_btnLook._message = ESP_LOOK_BTN_STRING;
+					lookFlag = 0;
+					g_globals->_events.setCursor(CURSOR_WALK);
+				}
+			} else if (g_vm->getLanguage() == Common::RU_RUS) {
+				if (_btnLook._message == RUS_LOOK_BTN_STRING) {
+					_btnLook._message = RUS_PICK_BTN_STRING;
+					lookFlag = 1;
+					g_globals->_events.setCursor(CURSOR_LOOK);
+				} else {
+					_btnLook._message = RUS_LOOK_BTN_STRING;
+					lookFlag = 0;
+					g_globals->_events.setCursor(CURSOR_WALK);
+				}
 			} else {
-				_btnLook._message = LOOK_BTN_STRING;
-				lookFlag = 0;
-				g_globals->_events.setCursor(CURSOR_WALK);
+				if (_btnLook._message == LOOK_BTN_STRING) {
+					_btnLook._message = PICK_BTN_STRING;
+					lookFlag = 1;
+					g_globals->_events.setCursor(CURSOR_LOOK);
+				} else {
+					_btnLook._message = LOOK_BTN_STRING;
+					lookFlag = 0;
+					g_globals->_events.setCursor(CURSOR_WALK);
+				}
 			}
 
 			hiliteObj->draw();
@@ -439,7 +499,7 @@ void InventoryDialog::execute() {
 			// Inventory item selected
 			InvObject *invObject = static_cast<GfxInvImage *>(hiliteObj)->_invObject;
 			if (lookFlag) {
-				g_globals->_screenSurface.displayText(invObject->_description);
+				g_globals->_screen.displayText(invObject->_description);
 			} else {
 				RING_INVENTORY._selectedItem = invObject;
 				invObject->setCursor();

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,35 +15,57 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
-#if defined(POSIX) || defined(PLAYSTATION3)
+#if defined(POSIX) || defined(PLAYSTATION3) || defined(PSP2) || defined(__DS__)
 
 // Re-enable some forbidden symbols to avoid clashes with stat.h and unistd.h.
-// Also with clock() in sys/time.h in some Mac OS X SDKs.
+// Also with clock() in sys/time.h in some macOS SDKs.
 #define FORBIDDEN_SYMBOL_EXCEPTION_time_h
 #define FORBIDDEN_SYMBOL_EXCEPTION_unistd_h
 #define FORBIDDEN_SYMBOL_EXCEPTION_mkdir
 #define FORBIDDEN_SYMBOL_EXCEPTION_getenv
 #define FORBIDDEN_SYMBOL_EXCEPTION_exit		//Needed for IRIX's unistd.h
+#define FORBIDDEN_SYMBOL_EXCEPTION_random
+#define FORBIDDEN_SYMBOL_EXCEPTION_srandom
 
 #include "backends/fs/posix/posix-fs.h"
-#include "backends/fs/stdiostream.h"
+#include "backends/fs/posix/posix-iostream.h"
 #include "common/algorithm.h"
 
 #include <sys/param.h>
 #include <sys/stat.h>
+#ifdef MACOSX
+#include <sys/types.h>
+#endif
+#ifdef PSP2
+#include <psp2/io/stat.h>
+#define mkdir sceIoMkdir
+#endif
 #include <dirent.h>
 #include <stdio.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #ifdef __OS2__
 #define INCL_DOS
 #include <os2.h>
 #endif
 
+bool POSIXFilesystemNode::exists() const {
+	return access(_path.c_str(), F_OK) == 0;
+}
+
+bool POSIXFilesystemNode::isReadable() const {
+	return access(_path.c_str(), R_OK) == 0;
+}
+
+bool POSIXFilesystemNode::isWritable() const {
+	return access(_path.c_str(), W_OK) == 0;
+}
 
 void POSIXFilesystemNode::setFlags() {
 	struct stat st;
@@ -56,13 +78,13 @@ POSIXFilesystemNode::POSIXFilesystemNode(const Common::String &p) {
 	assert(p.size() > 0);
 
 	// Expand "~/" to the value of the HOME env variable
-	if (p.hasPrefix("~/")) {
+	if (p.hasPrefix("~/") || p == "~") {
 		const char *home = getenv("HOME");
 		if (home != NULL && strlen(home) < MAXPATHLEN) {
 			_path = home;
-			// Skip over the tilda.  We know that p contains at least
-			// two chars, so this is safe:
-			_path += p.c_str() + 1;
+			// Skip over the tilda.
+			if (p.size() > 1)
+				_path += p.c_str() + 1;
 		}
 	} else {
 		_path = p;
@@ -88,7 +110,7 @@ POSIXFilesystemNode::POSIXFilesystemNode(const Common::String &p) {
 	if (!_path.hasPrefix("/")) {
 		char buf[MAXPATHLEN+1];
 		getcwd(buf, MAXPATHLEN);
-		strcat(buf, "/");
+		Common::strcat_s(buf, "/");
 		_path = buf + _path;
 	}
 #endif
@@ -131,7 +153,7 @@ bool POSIXFilesystemNode::getChildren(AbstractFSList &myList, ListMode mode, boo
 				char drive_root[] = "A:/";
 				drive_root[0] += i;
 
-                POSIXFilesystemNode *entry = new POSIXFilesystemNode();
+				POSIXFilesystemNode *entry = new POSIXFilesystemNode();
 				entry->_isDirectory = true;
 				entry->_isValid = true;
 				entry->_path = drive_root;
@@ -180,20 +202,30 @@ bool POSIXFilesystemNode::getChildren(AbstractFSList &myList, ListMode mode, boo
 		 */
 		entry.setFlags();
 #else
-		if (dp->d_type == DT_UNKNOWN) {
+		switch (dp->d_type) {
+		case DT_DIR:
+		case DT_REG:
+			entry._isValid = true;
+			entry._isDirectory = (dp->d_type == DT_DIR);
+			break;
+		case DT_LNK:
+			entry._isValid = true;
+			struct stat st;
+			if (stat(entry._path.c_str(), &st) == 0)
+				entry._isDirectory = S_ISDIR(st.st_mode);
+			else
+				entry._isDirectory = false;
+			break;
+		case DT_UNKNOWN:
+		default:
 			// Fall back to stat()
+			//
+			// It's important NOT to limit this to DT_UNKNOWN, because d_type can
+			// be unreliable on some OSes and filesystems; a confirmed example is
+			// macOS 10.4, where d_type can hold bogus values when iterating over
+			// the files of a cddafs mount point (as used by MacOSXAudioCDManager).
 			entry.setFlags();
-		} else {
-			entry._isValid = (dp->d_type == DT_DIR) || (dp->d_type == DT_REG) || (dp->d_type == DT_LNK);
-			if (dp->d_type == DT_LNK) {
-				struct stat st;
-				if (stat(entry._path.c_str(), &st) == 0)
-					entry._isDirectory = S_ISDIR(st.st_mode);
-				else
-					entry._isDirectory = false;
-			} else {
-				entry._isDirectory = (dp->d_type == DT_DIR);
-			}
+			break;
 		}
 #endif
 
@@ -219,9 +251,9 @@ AbstractFSNode *POSIXFilesystemNode::getParent() const {
 		return 0;	// The filesystem root has no parent
 
 #ifdef __OS2__
-    if (_path.size() == 3 && _path.hasSuffix(":/"))
-        // This is a root directory of a drive
-        return makeNode("/");   // return a virtual root for a list of drives
+	if (_path.size() == 3 && _path.hasSuffix(":/"))
+		// This is a root directory of a drive
+		return makeNode("/");   // return a virtual root for a list of drives
 #endif
 
 	const char *start = _path.c_str();
@@ -244,11 +276,93 @@ AbstractFSNode *POSIXFilesystemNode::getParent() const {
 }
 
 Common::SeekableReadStream *POSIXFilesystemNode::createReadStream() {
-	return StdioStream::makeFromPath(getPath(), false);
+	return PosixIoStream::makeFromPath(getPath(), StdioStream::WriteMode_Read);
 }
 
-Common::WriteStream *POSIXFilesystemNode::createWriteStream() {
-	return StdioStream::makeFromPath(getPath(), true);
+Common::SeekableReadStream *POSIXFilesystemNode::createReadStreamForAltStream(Common::AltStreamType altStreamType) {
+#ifdef MACOSX
+	if (altStreamType == Common::AltStreamType::MacResourceFork) {
+		// Check the actual fork on a Mac computer
+		return PosixIoStream::makeFromPath(getPath() + "/..namedfork/rsrc", StdioStream::WriteMode_Read);
+	}
+#endif
+
+	return nullptr;
 }
+
+Common::SeekableWriteStream *POSIXFilesystemNode::createWriteStream(bool atomic) {
+	return PosixIoStream::makeFromPath(getPath(), atomic ?
+			StdioStream::WriteMode_WriteAtomic : StdioStream::WriteMode_Write);
+}
+
+bool POSIXFilesystemNode::createDirectory() {
+	if (mkdir(_path.c_str(), 0755) == 0)
+		setFlags();
+
+	return _isValid && _isDirectory;
+}
+
+namespace Posix {
+
+bool assureDirectoryExists(const Common::String &dir, const char *prefix) {
+	struct stat sb;
+
+	// Check whether the prefix exists if one is supplied.
+	if (prefix) {
+		if (stat(prefix, &sb) != 0) {
+			return false;
+		} else if (!S_ISDIR(sb.st_mode)) {
+			return false;
+		}
+	}
+
+	// Obtain absolute path.
+	Common::String path;
+	if (prefix) {
+		path = prefix;
+		path += '/';
+		path += dir;
+	} else {
+		path = dir;
+	}
+
+	path = Common::normalizePath(path, '/');
+
+	const Common::String::iterator end = path.end();
+	Common::String::iterator cur = path.begin();
+	if (*cur == '/')
+		++cur;
+
+	do {
+		if (cur + 1 != end) {
+			if (*cur != '/') {
+				continue;
+			}
+
+			// It is kind of ugly and against the purpose of Common::String to
+			// insert 0s inside, but this is just for a local string and
+			// simplifies the code a lot.
+			*cur = '\0';
+		}
+
+		if (mkdir(path.c_str(), 0755) != 0) {
+			if (errno == EEXIST) {
+				if (stat(path.c_str(), &sb) != 0) {
+					return false;
+				} else if (!S_ISDIR(sb.st_mode)) {
+					return false;
+				}
+			} else {
+				return false;
+			}
+		}
+
+		*cur = '/';
+	} while (cur++ != end);
+
+	return true;
+}
+
+} // End of namespace Posix
 
 #endif //#if defined(POSIX)

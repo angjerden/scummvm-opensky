@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -33,7 +32,6 @@
 #include "common/random.h"
 #include "common/rect.h"
 #include "common/stack.h"
-#include "engines/advancedDetector.h"
 #include "engines/engine.h"
 #include "common/error.h"
 #include "graphics/surface.h"
@@ -45,14 +43,15 @@
 #include "mortevielle/saveload.h"
 #include "mortevielle/sound.h"
 #include "mortevielle/outtext.h"
+#include "mortevielle/detection.h"
 
 namespace Mortevielle {
 
 // Debug channels
 enum {
-	kMortevielleCore = 1 << 0,
-	kMortevielleGraphics = 1 << 1,
-	kMortevielleSounds = 1 << 2
+	kMortevielleCore = 1,
+	kMortevielleGraphics,
+	kMortevielleSounds,
 };
 
 // Game languages
@@ -60,11 +59,6 @@ enum {
 	MORTDAT_LANG_FRENCH = 0,
 	MORTDAT_LANG_ENGLISH = 1,
 	MORTDAT_LANG_GERMAN = 2
-};
-
-enum {
-	kUseOriginalData = 0,
-	kUseEngineDataFile = 1
 };
 
 // Static string list
@@ -158,8 +152,6 @@ struct Hint {
 	int _hintId;
 	byte _point;
 };
-
-struct MortevielleGameDescription;
 
 class MortevielleEngine : public Engine {
 private:
@@ -429,7 +421,6 @@ public:
 	GfxSurface _backgroundSurface;
 	Common::RandomSource _randomSource;
 
-	Debugger *_debugger;
 	ScreenSurface *_screenSurface;
 	SoundManager *_soundManager;
 	SavegameManager *_savegameManager;
@@ -439,21 +430,22 @@ public:
 	DialogManager *_dialogManager;
 
 	MortevielleEngine(OSystem *system, const MortevielleGameDescription *gameDesc);
-	~MortevielleEngine();
-	virtual bool hasFeature(EngineFeature f) const;
-	virtual bool canLoadGameStateCurrently();
-	virtual bool canSaveGameStateCurrently();
-	virtual Common::Error loadGameState(int slot);
-	virtual Common::Error saveGameState(int slot, const Common::String &desc);
-	virtual Common::Error run();
-	virtual void pauseEngineIntern(bool pause);
-	virtual GUI::Debugger *getDebugger() {return _debugger;}
+	~MortevielleEngine() override;
+	bool hasFeature(EngineFeature f) const override;
+	bool canLoadGameStateCurrently(Common::U32String *msg = nullptr) override;
+	bool canSaveGameStateCurrently(Common::U32String *msg = nullptr) override;
+	Common::Error loadGameState(int slot) override;
+	Common::Error saveGameState(int slot, const Common::String &desc, bool isAutosave = false) override;
+	Common::Error run() override;
+	void pauseEngineIntern(bool pause) override;
 	uint32 getGameFlags() const;
 	Common::Language getLanguage() const;
 	Common::Language getOriginalLanguage() const;
 	bool useOriginalData() const;
 	static Common::String generateSaveFilename(const Common::String &target, int slot);
-	Common::String generateSaveFilename(int slot) { return generateSaveFilename(_targetName, slot); }
+	Common::String getSaveStateName(int slot) const override {
+		return generateSaveFilename(_targetName, slot);
+	}
 
 	int getChar();
 	bool keyPressed();

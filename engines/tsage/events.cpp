@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -50,7 +49,7 @@ bool EventsClass::pollEvent() {
 		++_frameNumber;
 
 		// Update screen
-		GLOBALS._screenSurface.updateScreen();
+		GLOBALS._screen.update();
 	}
 
 	if (!g_system->getEventManager()->pollEvent(_event)) return false;
@@ -58,7 +57,7 @@ bool EventsClass::pollEvent() {
 	// Handle keypress
 	switch (_event.type) {
 	case Common::EVENT_QUIT:
-	case Common::EVENT_RTL:
+	case Common::EVENT_RETURN_TO_LAUNCHER:
 		break;
 
 	case Common::EVENT_MOUSEMOVE:
@@ -118,6 +117,10 @@ bool EventsClass::getEvent(Event &evt, int eventMask) {
 		case Common::EVENT_KEYDOWN:
 			evt.eventType = EVENT_KEYPRESS;
 			evt.kbd = _event.kbd;
+			break;
+		case Common::EVENT_CUSTOM_ENGINE_ACTION_START:
+			evt.eventType = EVENT_CUSTOM_ACTIONSTART;
+			evt.customType = _event.customType;
 			break;
 		default:
 			break;
@@ -400,7 +403,7 @@ void EventsClass::delay(int numFrames) {
 		_priorFrameTime = g_system->getMillis();
 	}
 
-	GLOBALS._screenSurface.updateScreen();
+	GLOBALS._screen.update();
 	_prevDelayFrame = _frameNumber;
 	_priorFrameTime = g_system->getMillis();
 }

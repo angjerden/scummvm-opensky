@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -24,7 +23,7 @@
 #include "common/config-manager.h"
 #include "common/util.h"
 #include "engines/engine.h"
-#include "graphics/palette.h"
+#include "graphics/paletteman.h"
 #include "tsage/tsage.h"
 #include "tsage/core.h"
 #include "tsage/dialogs.h"
@@ -43,7 +42,7 @@ namespace TsAGE {
 
 /*--------------------------------------------------------------------------*/
 
-InvObject::InvObject(int sceneNumber, int rlbNum, int cursorNum, CursorType cursorId, const Common::String description) :
+InvObject::InvObject(int sceneNumber, int rlbNum, int cursorNum, CursorType cursorId, const Common::String &description) :
 		_sceneNumber(sceneNumber), _rlbNum(rlbNum), _cursorNum(cursorNum), _cursorId(cursorId),
 		_description(description) {
 	_displayResNum = 3;
@@ -93,7 +92,7 @@ InvObject::InvObject(int strip, int frame) {
 void InvObject::setCursor() {
 	if (g_vm->getGameID() != GType_Ringworld) {
 		// All other games
-		_cursorId = (CursorType)BF_GLOBALS._inventory->indexOf(this);
+		_cursorId = (CursorType)g_globals->_inventory->indexOf(this);
 		g_globals->_events.setCursor(_cursorId);
 	} else {
 		// Ringworld cursor handling
@@ -1184,6 +1183,8 @@ void PaletteRotation::signal() {
 			}
 		}
 		break;
+	default:
+		break;
 	}
 
 	if (flag) {
@@ -1465,9 +1466,9 @@ void ScenePalette::fade(const byte *adjustData, bool fullAdjust, int percent) {
 			adjustData += 3;
 	}
 
-	// Set the altered pale4tte
+	// Set the altered palette
 	g_system->getPaletteManager()->setPalette((const byte *)&tempPalette[0], 0, 256);
-	GLOBALS._screenSurface.updateScreen();
+	GLOBALS._screen.update();
 }
 
 PaletteRotation *ScenePalette::addRotation(int start, int end, int rotationMode, int duration, Action *action) {
@@ -1521,14 +1522,14 @@ void ScenePalette::changeBackground(const Rect &bounds, FadeMode fadeMode) {
 	}
 
 	Rect tempRect = bounds;
-	if (g_vm->getGameID() != GType_Ringworld)
+	if (g_vm->getGameID() != GType_Ringworld && g_vm->getGameID() != GType_Sherlock1)
 		tempRect.setHeight(T2_GLOBALS._interfaceY);
 
-	g_globals->_screenSurface.copyFrom(g_globals->_sceneManager._scene->_backSurface,
+	g_globals->_screen.copyFrom(g_globals->_sceneManager._scene->_backSurface,
 		tempRect, Rect(0, 0, tempRect.width(), tempRect.height()), NULL);
 	if (g_vm->getGameID() == GType_Ringworld2 && !GLOBALS._player._uiEnabled
 			&& T2_GLOBALS._interfaceY == UI_INTERFACE_Y) {
-		g_globals->_screenSurface.fillRect(Rect(0, UI_INTERFACE_Y, SCREEN_WIDTH, SCREEN_HEIGHT - 1), 0);
+		g_globals->_screen.fillRect(Rect(0, UI_INTERFACE_Y, SCREEN_WIDTH, SCREEN_HEIGHT - 1), 0);
 	}
 
 	for (SynchronizedList<PaletteModifier *>::iterator i = tempPalette._listeners.begin(); i != tempPalette._listeners.end(); ++i)
@@ -1596,28 +1597,69 @@ bool SceneItem::startAction(CursorType action, Event &event) {
 }
 
 void SceneItem::doAction(int action) {
+#ifdef ENABLE_RINGWORLD2
 	if (g_vm->getGameID() == GType_Ringworld2) {
 		Event dummyEvent;
 		((Ringworld2::SceneExt *)GLOBALS._sceneManager._scene)->display((CursorType)action, dummyEvent);
-	} else {
+	} else
+#endif
+	{
 		const char *msg = NULL;
 
-		switch ((int)action) {
-		case CURSOR_LOOK:
-			msg = LOOK_SCENE_HOTSPOT;
-			break;
-		case CURSOR_USE:
-			msg = USE_SCENE_HOTSPOT;
-			break;
-		case CURSOR_TALK:
-			msg = TALK_SCENE_HOTSPOT;
-			break;
-		case 0x1000:
-			msg = SPECIAL_SCENE_HOTSPOT;
-			break;
-		default:
-			msg = DEFAULT_SCENE_HOTSPOT;
-			break;
+		if (g_vm->getLanguage() == Common::ES_ESP) {
+			switch ((int)action) {
+			case CURSOR_LOOK:
+				msg = ESP_LOOK_SCENE_HOTSPOT;
+				break;
+			case CURSOR_USE:
+				msg = ESP_USE_SCENE_HOTSPOT;
+				break;
+			case CURSOR_TALK:
+				msg = ESP_TALK_SCENE_HOTSPOT;
+				break;
+			case 0x1000:
+				msg = ESP_SPECIAL_SCENE_HOTSPOT;
+				break;
+			default:
+				msg = ESP_DEFAULT_SCENE_HOTSPOT;
+				break;
+			}
+		} else if (g_vm->getLanguage() == Common::RU_RUS) {
+			switch ((int)action) {
+			case CURSOR_LOOK:
+				msg = RUS_LOOK_SCENE_HOTSPOT;
+				break;
+			case CURSOR_USE:
+				msg = RUS_USE_SCENE_HOTSPOT;
+				break;
+			case CURSOR_TALK:
+				msg = RUS_TALK_SCENE_HOTSPOT;
+				break;
+			case 0x1000:
+				msg = RUS_SPECIAL_SCENE_HOTSPOT;
+				break;
+			default:
+				msg = RUS_DEFAULT_SCENE_HOTSPOT;
+				break;
+			}
+		} else {
+			switch ((int)action) {
+			case CURSOR_LOOK:
+				msg = LOOK_SCENE_HOTSPOT;
+				break;
+			case CURSOR_USE:
+				msg = USE_SCENE_HOTSPOT;
+				break;
+			case CURSOR_TALK:
+				msg = TALK_SCENE_HOTSPOT;
+				break;
+			case 0x1000:
+				msg = SPECIAL_SCENE_HOTSPOT;
+				break;
+			default:
+				msg = DEFAULT_SCENE_HOTSPOT;
+				break;
+			}
 		}
 
 		GUIErrorMessage(msg);
@@ -1795,8 +1837,8 @@ void SceneItem::display(int resNum, int lineNum, ...) {
 
 		// Keep event on-screen until a mouse or keypress
 		while (!g_vm->shouldQuit() && !g_globals->_events.getEvent(event,
-				EVENT_BUTTON_DOWN | EVENT_KEYPRESS)) {
-			GLOBALS._screenSurface.updateScreen();
+				EVENT_BUTTON_DOWN | EVENT_KEYPRESS | EVENT_CUSTOM_ACTIONSTART)) {
+			GLOBALS._screen.update();
 			g_system->delayMillis(10);
 
 			if ((g_vm->getGameID() == GType_Ringworld2) && (R2_GLOBALS._speechSubtitles & SPEECH_VOICE)) {
@@ -1882,11 +1924,14 @@ void SceneHotspot::synchronize(Serializer &s) {
 
 bool SceneHotspot::startAction(CursorType action, Event &event) {
 	switch (g_vm->getGameID()) {
+#ifdef ENABLE_BLUEFORCE
 	case GType_BlueForce: {
 		BlueForce::SceneExt *scene = (BlueForce::SceneExt *)BF_GLOBALS._sceneManager._scene;
 		assert(scene);
 		return scene->display(action);
 	}
+#endif
+#ifdef ENABLE_RINGWORLD2
 	case GType_Ringworld2: {
 		switch (action) {
 		case CURSOR_LOOK:
@@ -1913,6 +1958,7 @@ bool SceneHotspot::startAction(CursorType action, Event &event) {
 
 		return ((Ringworld2::SceneExt *)GLOBALS._sceneManager._scene)->display(action, event);
 	}
+#endif
 	default:
 		return SceneItem::startAction(action, event);
 	}
@@ -1922,19 +1968,37 @@ void SceneHotspot::doAction(int action) {
 	switch ((int)action) {
 	case CURSOR_LOOK:
 		if (g_vm->getGameID() == GType_BlueForce)
-			SceneItem::display(LOOK_SCENE_HOTSPOT);
+			if (g_vm->getLanguage() == Common::ES_ESP) {
+				SceneItem::display(ESP_LOOK_SCENE_HOTSPOT);
+			} else if (g_vm->getLanguage() == Common::RU_RUS) {
+				SceneItem::display(RUS_LOOK_SCENE_HOTSPOT);
+			} else {
+				SceneItem::display(LOOK_SCENE_HOTSPOT);
+			}
 		else
 			display(1, 0, SET_Y, 20, SET_WIDTH, 200, SET_EXT_BGCOLOR, 7, LIST_END);
 		break;
 	case CURSOR_USE:
 		if (g_vm->getGameID() == GType_BlueForce)
-			SceneItem::display(USE_SCENE_HOTSPOT);
+			if (g_vm->getLanguage() == Common::ES_ESP) {
+				SceneItem::display(ESP_USE_SCENE_HOTSPOT);
+			} else if (g_vm->getLanguage() == Common::RU_RUS) {
+				SceneItem::display(RUS_USE_SCENE_HOTSPOT);
+			} else {
+				SceneItem::display(USE_SCENE_HOTSPOT);
+			}
 		else
 			display(1, 5, SET_Y, 20, SET_WIDTH, 200, SET_EXT_BGCOLOR, 7, LIST_END);
 		break;
 	case CURSOR_TALK:
 		if (g_vm->getGameID() == GType_BlueForce)
-			SceneItem::display(TALK_SCENE_HOTSPOT);
+			if (g_vm->getLanguage() == Common::ES_ESP) {
+				SceneItem::display(ESP_TALK_SCENE_HOTSPOT);
+			} else if (g_vm->getLanguage() == Common::RU_RUS) {
+				SceneItem::display(RUS_TALK_SCENE_HOTSPOT);
+			} else {
+				SceneItem::display(TALK_SCENE_HOTSPOT);
+			}
 		else
 			display(1, 15, SET_Y, 20, SET_WIDTH, 200, SET_EXT_BGCOLOR, 7, LIST_END);
 		break;
@@ -1942,7 +2006,13 @@ void SceneHotspot::doAction(int action) {
 		break;
 	default:
 		if (g_vm->getGameID() == GType_BlueForce)
-			SceneItem::display(DEFAULT_SCENE_HOTSPOT);
+			if (g_vm->getLanguage() == Common::ES_ESP) {
+				SceneItem::display(ESP_DEFAULT_SCENE_HOTSPOT);
+			} else if (g_vm->getLanguage() == Common::RU_RUS) {
+				SceneItem::display(RUS_DEFAULT_SCENE_HOTSPOT);
+			} else {
+				SceneItem::display(DEFAULT_SCENE_HOTSPOT);
+			}
 		else
 			display(2, action, SET_Y, 20, SET_WIDTH, 200, SET_EXT_BGCOLOR, 7, LIST_END);
 		break;
@@ -2140,6 +2210,48 @@ SceneObject::SceneObject(const SceneObject &so) : SceneHotspot() {
 SceneObject::~SceneObject() {
 	delete _mover;
 	delete _objectWrapper;
+}
+
+SceneObject& SceneObject::operator=(const SceneObject &so) {
+	this->SceneHotspot::operator=(so);
+
+	_visageImages = so._visageImages;
+
+	_updateStartFrame = so._updateStartFrame;
+	_walkStartFrame = so._walkStartFrame;
+	_oldPosition = so._oldPosition;
+	_percent = so._percent;
+	_priority = so._priority;
+	_angle = so._angle;
+	_flags = so._flags;
+	_xs = so._xs;
+	_xe = so._xe;
+	for (uint i = 0; i < ARRAYSIZE(_paneRects); i++) _paneRects[i] = so._paneRects[i];
+	_visage = so._visage;
+	_objectWrapper = so._objectWrapper;
+	_strip = so._strip;
+	_animateMode = so._animateMode;
+	_frame = so._frame;
+	_endFrame = so._endFrame;
+	_loopCount = so._loopCount;
+	_frameChange = so._frameChange;
+	_numFrames = so._numFrames;
+	_regionIndex = so._regionIndex;
+	_mover = so._mover;
+	_moveDiff = so._moveDiff;
+
+	_moveRate = so._moveRate;
+	_actorDestPos = so._actorDestPos;
+	_endAction = so._endAction;
+	_regionBitList = so._regionBitList;
+
+	_shadowMap = so._shadowMap;
+	_shade = so._shade;
+	_oldShade = so._oldShade;
+	_effect = so._effect;
+	_linkedActor = so._linkedActor;
+
+	return *this;
 }
 
 int SceneObject::getNewFrame() {
@@ -2358,8 +2470,11 @@ int SceneObject::checkRegion(const Common::Point &pt) {
 	return regionIndex;
 }
 
-void SceneObject::animate(AnimateMode animMode, ...) {
-	_animateMode = animMode;
+// The parameter to the function below should really be an AnimateMode value.
+// However passing an enum type as last argument of a variadic function may
+// result in undefined behaviour.
+void SceneObject::animate(int animMode, ...) {
+	_animateMode = (AnimateMode)animMode;
 	_updateStartFrame = g_globals->_events.getFrameNumber();
 	if (_numFrames)
 		_updateStartFrame += 60 / _numFrames;
@@ -2431,6 +2546,8 @@ void SceneObject::animate(AnimateMode animMode, ...) {
 			if (_frame == _endFrame)
 				setFrame(getNewFrame());
 		}
+		break;
+	default:
 		break;
 	}
 	va_end(va);
@@ -2777,6 +2894,7 @@ void SceneObject::draw() {
 	GfxSurface frame = getFrame();
 	Region *priorityRegion = scene->_priorities.find(_priority);
 
+#ifdef ENABLE_RINGWORLD2
 	if (g_vm->getGameID() == GType_Ringworld2) {
 		switch (_effect) {
 		case EFFECT_SHADOW_MAP: {
@@ -2791,6 +2909,7 @@ void SceneObject::draw() {
 			break;
 		}
 	}
+#endif
 
 	GLOBALS.gfxManager().copyFrom(frame, destRect, priorityRegion);
 }
@@ -2806,7 +2925,7 @@ void SceneObject::updateScreen() {
 	srcRect.right = ((srcRect.right + 3) / 4) * 4;
 	srcRect.clip(g_globals->_sceneManager._scene->_sceneBounds);
 
-	if (g_vm->getGameID() != GType_Ringworld) {
+	if (g_vm->getGameID() != GType_Ringworld && g_vm->getGameID() != GType_Sherlock1) {
 		if (T2_GLOBALS._uiElements._visible)
 			srcRect.bottom = MIN<int16>(srcRect.bottom, T2_GLOBALS._interfaceY);
 	}
@@ -2816,7 +2935,7 @@ void SceneObject::updateScreen() {
 		destRect.translate(-sceneBounds.left, -sceneBounds.top);
 		srcRect.translate(-g_globals->_sceneOffset.x, -g_globals->_sceneOffset.y);
 
-		g_globals->_screenSurface.copyFrom(g_globals->_sceneManager._scene->_backSurface, srcRect, destRect);
+		g_globals->_screen.copyFrom(g_globals->_sceneManager._scene->_backSurface, srcRect, destRect);
 	}
 }
 
@@ -2901,10 +3020,12 @@ void BackgroundSceneObject::setup2(int visage, int stripFrameNum, int frameNum, 
 void BackgroundSceneObject::copySceneToBackground() {
 	GLOBALS._sceneManager._scene->_backSurface.copyFrom(g_globals->gfxManager().getSurface(), 0, 0);
 
+#ifdef ENABLE_RINGWORLD2
 	// WORKAROUND: Since savegames don't store the active screen data, once we copy the
 	// foreground objects to the background, we have to prevent the scene being saved.
 	if (g_vm->getGameID() == GType_Ringworld2)
 		((Ringworld2::SceneExt *)GLOBALS._sceneManager._scene)->_preventSaving = true;
+#endif
 }
 
 /*--------------------------------------------------------------------------*/
@@ -4317,7 +4438,7 @@ void SceneHandler::process(Event &event) {
 	if (!event.handled) {
 		g_globals->_game->processEvent(event);
 
-		if (event.eventType == EVENT_KEYPRESS)
+		if (event.eventType == EVENT_KEYPRESS || event.eventType == EVENT_CUSTOM_ACTIONSTART)
 			g_globals->_events.setCursorFromFlag();
 	}
 
@@ -4337,37 +4458,29 @@ void SceneHandler::process(Event &event) {
 
 	if (!event.handled) {
 		// Separate check for F5 - Save key
-		if ((event.eventType == EVENT_KEYPRESS) && (event.kbd.keycode == Common::KEYCODE_F5)) {
+		if ((event.eventType == EVENT_CUSTOM_ACTIONSTART) && (event.customType == kActionSaveGame)) {
 			// F5 - Save
 			g_globals->_game->saveGame();
 			event.handled = true;
 			g_globals->_events.setCursorFromFlag();
 		}
 
-		// Check for debugger
-		if ((event.eventType == EVENT_KEYPRESS) && (event.kbd.keycode == Common::KEYCODE_d) &&
-			(event.kbd.flags & Common::KBD_CTRL)) {
-			// Attach to the debugger
-			g_vm->_debugger->attach();
-			g_vm->_debugger->onFrame();
-		}
-
-		if ((event.eventType == EVENT_KEYPRESS) && g_globals->_player._enabled) {
+		if ((event.eventType == EVENT_CUSTOM_ACTIONSTART) && g_globals->_player._enabled) {
 			// Keyboard shortcuts for different actions
-			switch (event.kbd.keycode) {
-			case Common::KEYCODE_w:
+			switch (event.customType) {
+			case kActionWalk:
 				g_globals->_events.setCursor(GLOBALS._player._canWalk ? CURSOR_WALK : CURSOR_USE);
 				event.handled = true;
 				break;
-			case Common::KEYCODE_l:
+			case kActionLook:
 				g_globals->_events.setCursor(CURSOR_LOOK);
 				event.handled = true;
 				break;
-			case Common::KEYCODE_u:
+			case kActionUse:
 				g_globals->_events.setCursor(CURSOR_USE);
 				event.handled = true;
 				break;
-			case Common::KEYCODE_t:
+			case kActionTalk:
 				g_globals->_events.setCursor(CURSOR_TALK);
 				event.handled = true;
 				break;
@@ -4436,8 +4549,15 @@ void SceneHandler::dispatch() {
 		Common::Error err = g_saver->save(saveSlot, _saveName);
 		// FIXME: Make use of the description string in err to enhance
 		// the error reported to the user.
-		if (err.getCode() != Common::kNoError)
-			GUIErrorMessage(SAVE_ERROR_MSG);
+		if (err.getCode() != Common::kNoError) {
+			if (g_vm->getLanguage() == Common::ES_ESP) {
+				GUIErrorMessage(ESP_SAVE_ERROR_MSG);
+			} else if (g_vm->getLanguage() == Common::RU_RUS) {
+				GUIErrorMessage(ESP_SAVE_ERROR_MSG);
+			} else {
+				GUIErrorMessage(SAVE_ERROR_MSG);
+			}
+		}
 	}
 	if (_loadGameSlot != -1) {
 		int priorSceneBeforeLoad = GLOBALS._sceneManager._previousScene;
@@ -4486,9 +4606,6 @@ void SceneHandler::dispatch() {
 
 	// Check to see if any scene change is required
 	g_globals->_sceneManager.checkScene();
-
-	// Signal the ScummVM debugger
-	g_vm->_debugger->onFrame();
 
 	// Delay between frames
 	g_globals->_events.delay(_delayTicks);

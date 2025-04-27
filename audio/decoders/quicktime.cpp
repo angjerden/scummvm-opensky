@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -35,31 +34,9 @@
 #include "audio/decoders/adpcm.h"
 #include "audio/decoders/qdm2.h"
 #include "audio/decoders/raw.h"
+#include "audio/decoders/g711.h"
 
 namespace Audio {
-
-/**
- * An AudioStream that just returns silent samples and runs infinitely.
- * Used to fill in the "empty edits" in the track queue which are just
- * supposed to be no sound playing.
- */
-class SilentAudioStream : public AudioStream {
-public:
-	SilentAudioStream(int rate, bool stereo) : _rate(rate), _isStereo(stereo) {}
-
-	int readBuffer(int16 *buffer, const int numSamples) {
-		memset(buffer, 0, numSamples * 2);
-		return numSamples;
-	}
-
-	bool endOfData() const { return false; } // it never ends!
-	bool isStereo() const { return _isStereo; }
-	int getRate() const { return _rate; }
-
-private:
-	int _rate;
-	bool _isStereo;
-};
 
 /**
  * An AudioStream wrapper that forces audio to be played in mono.
@@ -75,7 +52,7 @@ public:
 				delete _parentStream;
 	}
 
-	int readBuffer(int16 *buffer, const int numSamples) {
+	int readBuffer(int16 *buffer, const int numSamples) override {
 		if (!_parentStream->isStereo())
 			return _parentStream->readBuffer(buffer, numSamples);
 
@@ -91,9 +68,9 @@ public:
 		return samples;
 	}
 
-	bool endOfData() const { return _parentStream->endOfData(); }
-	bool isStereo() const { return false; }
-	int getRate() const { return _parentStream->getRate(); }
+	bool endOfData() const override { return _parentStream->endOfData(); }
+	bool isStereo() const override { return false; }
+	int getRate() const override { return _parentStream->getRate(); }
 
 private:
 	AudioStream *_parentStream;
@@ -108,7 +85,7 @@ QuickTimeAudioDecoder::~QuickTimeAudioDecoder() {
 		delete _audioTracks[i];
 }
 
-bool QuickTimeAudioDecoder::loadAudioFile(const Common::String &filename) {
+bool QuickTimeAudioDecoder::loadAudioFile(const Common::Path &filename) {
 	if (!Common::QuickTimeParser::parseFile(filename))
 		return false;
 
@@ -167,7 +144,7 @@ Common::QuickTimeParser::SampleDesc *QuickTimeAudioDecoder::readSampleDesc(Track
 		} else {
 			warning("Unsupported QuickTime STSD audio version %d", stsdVersion);
 			delete entry;
-			return 0;
+			return nullptr;
 		}
 
 		// Version 0 files don't have some variables set, so we'll do that here
@@ -182,7 +159,7 @@ Common::QuickTimeParser::SampleDesc *QuickTimeAudioDecoder::readSampleDesc(Track
 		return entry;
 	}
 
-	return 0;
+	return nullptr;
 }
 
 QuickTimeAudioDecoder::QuickTimeAudioTrack::QuickTimeAudioTrack(QuickTimeAudioDecoder *decoder, Common::QuickTimeParser::Track *parentTrack) {
@@ -228,7 +205,7 @@ void QuickTimeAudioDecoder::QuickTimeAudioTrack::queueAudio(const Timestamp &len
 				_skipSamples = Timestamp();
 			}
 
-			queueStream(makeLimitingAudioStream(new SilentAudioStream(getRate(), isStereo()), editLength), editLength);
+			queueStream(makeLimitingAudioStream(makeSilentAudioStream(getRate(), isStereo()), editLength), editLength);
 			_curEdit++;
 			enterNewEdit(nextEditTime);
 		} else {
@@ -238,7 +215,7 @@ void QuickTimeAudioDecoder::QuickTimeAudioTrack::queueAudio(const Timestamp &len
 			_skipAACPrimer = false;
 			_curChunk++;
 
-			// If we have any samples that we need to skip (ie. we seeked into
+			// If we have any samples that we need to skip (ie. we seek'ed into
 			// the middle of a chunk), skip them here.
 			if (_skipSamples != Timestamp()) {
 				if (_skipSamples > chunkLength) {
@@ -299,7 +276,7 @@ int QuickTimeAudioDecoder::QuickTimeAudioTrack::readBuffer(int16 *buffer, const 
 }
 
 bool QuickTimeAudioDecoder::QuickTimeAudioTrack::allDataRead() const {
-	return _curEdit == _parentTrack->editCount;
+	return _curEdit == _parentTrack->editList.size();
 }
 
 bool QuickTimeAudioDecoder::QuickTimeAudioTrack::endOfData() const {
@@ -314,7 +291,7 @@ bool QuickTimeAudioDecoder::QuickTimeAudioTrack::seek(const Timestamp &where) {
 
 	if (where >= getLength()) {
 		// We're done
-		_curEdit = _parentTrack->editCount;
+		_curEdit = _parentTrack->editList.size();
 		return true;
 	}
 
@@ -324,8 +301,7 @@ bool QuickTimeAudioDecoder::QuickTimeAudioTrack::seek(const Timestamp &where) {
 	// Now queue up some audio and skip whatever we need to skip
 	Timestamp samplesToSkip = where.convertToFramerate(getRate()) - getCurrentTrackTime();
 	queueAudio();
-	if (_parentTrack->editList[_curEdit].mediaTime != -1)
-		skipSamples(samplesToSkip, _queue);
+	skipSamples(samplesToSkip, _queue);
 
 	return true;
 }
@@ -345,7 +321,7 @@ bool QuickTimeAudioDecoder::QuickTimeAudioTrack::isOldDemuxing() const {
 
 AudioStream *QuickTimeAudioDecoder::QuickTimeAudioTrack::readAudioChunk(uint chunk) {
 	AudioSampleDesc *entry = (AudioSampleDesc *)_parentTrack->sampleDescs[0];
-	Common::MemoryWriteStreamDynamic *wStream = new Common::MemoryWriteStreamDynamic();
+	Common::MemoryWriteStreamDynamic *wStream = new Common::MemoryWriteStreamDynamic(DisposeAfterUse::NO);
 
 	_decoder->_fd->seek(_parentTrack->chunkOffsets[chunk]);
 
@@ -427,7 +403,7 @@ void QuickTimeAudioDecoder::QuickTimeAudioTrack::findEdit(const Timestamp &posit
 	// as the position is >= to the edit's start time, it is considered to be in that
 	// edit. seek() already figured out if we reached the last edit, so we don't need
 	// to handle that case here.
-	for (_curEdit = 0; _curEdit < _parentTrack->editCount - 1; _curEdit++) {
+	for (_curEdit = 0; _curEdit < _parentTrack->editList.size() - 1; _curEdit++) {
 		Timestamp nextEditTime(0, _parentTrack->editList[_curEdit + 1].timeOffset, _decoder->_timeScale);
 		if (position < nextEditTime)
 			break;
@@ -563,7 +539,7 @@ uint32 QuickTimeAudioDecoder::QuickTimeAudioTrack::getAACSampleTime(uint32 total
 
 	// The first chunk of AAC contains "duration" samples that are used as a primer
 	// We need to subtract that number from the duration for the first chunk. See:
-	// http://developer.apple.com/library/mac/#documentation/QuickTime/QTFF/QTFFAppenG/QTFFAppenG.html#//apple_ref/doc/uid/TP40000939-CH2-SW1
+	// https://developer.apple.com/library/archive/documentation/QuickTime/QTFF/QTFFAppenG/QTFFAppenG.html#//apple_ref/doc/uid/TP40000939-CH2-SW1
 	// The skipping of both the primer and the remainder are handled by the AAC code,
 	// whereas the timing of the remainder are handled by this time-to-sample chunk
 	// code already.
@@ -582,7 +558,7 @@ QuickTimeAudioDecoder::AudioSampleDesc::AudioSampleDesc(Common::QuickTimeParser:
 	_samplesPerFrame = 0;
 	_bytesPerFrame = 0;
 	_bitsPerSample = 0;
-	_codec = 0;
+	_codec = nullptr;
 }
 
 QuickTimeAudioDecoder::AudioSampleDesc::~AudioSampleDesc() {
@@ -594,7 +570,7 @@ bool QuickTimeAudioDecoder::AudioSampleDesc::isAudioCodecSupported() const {
 	if (_codecTag == MKTAG('t', 'w', 'o', 's') || _codecTag == MKTAG('r', 'a', 'w', ' ') || _codecTag == MKTAG('i', 'm', 'a', '4'))
 		return true;
 
-#ifdef AUDIO_QDM2_H
+#ifdef USE_QDM2
 	if (_codecTag == MKTAG('Q', 'D', 'M', '2'))
 		return true;
 #endif
@@ -623,7 +599,7 @@ bool QuickTimeAudioDecoder::AudioSampleDesc::isAudioCodecSupported() const {
 
 AudioStream *QuickTimeAudioDecoder::AudioSampleDesc::createAudioStream(Common::SeekableReadStream *stream) const {
 	if (!stream)
-		return 0;
+		return nullptr;
 
 	if (_codec) {
 		// If we've loaded a codec, make sure we use first
@@ -639,26 +615,26 @@ AudioStream *QuickTimeAudioDecoder::AudioSampleDesc::createAudioStream(Common::S
 			flags |= FLAG_STEREO;
 		if (_bitsPerSample == 16)
 			flags |= FLAG_16BITS;
-		uint32 dataSize = stream->size();
-		byte *data = (byte *)malloc(dataSize);
-		stream->read(data, dataSize);
-		delete stream;
-		return makeRawStream(data, dataSize, _sampleRate, flags);
+		return makeRawStream(stream, _sampleRate, flags);
 	} else if (_codecTag == MKTAG('i', 'm', 'a', '4')) {
 		// Riven uses this codec (as do some Myst ME videos)
 		return makeADPCMStream(stream, DisposeAfterUse::YES, stream->size(), kADPCMApple, _sampleRate, _channels, 34);
+	} else if (_codecTag == MKTAG('a', 'l', 'a', 'w')) {
+		return makeALawStream(stream, DisposeAfterUse::YES, _sampleRate, _channels);
+	} else if (_codecTag == MKTAG('u', 'l', 'a', 'w')) {
+		return makeMuLawStream(stream, DisposeAfterUse::YES, _sampleRate, _channels);
 	}
 
 	error("Unsupported audio codec");
-	return NULL;
+	return nullptr;
 }
 
 void QuickTimeAudioDecoder::AudioSampleDesc::initCodec() {
-	delete _codec; _codec = 0;
+	delete _codec; _codec = nullptr;
 
 	switch (_codecTag) {
 	case MKTAG('Q', 'D', 'M', '2'):
-#ifdef AUDIO_QDM2_H
+#ifdef USE_QDM2
 		_codec = makeQDM2Decoder(_extraData);
 #endif
 		break;
@@ -681,7 +657,7 @@ public:
 	QuickTimeAudioStream() {}
 	~QuickTimeAudioStream() {}
 
-	bool openFromFile(const Common::String &filename) {
+	bool openFromFile(const Common::Path &filename) {
 		return QuickTimeAudioDecoder::loadAudioFile(filename) && !_audioTracks.empty();
 	}
 
@@ -690,7 +666,7 @@ public:
 	}
 
 	// AudioStream API
-	int readBuffer(int16 *buffer, const int numSamples) {
+	int readBuffer(int16 *buffer, const int numSamples) override {
 		int samples = 0;
 
 		while (samples < numSamples && !endOfData()) {
@@ -702,21 +678,21 @@ public:
 		return samples;
 	}
 
-	bool isStereo() const { return _audioTracks[0]->isStereo(); }
-	int getRate() const { return _audioTracks[0]->getRate(); }
-	bool endOfData() const { return _audioTracks[0]->endOfData(); }
+	bool isStereo() const override { return _audioTracks[0]->isStereo(); }
+	int getRate() const override { return _audioTracks[0]->getRate(); }
+	bool endOfData() const override { return _audioTracks[0]->endOfData(); }
 
 	// SeekableAudioStream API
-	bool seek(const Timestamp &where) { return _audioTracks[0]->seek(where); }
-	Timestamp getLength() const { return _audioTracks[0]->getLength(); }
+	bool seek(const Timestamp &where) override { return _audioTracks[0]->seek(where); }
+	Timestamp getLength() const override { return _audioTracks[0]->getLength(); }
 };
 
-SeekableAudioStream *makeQuickTimeStream(const Common::String &filename) {
+SeekableAudioStream *makeQuickTimeStream(const Common::Path &filename) {
 	QuickTimeAudioStream *audioStream = new QuickTimeAudioStream();
 
 	if (!audioStream->openFromFile(filename)) {
 		delete audioStream;
-		return 0;
+		return nullptr;
 	}
 
 	return audioStream;
@@ -727,7 +703,7 @@ SeekableAudioStream *makeQuickTimeStream(Common::SeekableReadStream *stream, Dis
 
 	if (!audioStream->openFromStream(stream, disposeAfterUse)) {
 		delete audioStream;
-		return 0;
+		return nullptr;
 	}
 
 	return audioStream;

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -52,7 +51,7 @@ EventsManager::~EventsManager() {
 	freeCursors();
 }
 
-void EventsManager::loadCursors(const Common::String &spritesName) {
+void EventsManager::loadCursors(const Common::Path &spritesName) {
 	delete _cursorSprites;
 	_cursorSprites = new SpriteAsset(_vm, spritesName, 0x4000);
 }
@@ -98,7 +97,7 @@ void EventsManager::changeCursor() {
 		// Check for hotspot indication pixels along the right-hand and bottom
 		// row. Put together, these give the cursor's hotspot x,y
 		int hotspotX = 0, hotspotY = 0;
-		byte *cursorData = cursor->getData();
+		const byte *cursorData = (const byte *)cursor->getPixels();
 		for (int idx = 0; idx < cursor->w; ++idx) {
 			if (cursorData[(cursor->h - 1) * cursor->w + idx] != transIndex)
 				hotspotX = idx;
@@ -110,7 +109,7 @@ void EventsManager::changeCursor() {
 		// Reduce the cursor data to remove the last column from each row, since
 		// the cursor routines don't have a pitch option
 		byte *destCursor = new byte[(cursor->w - 1) * (cursor->h - 1)];
-		byte *srcP = cursorData;
+		const byte *srcP = cursorData;
 		byte *destP = destCursor;
 
 		for (int idx = 0; idx < (cursor->h - 1); ++idx) {
@@ -147,26 +146,25 @@ void EventsManager::pollEvents() {
 		// Handle keypress
 		switch (event.type) {
 		case Common::EVENT_QUIT:
-		case Common::EVENT_RTL:
+		case Common::EVENT_RETURN_TO_LAUNCHER:
 			return;
 
+		case Common::EVENT_CUSTOM_ENGINE_ACTION_START:
+			_pendingActions.push(event.customType);
+			return;
+		case Common::EVENT_CUSTOM_ENGINE_ACTION_END:
+			return;
 		case Common::EVENT_KEYDOWN:
 			// Check for debugger
-			if (event.kbd.keycode == Common::KEYCODE_d && (event.kbd.flags & Common::KBD_CTRL)) {
-				// Attach to the debugger
-				_vm->_debugger->attach();
-				_vm->_debugger->onFrame();
-			} else {
-				_pendingKeys.push(event.kbd);
-			}
+			_pendingKeys.push(event.kbd);
 			return;
 		case Common::EVENT_KEYUP:
 			return;
 		case Common::EVENT_WHEELUP:
-			_pendingKeys.push(Common::KeyState(Common::KEYCODE_PAGEUP));
+			_pendingActions.push(kActionScrollUp);
 			return;
 		case Common::EVENT_WHEELDOWN:
-			_pendingKeys.push(Common::KeyState(Common::KEYCODE_PAGEDOWN));
+			_pendingActions.push(kActionScrollDown);
 			return;
 		case Common::EVENT_LBUTTONDOWN:
 		case Common::EVENT_RBUTTONDOWN:
@@ -213,14 +211,12 @@ bool EventsManager::checkForNextFrameCounter() {
 		// Do any palette cycling
 		_vm->_game->_scene.animatePalette();
 
-		// Give time to the debugger
-		_vm->_debugger->onFrame();
+		// FIXME: Bodge to fix bug 15867: UI not updating
+		_vm->_screen->addDirtyRect(Common::Rect(
+			0, MADS_SCENE_HEIGHT, 320, 200));
 
 		// Display the frame
-		_vm->_screen.updateScreen();
-
-		// Signal the ScummVM debugger
-		_vm->_debugger->onFrame();
+		_vm->_screen->update();
 
 		return true;
 	}
@@ -268,5 +264,11 @@ void EventsManager::initVars() {
 	_mouseStatusCopy = _mouseStatus;
 	_strokeGoing = 0;
 }
+
+void EventsManager::clearEvents() {
+	_pendingKeys.clear();
+	_pendingActions.clear();
+}
+
 
 } // End of namespace MADS

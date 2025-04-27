@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,14 +15,20 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ *
+ * This file is dual-licensed.
+ * In addition to the GPLv3 license mentioned above, this code is also
+ * licensed under LGPL 2.1. See LICENSES/COPYING.LGPL file for the
+ * full text of the license.
  *
  */
 
 #include "common/array.h"
 
 #include "gob/sound/bgatmosphere.h"
+#include "gob/sound/sound.h"
 #include "gob/sound/sounddesc.h"
 
 namespace Gob {
@@ -30,7 +36,7 @@ namespace Gob {
 BackgroundAtmosphere::BackgroundAtmosphere(Audio::Mixer &mixer) :
 	SoundMixer(mixer, Audio::Mixer::kMusicSoundType), _rnd("gobBA") {
 
-	_playMode = kPlayModeLinear;
+	_playMode = Sound::kPlayModeLinear;
 	_queuePos = -1;
 	_shaded = false;
 	_shadable = true;
@@ -56,7 +62,7 @@ void BackgroundAtmosphere::stopBA() {
 	SoundMixer::stop(0);
 }
 
-void BackgroundAtmosphere::setPlayMode(PlayMode mode) {
+void BackgroundAtmosphere::setPlayMode(Sound::BackgroundPlayMode mode) {
 	_playMode = mode;
 }
 
@@ -100,11 +106,12 @@ void BackgroundAtmosphere::getNextQueuePos() {
 
 	switch (_playMode) {
 
-	case kPlayModeLinear:
+	case Sound::kPlayModeLinear:
+	default:
 		_queuePos = (_queuePos + 1) % _queue.size();
 		break;
 
-	case kPlayModeRandom:
+	case Sound::kPlayModeRandom:
 		_queuePos = _rnd.getRandomNumber(_queue.size() - 1);
 		break;
 

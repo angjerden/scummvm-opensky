@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -71,19 +70,18 @@ RenderObject::RenderObject(RenderObjectPtr<RenderObject> parentPtr, TYPES type, 
 	_version(++_nextGlobalVersion),
 	_isSolid(false) {
 
-	// Renderobject registrieren, abhängig vom Handle-Parameter entweder mit beliebigem oder vorgegebenen Handle.
 	if (handle == 0)
 		_handle = RenderObjectRegistry::instance().registerObject(this);
 	else
 		_handle = RenderObjectRegistry::instance().registerObject(this, handle);
 
 	if (_handle == 0)
-		return;
+		error("Failed to initialize RenderObject()");
 
 	updateAbsolutePos();
 
-	// Dieses Objekt zu den Kindern der Elternobjektes hinzufügen, falls nicht Wurzel (ParentPtr ungültig) und dem
-	// selben RenderObjektManager zuweisen.
+	// Add this item to the children of the parent object, if not root (ParentPtr is invalid),
+	// assign to the same RenderObjectManager.
 	if (_parentPtr.isValid()) {
 		_managerPtr = _parentPtr->getManager();
 		_parentPtr->addObject(this->getHandle());
@@ -100,24 +98,22 @@ RenderObject::RenderObject(RenderObjectPtr<RenderObject> parentPtr, TYPES type, 
 }
 
 RenderObject::~RenderObject() {
-	// Objekt aus dem Elternobjekt entfernen.
+	// Remove object from its parent.
 	if (_parentPtr.isValid())
 		_parentPtr->detatchChildren(this->getHandle());
 
 	deleteAllChildren();
 
-	// Objekt deregistrieren.
 	RenderObjectRegistry::instance().deregisterObject(this);
 }
 
 void RenderObject::preRender(RenderObjectQueue *renderQueue) {
-	// Objektänderungen validieren
 	validateObject();
 
 	if (!_visible)
 		return;
 
-	// Falls notwendig, wird die Renderreihenfolge der Kinderobjekte aktualisiert.
+	// If necessary, update the children rendering order of the updated objects.
 	if (_childChanged) {
 		sortRenderObjects();
 		_childChanged = false;
@@ -149,7 +145,7 @@ bool RenderObject::render(RectangleList *updateRects, const Common::Array<int> &
 	if (needRender)
 		doRender(updateRects);
 
-	// Dann müssen die Kinder gezeichnet werden
+	// Draw all children
 	RENDEROBJECT_ITER it = _children.begin();
 	for (; it != _children.end(); ++it)
 		if (!(*it)->render(updateRects, updateRectsMinZ))
@@ -159,7 +155,6 @@ bool RenderObject::render(RectangleList *updateRects, const Common::Array<int> &
 }
 
 void RenderObject::validateObject() {
-	// Die Veränderungen in den Objektvariablen aufheben
 	_oldBbox = _bbox;
 	_oldVisible = _visible;
 	_oldX = _x;
@@ -169,15 +164,14 @@ void RenderObject::validateObject() {
 }
 
 bool RenderObject::updateObjectState() {
-	// Falls sich das Objekt verändert hat, muss der interne Zustand neu berechnet werden und evtl. Update-Regions für den nächsten Frame
-	// registriert werden.
+	// If the object has changed, the internal state must be recalculated and possibly
+	// update Regions be registered for the next frame.
 	if ((calcBoundingBox() != _oldBbox) ||
 	        (_visible != _oldVisible) ||
 	        (_x != _oldX) ||
 	        (_y != _oldY) ||
 	        (_z != _oldZ) ||
 	        _refreshForced) {
-		// Renderrang des Objektes neu bestimmen, da sich dieser verändert haben könnte
 		if (_parentPtr.isValid())
 			_parentPtr->signalChildChange();
 
@@ -186,7 +180,7 @@ bool RenderObject::updateObjectState() {
 
 		++_version;
 
-		// Änderungen Validieren
+		// Ã„nderungen Validieren
 		validateObject();
 	}
 
@@ -200,12 +194,10 @@ bool RenderObject::updateObjectState() {
 }
 
 void RenderObject::updateBoxes() {
-	// Bounding-Box aktualisieren
 	_bbox = calcBoundingBox();
 }
 
 Common::Rect RenderObject::calcBoundingBox() const {
-	// Die Bounding-Box mit der Objektgröße initialisieren.
 	Common::Rect bbox(0, 0, _width, _height);
 
 	// Die absolute Position der Bounding-Box berechnen.
@@ -247,8 +239,6 @@ int32 RenderObject::calcAbsoluteZ() const {
 }
 
 void RenderObject::deleteAllChildren() {
-	// Es ist nicht notwendig die Liste zu iterieren, da jedes Kind für sich DetatchChildren an diesem Objekt aufruft und sich somit
-	// selber entfernt. Daher muss immer nur ein beliebiges Element (hier das letzte) gelöscht werden, bis die Liste leer ist.
 	while (!_children.empty()) {
 		RenderObjectPtr<RenderObject> curPtr = _children.back();
 		curPtr.erase();
@@ -261,10 +251,10 @@ bool RenderObject::addObject(RenderObjectPtr<RenderObject> pObject) {
 		return false;
 	}
 
-	// Objekt in die Kinderliste einfügen.
+	// Insert Object in the children list.
 	_children.push_back(pObject);
 
-	// Sicherstellen, dass vor dem nächsten Rendern die Renderreihenfolge aktualisiert wird.
+	// Make sure that before the next render the channel order is updated.
 	if (_parentPtr.isValid())
 		_parentPtr->signalChildChange();
 
@@ -542,7 +532,7 @@ RenderObjectPtr<RenderObject> RenderObject::recreatePersistedRenderObject(InputP
 }
 
 bool RenderObject::greater(const RenderObjectPtr<RenderObject> lhs, const RenderObjectPtr<RenderObject> rhs) {
-	// Das Objekt mit dem kleinem Z-Wert müssen zuerst gerendert werden.
+	// Das Objekt mit dem kleinem Z-Wert mÃ¼ssen zuerst gerendert werden.
 	if (lhs->_z != rhs->_z)
 		return lhs->_z < rhs->_z;
 	// Falls der Z-Wert gleich ist, wird das weiter oben gelegenen Objekte zuerst gezeichnet.

@@ -4,19 +4,18 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
-
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -28,7 +27,7 @@
 
 namespace Prince {
 
-MhwanhDecoder::MhwanhDecoder() : _surface(nullptr), _palette(nullptr) {
+MhwanhDecoder::MhwanhDecoder() : _surface(nullptr), _palette(0) {
 }
 
 MhwanhDecoder::~MhwanhDecoder() {
@@ -41,10 +40,7 @@ void MhwanhDecoder::destroy() {
 		delete _surface;
 		_surface = nullptr;
 	}
-	if (_palette != nullptr) {
-		free(_palette);
-		_palette = nullptr;
-	}
+	_palette.clear();
 }
 
 bool MhwanhDecoder::loadStream(Common::SeekableReadStream &stream) {
@@ -52,11 +48,12 @@ bool MhwanhDecoder::loadStream(Common::SeekableReadStream &stream) {
 	stream.seek(0);
 	stream.skip(0x20);
 	// Read the palette
-	_palette = (byte *)malloc(kPaletteColorCount * 3);
+	_palette.resize(kPaletteColorCount, false);
 	for (uint16 i = 0; i < kPaletteColorCount; i++) {
-		_palette[i * 3] = stream.readByte();
-		_palette[i * 3 + 1] = stream.readByte();
-		_palette[i * 3 + 2] = stream.readByte();
+		byte r = stream.readByte();
+		byte g = stream.readByte();
+		byte b = stream.readByte();
+		_palette.set(i, r, g, b);
 	}
 
 	_surface = new Graphics::Surface();

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -24,42 +23,44 @@
 
 #ifdef ENABLE_VKEYBD
 
+#include "gui/gui-manager.h"
 #include "backends/vkeybd/virtual-keyboard.h"
 
+#include "backends/keymapper/keymapper.h"
+#include "backends/keymapper/keymap.h"
 #include "backends/vkeybd/virtual-keyboard-gui.h"
 #include "backends/vkeybd/virtual-keyboard-parser.h"
 #include "backends/vkeybd/keycode-descriptions.h"
 #include "common/config-manager.h"
 #include "common/textconsole.h"
-#include "common/unzip.h"
+#include "common/compression/unzip.h"
 
 #define KEY_START_CHAR ('[')
 #define KEY_END_CHAR (']')
 
 namespace Common {
 
-VirtualKeyboard::VirtualKeyboard() : _currentMode(0) {
+VirtualKeyboard::VirtualKeyboard() :
+		_currentMode(nullptr),
+		_fileArchive(nullptr, DisposeAfterUse::NO) {
 	assert(g_system);
 	_system = g_system;
 
 	_parser = new VirtualKeyboardParser(this);
 	_kbdGUI = new VirtualKeyboardGUI(this);
 	_submitKeys = _loaded = false;
-	_fileArchive = 0;
 }
 
 VirtualKeyboard::~VirtualKeyboard() {
 	deleteEvents();
 	delete _kbdGUI;
 	delete _parser;
-	delete _fileArchive;
 }
 
 void VirtualKeyboard::deleteEvents() {
-	for (ModeMap::iterator it_m = _modes.begin(); it_m != _modes.end(); ++it_m) {
-		VKEventMap &evt = it_m->_value.events;
-		for (VKEventMap::iterator it_e = evt.begin(); it_e != evt.end(); ++it_e)
-			delete it_e->_value;
+	for (auto &mode : _modes) {
+		for (auto &event : mode._value.events)
+			delete event._value;
 	}
 }
 
@@ -74,33 +75,35 @@ void VirtualKeyboard::reset() {
 	_kbdGUI->reset();
 }
 
-bool VirtualKeyboard::openPack(const String &packName, const FSNode &node) {
-	if (node.getChild(packName + ".xml").exists()) {
-		_fileArchive = new FSDirectory(node, 1);
+bool VirtualKeyboard::openPack(const String &packName, Archive *searchPath, DisposeAfterUse::Flag disposeSearchPath) {
+	Common::Path xmlPackName(packName), zipPackName(packName);
+	xmlPackName.appendInPlace(".xml");
+	zipPackName.appendInPlace(".zip");
+
+	if (searchPath->hasFile(xmlPackName)) {
+		_fileArchive.reset(searchPath, disposeSearchPath);
 
 		// uncompressed keyboard pack
-		if (!_parser->loadFile(node.getChild(packName + ".xml"))) {
-			delete _fileArchive;
-			_fileArchive = 0;
+		if (!_parser->loadStream(searchPath->createReadStreamForMember(xmlPackName))) {
+			_fileArchive.reset();
 			return false;
 		}
 
 		return true;
 	}
 
-	if (node.getChild(packName + ".zip").exists()) {
+	if (searchPath->hasFile(zipPackName)) {
 		// compressed keyboard pack
-		_fileArchive = makeZipArchive(node.getChild(packName + ".zip"));
-		if (_fileArchive && _fileArchive->hasFile(packName + ".xml")) {
-			if (!_parser->loadStream(_fileArchive->createReadStreamForMember(packName + ".xml"))) {
-				delete _fileArchive;
-				_fileArchive = 0;
+		Archive *zip = makeZipArchive(searchPath->createReadStreamForMember(zipPackName));
+		_fileArchive.reset(zip, DisposeAfterUse::YES);
+		if (_fileArchive && _fileArchive->hasFile(xmlPackName)) {
+			if (!_parser->loadStream(_fileArchive->createReadStreamForMember(xmlPackName))) {
+				_fileArchive.reset();
 				return false;
 			}
 		} else {
 			warning("Could not find %s.xml file in %s.zip virtual keyboard pack", packName.c_str(), packName.c_str());
-			delete _fileArchive;
-			_fileArchive = 0;
+			_fileArchive.reset();
 			return false;
 		}
 
@@ -113,19 +116,18 @@ bool VirtualKeyboard::openPack(const String &packName, const FSNode &node) {
 bool VirtualKeyboard::loadKeyboardPack(const String &packName) {
 	_kbdGUI->initSize(_system->getOverlayWidth(), _system->getOverlayHeight());
 
-	delete _fileArchive;
-	_fileArchive = 0;
+	_fileArchive.reset();
 	_loaded = false;
 
 	bool opened = false;
 	if (ConfMan.hasKey("vkeybdpath"))
-		opened = openPack(packName, FSNode(ConfMan.get("vkeybdpath")));
+		opened = openPack(packName, new FSDirectory(ConfMan.getPath("vkeybdpath")), DisposeAfterUse::YES);
 	else if (ConfMan.hasKey("extrapath"))
-		opened = openPack(packName, FSNode(ConfMan.get("extrapath")));
+		opened = openPack(packName, new FSDirectory(ConfMan.getPath("extrapath")), DisposeAfterUse::YES);
 
-	// fallback to the current dir
+	// fallback to SearchMan
 	if (!opened)
-		opened = openPack(packName, FSNode("."));
+		opened = openPack(packName, &SearchMan, DisposeAfterUse::NO);
 
 	if (opened) {
 		_parser->setParseMode(VirtualKeyboardParser::kParseFull);
@@ -136,8 +138,7 @@ bool VirtualKeyboard::loadKeyboardPack(const String &packName) {
 		} else {
 			warning("Error parsing the virtual keyboard pack '%s'", packName.c_str());
 
-			delete _fileArchive;
-			_fileArchive = 0;
+			_fileArchive.reset();
 		}
 	} else {
 		warning("Virtual keyboard disabled due to missing pack file");
@@ -225,6 +226,21 @@ void VirtualKeyboard::handleMouseUp(int16 x, int16 y) {
 	_kbdGUI->endDrag();
 }
 
+// If no GUI opened before the virtual keyboard, kKeymapTypeGui is not yet initialized
+// Check and do it if needed
+void VirtualKeyboard::initKeymap() {
+	using namespace Common;
+
+	Keymapper *mapper = _system->getEventManager()->getKeymapper();
+
+	// Do not try to recreate same keymap over again
+	if (mapper->getKeymap(kGuiKeymapName) != 0)
+			return;
+
+	Keymap *guiMap = g_gui.getKeymap();
+	mapper->addGlobalKeymap(guiMap);
+}
+
 void VirtualKeyboard::show() {
 	if (!_loaded) {
 		debug(1, "VirtualKeyboard::show() - Virtual keyboard not loaded");
@@ -234,7 +250,12 @@ void VirtualKeyboard::show() {
 	}
 
 	switchMode(_initialMode);
-	_kbdGUI->run();
+
+	{
+		initKeymap();
+		KeymapTypeEnabler guiKeymap(_system->getEventManager()->getKeymapper(), Keymap::kKeymapTypeGui);
+		_kbdGUI->run();
+	}
 
 	if (_submitKeys) {
 		EventManager *eventMan = _system->getEventManager();
@@ -242,7 +263,6 @@ void VirtualKeyboard::show() {
 
 		// push keydown & keyup events into the event manager
 		Event evt;
-		evt.synthetic = false;
 		while (!_keyQueue.empty()) {
 			evt.kbd = _keyQueue.pop();
 			evt.type = EVENT_KEYDOWN;

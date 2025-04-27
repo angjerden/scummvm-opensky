@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -34,7 +33,7 @@ namespace Voyeur {
 // Number of audio frames to keep audio track topped up when playing back video
 #define SOUND_FRAMES_READAHEAD 3
 
-RL2Decoder::RL2Decoder(Audio::Mixer::SoundType soundType) : _soundType(soundType) {
+RL2Decoder::RL2Decoder() {
 	_paletteStart = 0;
 	_fileStream = nullptr;
 	_soundFrameNumber = -1;
@@ -48,12 +47,12 @@ RL2Decoder::~RL2Decoder() {
 }
 
 bool RL2Decoder::loadVideo(int videoId) {
-	Common::String filename = Common::String::format("%s.rl2",
-		::Voyeur::SZ_FILENAMES[videoId * 2]);
+	Common::Path filename(Common::String::format("%s.rl2",
+		::Voyeur::SZ_FILENAMES[videoId * 2]));
 	return loadRL2File(filename, false);
 }
 
-bool RL2Decoder::loadRL2File(const Common::String &file, bool palFlag) {
+bool RL2Decoder::loadRL2File(const Common::Path &file, bool palFlag) {
 	bool result = VideoDecoder::loadFile(file);
 	_paletteStart = palFlag ? 0 : 128;
 	return result;
@@ -76,7 +75,7 @@ bool RL2Decoder::loadStream(Common::SeekableReadStream *stream) {
 	// Add an audio track if sound is present
 	_audioTrack = nullptr;
 	if (_header._soundRate) {
-		_audioTrack = new RL2AudioTrack(_header, stream, _soundType);
+		_audioTrack = new RL2AudioTrack(_header, stream, getSoundType());
 		addTrack(_audioTrack);
 	}
 
@@ -311,10 +310,10 @@ const Graphics::Surface *RL2Decoder::RL2VideoTrack::decodeNextFrame() {
 }
 
 void RL2Decoder::RL2VideoTrack::copyDirtyRectsToBuffer(uint8 *dst, uint pitch) {
-	for (Common::List<Common::Rect>::const_iterator it = _dirtyRects.begin(); it != _dirtyRects.end(); ++it) {
-		for (int y = (*it).top; y < (*it).bottom; ++y) {
-			const int x = (*it).left;
-			memcpy(dst + y * pitch + x, (byte *)_surface->getPixels() + y * getWidth() + x, (*it).right - x);
+	for (const auto &r : _dirtyRects) {
+		for (int y = r.top; y < r.bottom; ++y) {
+			const int x = r.left;
+			memcpy(dst + y * pitch + x, (byte *)_surface->getPixels() + y * getWidth() + x, r.right - x);
 		}
 	}
 
@@ -433,8 +432,9 @@ Graphics::Surface *RL2Decoder::RL2VideoTrack::getBackSurface() {
 
 /*------------------------------------------------------------------------*/
 
-RL2Decoder::RL2AudioTrack::RL2AudioTrack(const RL2FileHeader &header, Common::SeekableReadStream *stream, Audio::Mixer::SoundType soundType):
-		_header(header), _soundType(soundType) {
+RL2Decoder::RL2AudioTrack::RL2AudioTrack(const RL2FileHeader &header, Common::SeekableReadStream *stream, Audio::Mixer::SoundType soundType) :
+		AudioTrack(soundType),
+		_header(header) {
 	// Create audio straem for the audio track
 	_audStream = Audio::makeQueuingAudioStream(_header._rate, _header._channels == 2);
 }
@@ -470,7 +470,7 @@ void RL2Decoder::play(VoyeurEngine *vm, int resourceOffset,
 		if (hasDirtyPalette()) {
 			const byte *palette = getPalette();
 
-			vm->_graphicsManager->setPalette128(palette, paletteStart, paletteCount);
+			vm->_screen->setPalette128(palette, paletteStart, paletteCount);
 		}
 
 		if (needsUpdate()) {
@@ -482,15 +482,14 @@ void RL2Decoder::play(VoyeurEngine *vm, int resourceOffset,
 					Common::Point pt(READ_LE_UINT16(imgPos + 4 * picCtr) - 32,
 						READ_LE_UINT16(imgPos + 4 * picCtr + 2) - 20);
 
-					vm->_graphicsManager->sDrawPic(newPic, &videoFrame, pt);
+					vm->_screen->sDrawPic(newPic, &videoFrame, pt);
 					++picCtr;
 				}
 			}
 
 			// Decode the next frame and display
 			const Graphics::Surface *frame = decodeNextFrame();
-			Common::copy((const byte *)frame->getPixels(), (const byte *)frame->getPixels() + 320 * 200,
-				(byte *)vm->_graphicsManager->_screenSurface.getPixels());
+			vm->_screen->blitFrom(*frame);
 		}
 
 		vm->_eventsManager->getMouseInfo();

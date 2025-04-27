@@ -4,19 +4,18 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
-
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -27,6 +26,7 @@
 #include "mads/screen.h"
 #include "mads/resources.h"
 #include "mads/dragonsphere/dragonsphere_scenes.h"
+#include "mads/forest/forest_scenes.h"
 #include "mads/nebular/nebular_scenes.h"
 #include "mads/phantom/phantom_scenes.h"
 
@@ -108,7 +108,7 @@ SceneInfo::SceneInfo(MADSEngine *vm) : _vm(vm) {
 	_minScale = 0;
 	_field4A = 0;
 	_usageIndex = 0;
-	for (int i = 0; i < 15; ++i)
+	for (int i = 0; i < DEPTH_BANDS_SIZE; ++i)
 		_depthList[i] = 0;
 }
 
@@ -116,10 +116,14 @@ SceneInfo *SceneInfo::init(MADSEngine *vm) {
 	switch (vm->getGameID()) {
 	case GType_RexNebular:
 		return new Nebular::SceneInfoNebular(vm);
+#ifdef ENABLE_MADSV2
 	case GType_Dragonsphere:
 		return new Dragonsphere::SceneInfoDragonsphere(vm);
 	case GType_Phantom:
 		return new Phantom::SceneInfoPhantom(vm);
+	case GType_Forest:
+		return new Forest::SceneInfoForest(vm);
+#endif
 	default:
 		error("SceneInfo: Unknown game");
 	}
@@ -128,15 +132,15 @@ SceneInfo *SceneInfo::init(MADSEngine *vm) {
 }
 
 void SceneInfo::load(int sceneId, int variant, const Common::String &resName,
-		int flags, DepthSurface &depthSurface, MSurface &bgSurface) {
+		int flags, DepthSurface &depthSurface, BaseSurface &bgSurface) {
 	bool sceneFlag = sceneId >= 0;
 
 	// Figure out the resource to use
-	Common::String resourceName;
+	Common::Path resourceName;
 	if (sceneFlag) {
 		resourceName = Resources::formatName(RESPREFIX_RM, sceneId, ".DAT");
 	} else {
-		resourceName = "*" + Resources::formatResource(resName, resName);
+		resourceName = Common::Path("*").appendInPlace(Resources::formatResource(resName, resName));
 	}
 
 	// Open the scene info resource for access
@@ -145,6 +149,15 @@ void SceneInfo::load(int sceneId, int variant, const Common::String &resName,
 
 	// Read in basic data
 	Common::SeekableReadStream *infoStream = infoPack.getItemStream(0);
+
+	/*
+	byte *data = new byte[infoStream->size()];
+	infoStream->read(data, infoStream->size());
+	Common::hexdump(data, infoStream->size());
+	infoStream->seek(0);
+	delete[] data;
+	*/
+
 	if (_vm->getGameID() == GType_RexNebular) {
 		_sceneId = infoStream->readUint16LE();
 	} else {
@@ -161,22 +174,28 @@ void SceneInfo::load(int sceneId, int variant, const Common::String &resName,
 		_height = infoStream->readUint16LE();
 
 		infoStream->skip(24);
-
-		nodeCount = infoStream->readUint16LE();
-		_yBandsEnd = infoStream->readUint16LE();
-		_yBandsStart = infoStream->readUint16LE();
-		_maxScale = infoStream->readUint16LE();
-		_minScale = infoStream->readUint16LE();
-		for (int i = 0; i < DEPTH_BANDS_SIZE; ++i)
-			_depthList[i] = infoStream->readUint16LE();
-		_field4A = infoStream->readUint16LE();
 	} else {
 		_artFileNum = sceneId;
 		_depthStyle = 0;
 		_width = 320;
 		_height = 156;
 
-		infoStream->skip(140);
+		infoStream->skip(98);
+	}
+
+	nodeCount = infoStream->readUint16LE();
+	_yBandsEnd = infoStream->readUint16LE();
+	_yBandsStart = infoStream->readUint16LE();
+	_maxScale = infoStream->readUint16LE();
+	_minScale = infoStream->readUint16LE();
+	for (int i = 0; i < DEPTH_BANDS_SIZE; ++i)
+		_depthList[i] = infoStream->readUint16LE();
+	_field4A = infoStream->readUint16LE();
+
+	// HACK for V2 games
+	if (_vm->getGameID() != GType_RexNebular) {
+		_minScale = _maxScale = 100;
+		memset(_depthList, 0, DEPTH_BANDS_SIZE * sizeof(int));
 	}
 
 	// Load the scene's walk nodes
@@ -184,27 +203,29 @@ void SceneInfo::load(int sceneId, int variant, const Common::String &resName,
 		WalkNode node;
 		node.load(infoStream);
 
-		if (i < nodeCount)
+		if (i < nodeCount) {
 			_nodes.push_back(node);
+			//debug("Node %d: %d,%d", i, node._walkPos.x, node._walkPos.y);
+		}
 	}
 
-	int spriteSetsCount  = infoStream->readUint16LE();
-	int spriteInfoCount = infoStream->readUint16LE();
-
-	// Load in sprite sets
 	Common::StringArray setNames;
-	for (int i = 0; i < 10; ++i) {
-		char name[64];
-		infoStream->read(name, 64);
-
-		if (i < spriteSetsCount)
-			setNames.push_back(Common::String(name));
-	}
-
-	// Load in sprite draw information
 	Common::Array<SpriteInfo> spriteInfo;
-	// TODO: The following isn't quite right for V2 games
+
 	if (_vm->getGameID() == GType_RexNebular) {
+		int spriteSetsCount = infoStream->readUint16LE();
+		int spriteInfoCount = infoStream->readUint16LE();
+
+		// Load in sprite sets
+		for (int i = 0; i < 10; ++i) {
+			char name[64];
+			infoStream->read(name, 64);
+
+			if (i < spriteSetsCount)
+				setNames.push_back(Common::String(name));
+		}
+
+		// Load in sprite draw information
 		for (int i = 0; i < 50; ++i) {
 			SpriteInfo info;
 			info.load(infoStream);
@@ -212,6 +233,12 @@ void SceneInfo::load(int sceneId, int variant, const Common::String &resName,
 			if (i < spriteInfoCount)
 				spriteInfo.push_back(info);
 		}
+	} else {
+		uint16 shadowColors = infoStream->readUint16LE();
+		uint16 shadowR = infoStream->readUint16LE();
+		uint16 shadowG = infoStream->readUint16LE();
+		uint16 shadowB = infoStream->readUint16LE();
+		debug("Shadow colors: %d (%d, %d, %d)", shadowColors, shadowR, shadowG, shadowB);
 	}
 	delete infoStream;
 
@@ -219,13 +246,13 @@ void SceneInfo::load(int sceneId, int variant, const Common::String &resName,
 	int height = _height;
 
 	if (!bgSurface.getPixels() || (bgSurface.w != width) || (bgSurface.h != height)) {
-		bgSurface.setSize(width, height);
+		bgSurface.create(width, height);
 	}
 
 	if (_depthStyle == 2)
 		width >>= 2;
 	if (!depthSurface.getPixels()) {
-		depthSurface.setSize(width, height);
+		depthSurface.create(width, height);
 	}
 
 	loadCodes(depthSurface, variant);
@@ -237,7 +264,7 @@ void SceneInfo::load(int sceneId, int variant, const Common::String &resName,
 		loadPalette(_sceneId, _artFileNum, resName, flags, bgSurface);
 	} else {
 		loadMadsV2Background(_sceneId, resName, flags, bgSurface);
-		loadPalette(_sceneId, _sceneId, resName, flags, bgSurface);
+		loadPalette(_sceneId, _artFileNum, resName, flags, bgSurface);
 	}
 
 	Common::Array<SpriteAsset *> spriteSets;
@@ -251,7 +278,7 @@ void SceneInfo::load(int sceneId, int variant, const Common::String &resName,
 				setResName += "*";
 			setResName += setNames[i];
 
-			SpriteAsset *sprites = new SpriteAsset(_vm, setResName, flags);
+			SpriteAsset *sprites = new SpriteAsset(_vm, Common::Path(setResName), flags);
 			spriteSets.push_back(sprites);
 			usageList.push_back(sprites->_usageIndex);
 		}
@@ -265,7 +292,7 @@ void SceneInfo::load(int sceneId, int variant, const Common::String &resName,
 		assert(asset && _depthStyle != 2);
 
 		MSprite *spr = asset->getFrame(si._frameNumber);
-		bgSurface.copyFrom(spr, si._position, si._depth, &depthSurface,
+		bgSurface.copyFrom(*spr, si._position, si._depth, &depthSurface,
 			si._scale, false, spr->getTransparencyIndex());
 	}
 
@@ -276,9 +303,9 @@ void SceneInfo::load(int sceneId, int variant, const Common::String &resName,
 	}
 }
 
-void SceneInfo::loadPalette(int sceneId, int artFileNum, const Common::String &resName, int flags, MSurface &bgSurface) {
+void SceneInfo::loadPalette(int sceneId, int artFileNum, const Common::String &resName, int flags, BaseSurface &bgSurface) {
 	bool sceneFlag = sceneId >= 0;
-	Common::String resourceName;
+	Common::Path resourceName;
 	bool isV2 = (_vm->getGameID() != GType_RexNebular);
 	Common::String extension = !isV2 ? ".ART" : ".TT";
 	int paletteStream = !isV2 ? 0 : 2;
@@ -287,7 +314,7 @@ void SceneInfo::loadPalette(int sceneId, int artFileNum, const Common::String &r
 	if (sceneFlag) {
 		resourceName = Resources::formatName(RESPREFIX_RM, artFileNum, extension);
 	} else {
-		resourceName = "*" + Resources::formatResource(resName, resName);
+		resourceName = Common::Path("*").appendInPlace(Resources::formatResource(resName, resName));
 	}
 
 	// Load in the ART header and palette
@@ -328,16 +355,16 @@ void SceneInfo::loadPalette(int sceneId, int artFileNum, const Common::String &r
 	}
 }
 
-void SceneInfo::loadMadsV1Background(int sceneId, const Common::String &resName, int flags, MSurface &bgSurface) {
+void SceneInfo::loadMadsV1Background(int sceneId, const Common::String &resName, int flags, BaseSurface &bgSurface) {
 	bool sceneFlag = sceneId >= 0;
-	Common::String resourceName;
+	Common::Path resourceName;
 	Common::SeekableReadStream *stream;
 
 	// Get the ART resource
 	if (sceneFlag) {
 		resourceName = Resources::formatName(RESPREFIX_RM, sceneId, ".ART");
 	} else {
-		resourceName = "*" + Resources::formatResource(resName, resName);
+		resourceName = Common::Path("*").appendInPlace(Resources::formatResource(resName, resName));
 	}
 
 	// Load in the ART data
@@ -374,8 +401,8 @@ void SceneInfo::loadMadsV1Background(int sceneId, const Common::String &resName,
 	artFile.close();
 }
 
-void SceneInfo::loadMadsV2Background(int sceneId, const Common::String &resName, int flags, MSurface &bgSurface) {
-	Common::String tileMapResourceName = Resources::formatName(RESPREFIX_RM, sceneId, ".MM");
+void SceneInfo::loadMadsV2Background(int sceneId, const Common::String &resName, int flags, BaseSurface &bgSurface) {
+	Common::Path tileMapResourceName = Resources::formatName(RESPREFIX_RM, sceneId, ".MM");
 	File tileMapFile(tileMapResourceName);
 	MadsPack tileMapPack(&tileMapFile);
 	Common::SeekableReadStream *mapStream = tileMapPack.getItemStream(0);
@@ -406,7 +433,7 @@ void SceneInfo::loadMadsV2Background(int sceneId, const Common::String &resName,
 
 	// Tile data, which needs to be kept compressed, as the tile map offsets refer to
 	// the compressed data. Each tile is then uncompressed separately
-	Common::String tileDataResourceName = Resources::formatName(RESPREFIX_RM, sceneId, ".TT");
+	Common::Path tileDataResourceName = Resources::formatName(RESPREFIX_RM, sceneId, ".TT");
 	File tileDataFile(tileDataResourceName);
 	MadsPack tileDataPack(&tileDataFile);
 	Common::SeekableReadStream *tileDataUncomp = tileDataPack.getItemStream(0);
@@ -421,6 +448,18 @@ void SceneInfo::loadMadsV2Background(int sceneId, const Common::String &resName,
 	assert(tileHeight == tileHeightMap);
 	assert(screenWidth == _width);
 	assert(screenHeight <= _height);
+
+	// Resize the background surface to hold all of the tiles
+	uint16 newWidth = bgSurface.w;
+	uint16 newHeight = bgSurface.h;
+
+	if (tileWidth < screenWidth && bgSurface.w != tileCount * tileWidth)
+		newWidth = tileCount * tileWidth;
+	if (tileHeight < screenHeight && bgSurface.h != tileCount * tileHeight)
+		newHeight = tileCount * tileHeight;
+
+	if (bgSurface.w != newWidth || bgSurface.h != newHeight)
+		bgSurface.create(newWidth, newHeight);
 
 	// --------------------------------------------------------------------------------
 
@@ -442,7 +481,7 @@ void SceneInfo::loadMadsV2Background(int sceneId, const Common::String &resName,
 
 		//debugCN(kDebugGraphics, "Tile: %i, compressed size: %i\n", i, compressedTileDataSize);
 
-		newTile->empty();
+		newTile->clear();
 
 		byte *compressedTileData = new byte[compressedTileDataSize];
 
@@ -468,12 +507,15 @@ void SceneInfo::loadMadsV2Background(int sceneId, const Common::String &resName,
 			TileSetIterator tile = tileSet.begin();
 			for (int i = 0; i < tileIndex; i++)
 				++tile;
-			((*tile).get())->copyTo(&bgSurface, Common::Point(x * tileWidth, y * tileHeight));
+
+			bgSurface.blitFrom(*(*tile).get(), Common::Point(x * tileWidth, y * tileHeight));
 			((*tile).get())->free();
 		}
 	}
 	tileSet.clear();
 	tileDataFile.close();
+
+	delete[] tileMap;
 }
 
 /*------------------------------------------------------------------------*/

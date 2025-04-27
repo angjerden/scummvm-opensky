@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -37,35 +36,40 @@ TSageEngine *g_vm = NULL;
 TSageEngine::TSageEngine(OSystem *system, const tSageGameDescription *gameDesc) : Engine(system),
 		_gameDescription(gameDesc) {
 	g_vm = this;
-	DebugMan.addDebugChannel(kRingDebugScripts, "scripts", "Scripts debugging");
-	_debugger = nullptr;
+
+#ifdef ENABLE_RINGWORLD
 	if (g_vm->getGameID() == GType_Ringworld) {
 		if (g_vm->getFeatures() & GF_DEMO)
-			_debugger = new DemoDebugger();
+			setDebugger(new DemoDebugger());
 		else
-			_debugger = new RingworldDebugger();
-	}
-	else if (g_vm->getGameID() == GType_BlueForce)
-		_debugger = new BlueForceDebugger();
-	else if (g_vm->getGameID() == GType_Ringworld2)
-		_debugger = new Ringworld2Debugger();
+			setDebugger(new RingworldDebugger());
+	} else
+#endif
+#ifdef ENABLE_BLUEFORCE
+	if (g_vm->getGameID() == GType_BlueForce)
+		setDebugger(new BlueForceDebugger());
+	else
+#endif
+#ifdef ENABLE_RINGWORLD2
+	if (g_vm->getGameID() == GType_Ringworld2)
+		setDebugger(new Ringworld2Debugger());
+	else
+#endif
+		setDebugger(new DemoDebugger());
 }
 
 Common::Error TSageEngine::init() {
-	initGraphics(SCREEN_WIDTH, SCREEN_HEIGHT, false);
+	initGraphics(SCREEN_WIDTH, SCREEN_HEIGHT);
 
 	return Common::kNoError;
 }
 
 TSageEngine::~TSageEngine() {
-	// Remove all of our debug levels here
-	DebugMan.clearAllDebugChannels();
-	delete _debugger;
 }
 
 bool TSageEngine::hasFeature(EngineFeature f) const {
 	return
-		(f == kSupportsRTL) ||
+		(f == kSupportsReturnToLauncher) ||
 		(f == kSupportsLoadingDuringRuntime) ||
 		(f == kSupportsSavingDuringRuntime);
 }
@@ -78,6 +82,7 @@ void TSageEngine::initialize() {
 
 	// Set up the resource manager
 	g_resourceManager = new ResourceManager();
+#ifdef ENABLE_RINGWORLD
 	if (g_vm->getGameID() == GType_Ringworld) {
 		if (g_vm->getFeatures() & GF_DEMO) {
 			// Add the single library file associated with the demo
@@ -88,7 +93,10 @@ void TSageEngine::initialize() {
 			g_resourceManager->addLib("TSAGE.RLB");
 			g_globals = new Globals();
 		}
-	} else if (g_vm->getGameID() == GType_BlueForce) {
+	} else
+#endif
+#ifdef ENABLE_BLUEFORCE
+	if (g_vm->getGameID() == GType_BlueForce) {
 		g_resourceManager->addLib("BLUE.RLB");
 		if (g_vm->getFeatures() & GF_FLOPPY) {
 			g_resourceManager->addLib("FILES.RLB");
@@ -101,7 +109,10 @@ void TSageEngine::initialize() {
 
 		// Reset all global variables
 		BF_GLOBALS.reset();
-	} else if (g_vm->getGameID() == GType_Ringworld2) {
+	} else
+#endif
+#ifdef ENABLE_RINGWORLD2
+	if (g_vm->getGameID() == GType_Ringworld2) {
 		g_resourceManager->addLib("R2RW.RLB");
 		g_globals = new Ringworld2::Ringworld2Globals();
 
@@ -110,6 +121,15 @@ void TSageEngine::initialize() {
 
 		// Reset all global variables
 		R2_GLOBALS.reset();
+	} else
+#endif
+	if (g_vm->getGameID() == GType_Sherlock1) {
+#ifdef TSAGE_SHERLOCK_ENABLED
+		g_resourceManager->addLib("SF3.RLB");
+		g_globals = new Globals();
+
+		return;
+#endif
 	}
 
 	g_globals->gfxManager().setDefaults();
@@ -140,14 +160,14 @@ Common::Error TSageEngine::run() {
 /**
  * Returns true if it is currently okay to restore a game
  */
-bool TSageEngine::canLoadGameStateCurrently() {
+bool TSageEngine::canLoadGameStateCurrently(Common::U32String *msg) {
 	return (g_globals != NULL) && (g_globals->_game != NULL) && g_globals->_game->canLoadGameStateCurrently();
 }
 
 /**
  * Returns true if it is currently okay to save the game
  */
-bool TSageEngine::canSaveGameStateCurrently() {
+bool TSageEngine::canSaveGameStateCurrently(Common::U32String *msg) {
 	return (g_globals != NULL) && (g_globals->_game != NULL) && g_globals->_game->canSaveGameStateCurrently();
 }
 
@@ -161,16 +181,8 @@ Common::Error TSageEngine::loadGameState(int slot) {
 /**
  * Save the game to the given slot index, and with the given name
  */
-Common::Error TSageEngine::saveGameState(int slot, const Common::String &desc) {
+Common::Error TSageEngine::saveGameState(int slot, const Common::String &desc, bool isAutosave) {
 	return g_saver->save(slot, desc);
-}
-
-/**
- * Support method that generates a savegame name
- * @param slot		Slot number
- */
-Common::String TSageEngine::generateSaveName(int slot) {
-	return Common::String::format("%s.%03d", _targetName.c_str(), slot);
 }
 
 void TSageEngine::syncSoundSettings() {

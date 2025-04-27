@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,21 +15,20 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 
 #include "common/endian.h"
 #include "common/textconsole.h"
-#include "common/util.h"
+#include "audio/fmopl.h"
 #include "sky/music/adlibchannel.h"
 #include "sky/sky.h"
 
 namespace Sky {
 
-AdLibChannel::AdLibChannel(FM_OPL *opl, uint8 *pMusicData, uint16 startOfData) {
+AdLibChannel::AdLibChannel(OPL::OPL *opl, uint8 *pMusicData, uint16 startOfData) {
 	_opl = opl;
 	_musicData = pMusicData;
 	_channelData.loopPoint = startOfData;
@@ -45,9 +44,11 @@ AdLibChannel::AdLibChannel(FM_OPL *opl, uint8 *pMusicData, uint16 startOfData) {
 	_channelData.frequency = 0;
 	_channelData.instrumentData = NULL;
 
+	_musicVolume = 128;
+
 	uint16 instrumentDataLoc;
 
-	if (SkyEngine::_systemVars.gameVersion == 109) {
+	if (SkyEngine::_systemVars->gameVersion == 109) {
 		//instrumentDataLoc = (_musicData[0x11D0] << 8) | _musicData[0x11CF];
 		//_frequenceTable = (uint16 *)(_musicData + 0x835);
 		//_registerTable = _musicData + 0xE35;
@@ -59,7 +60,7 @@ AdLibChannel::AdLibChannel(FM_OPL *opl, uint8 *pMusicData, uint16 startOfData) {
 		_registerTable = _musicData + 0xE68;
 		_opOutputTable = _musicData + 0xE7A;
 		_adlibRegMirror = _musicData + 0xF7D;
-	} else if (SkyEngine::_systemVars.gameVersion == 267) {
+	} else if (SkyEngine::_systemVars->gameVersion == 267) {
 		instrumentDataLoc = READ_LE_UINT16(_musicData + 0x11FB);
 		_frequenceTable = (uint16 *)(_musicData + 0x7F4);
 		_registerTable = _musicData + 0xDF4;
@@ -86,7 +87,7 @@ bool AdLibChannel::isActive() {
 }
 
 void AdLibChannel::updateVolume(uint16 pVolume) {
-	// Do nothing. The mixer handles the music volume for us.
+	_musicVolume = pVolume;
 }
 
 /*	This class uses the same area for the register mirror as the original
@@ -95,7 +96,7 @@ void AdLibChannel::updateVolume(uint16 pVolume) {
 */
 void AdLibChannel::setRegister(uint8 regNum, uint8 value) {
 	if (_adlibRegMirror[regNum] != value) {
-		OPLWriteReg (_opl, regNum, value);
+		_opl->writeReg(regNum, value);
 		_adlibRegMirror[regNum] = value;
 	}
 }
@@ -208,6 +209,8 @@ void AdLibChannel::setupChannelVolume(uint8 volume) {
 	uint32 resVol = ((volume + 1) * (_channelData.instrumentData->totOutLev_Op2 + 1)) << 1;
 	resVol &= 0xFFFF;
 	resVol *= (_channelData.channelVolume + 1) << 1;
+	resVol >>= 8;
+	resVol *= _musicVolume << 1;
 	resVol >>= 16;
 	assert(resVol < 0x81);
 	resultOp = ((_channelData.instrumentData->scalingLevel << 6) & 0xC0) | _opOutputTable[resVol];
@@ -216,6 +219,8 @@ void AdLibChannel::setupChannelVolume(uint8 volume) {
 		resVol = ((volume + 1) * (_channelData.instrumentData->totOutLev_Op1 + 1)) << 1;
 		resVol &= 0xFFFF;
 		resVol *= (_channelData.channelVolume + 1) << 1;
+		resVol >>= 8;
+		resVol *= _musicVolume << 1;
 		resVol >>= 16;
 	} else
 		resVol = _channelData.instrumentData->totOutLev_Op1;

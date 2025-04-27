@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -96,8 +95,8 @@ public:
 };
 
 class DirtyAreas : public Common::Array<DirtyArea> {
-private:
-	MADSEngine *_vm;
+//private:
+//	MADSEngine *_vm;
 public:
 	DirtyAreas(MADSEngine *vm);
 
@@ -117,7 +116,7 @@ public:
 	* @param destSurface	Dest surface
 	* @param posAdjust		Position adjustment
 	*/
-	void copy(MSurface *srcSurface, MSurface *destSurface, const Common::Point &posAdjust);
+	void copy(BaseSurface *srcSurface, BaseSurface *destSurface, const Common::Point &posAdjust);
 
 	/**
 	* Use the lsit of dirty areas to copy areas of the screen surface to
@@ -127,7 +126,6 @@ public:
 
 	void reset();
 };
-
 
 class ScreenObject {
 public:
@@ -207,11 +205,10 @@ public:
 	void synchronize(Common::Serializer &s);
 };
 
-class ScreenSurface : public MSurface {
+class Screen : public BaseSurface {
 private:
 	uint16 _random;
-	byte *_surfacePixels;
-	Common::Rect _clipBounds;
+	MSurface _rawSurface;
 
 	void panTransition(MSurface &newScreen, byte *palData, int entrySide,
 		const Common::Point &srcPos, const Common::Point &destPos,
@@ -226,36 +223,40 @@ public:
 	/**
 	 * Constructor
 	 */
-	ScreenSurface();
+	Screen();
 
 	/**
 	 * Destructor
 	 */
-	~ScreenSurface();
+	~Screen() override {}
 
 	/**
-	 * Initialize the surface
+	 * Updates the physical screen with contents of the internal surface
 	 */
-	void init();
+	void update() override;
 
 	/**
-	 * Copys an area of the screen surface to the ScmmVM physical screen buffer
-	 * @param bounds	Area of screen surface to copy
+	 * Transition to a new screen with a given effect
 	 */
-	void copyRectToScreen(const Common::Rect &bounds);
-
-	/**
-	 * Updates the screen with the contents of the surface
-	 */
-	void updateScreen();
-
 	void transition(ScreenTransition transitionType, bool surfaceFlag);
 
+	/**
+	 * Set the screen drawing area to a sub-section of the real screen
+	 */
 	void setClipBounds(const Common::Rect &r);
 
+	/**
+	 * Reset back to drawing on the entirety of the screen
+	 */
 	void resetClipBounds();
 
-	const Common::Rect &getClipBounds() { return _clipBounds; }
+	/**
+	 * Return the current drawing/clip area
+	 */
+	const Common::Rect getClipBounds() const {
+		const Common::Point pt = getOffsetFromOwner();
+		return Common::Rect(pt.x, pt.y, pt.x + this->w, pt.y + this->h);
+	}
 };
 
 } // End of namespace MADS

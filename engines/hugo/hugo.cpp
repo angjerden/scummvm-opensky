@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -27,9 +26,13 @@
 #include "common/debug-channels.h"
 #include "common/config-manager.h"
 #include "common/textconsole.h"
+#include "common/translation.h"
 
 #include "hugo/hugo.h"
+#include "hugo/console.h"
+#include "hugo/dialogs.h"
 #include "hugo/file.h"
+#include "hugo/game.h"
 #include "hugo/schedule.h"
 #include "hugo/display.h"
 #include "hugo/mouse.h"
@@ -53,19 +56,9 @@ HugoEngine::HugoEngine(OSystem *syst, const HugoGameDescription *gd) : Engine(sy
 	_screenStates(nullptr), _numStates(0), _score(0), _maxscore(0), _lastTime(0), _curTime(0), _episode(nullptr)
 {
 	_system = syst;
-	DebugMan.addDebugChannel(kDebugSchedule, "Schedule", "Script Schedule debug level");
-	DebugMan.addDebugChannel(kDebugEngine, "Engine", "Engine debug level");
-	DebugMan.addDebugChannel(kDebugDisplay, "Display", "Display debug level");
-	DebugMan.addDebugChannel(kDebugMouse, "Mouse", "Mouse debug level");
-	DebugMan.addDebugChannel(kDebugParser, "Parser", "Parser debug level");
-	DebugMan.addDebugChannel(kDebugFile, "File", "File IO debug level");
-	DebugMan.addDebugChannel(kDebugRoute, "Route", "Route debug level");
-	DebugMan.addDebugChannel(kDebugInventory, "Inventory", "Inventory debug level");
-	DebugMan.addDebugChannel(kDebugObject, "Object", "Object debug level");
-	DebugMan.addDebugChannel(kDebugMusic, "Music", "Music debug level");
 
-	_console = new HugoConsole(this);
-	_rnd = 0;
+	setDebugger(new HugoConsole(this));
+	_rnd = nullptr;
 
 	_screen = nullptr;
 	_mouse = nullptr;
@@ -144,13 +137,7 @@ HugoEngine::~HugoEngine() {
 	delete _file;
 	delete _text;
 
-	DebugMan.clearAllDebugChannels();
-	delete _console;
 	delete _rnd;
-}
-
-GUI::Debugger *HugoEngine::getDebugger() {
-	return _console;
 }
 
 Status &HugoEngine::getGameStatus() {
@@ -177,16 +164,16 @@ void HugoEngine::setMaxScore(const int newScore) {
 	_maxscore = newScore;
 }
 
-Common::Error HugoEngine::saveGameState(int slot, const Common::String &desc) {
-	return (_file->saveGame(slot, desc) ? Common::kWritingFailed : Common::kNoError);
+Common::Error HugoEngine::saveGameState(int slot, const Common::String &desc, bool isAutosave) {
+	return (_file->saveGame(slot, desc) ? Common::kNoError : Common::kWritingFailed);
 }
 
 Common::Error HugoEngine::loadGameState(int slot) {
-	return (_file->restoreGame(slot) ? Common::kReadingFailed : Common::kNoError);
+	return (_file->restoreGame(slot) ? Common::kNoError : Common::kReadingFailed);
 }
 
 bool HugoEngine::hasFeature(EngineFeature f) const {
-	return (f == kSupportsRTL) || (f == kSupportsLoadingDuringRuntime) || (f == kSupportsSavingDuringRuntime);
+	return (f == kSupportsReturnToLauncher) || (f == kSupportsLoadingDuringRuntime) || (f == kSupportsSavingDuringRuntime);
 }
 
 const char *HugoEngine::getCopyrightString() const {
@@ -214,7 +201,7 @@ void HugoEngine::gameOverMsg() {
 
 Common::Error HugoEngine::run() {
 	s_Engine = this;
-	initGraphics(320, 200, false);
+	initGraphics(320, 200);
 
 	_mouse = new MouseHandler(this);
 	_inventory = new InventoryHandler(this);
@@ -283,6 +270,8 @@ Common::Error HugoEngine::run() {
 		_object = new ObjectHandler_v3d(this);
 		_normalTPS = 9;
 		break;
+	default:
+		break;
 	}
 
 	if (!loadHugoDat())
@@ -309,7 +298,7 @@ Common::Error HugoEngine::run() {
 			_status._skipIntroFl = true;
 			_file->restoreGame(loadSlot);
 		} else {
-			_file->saveGame(0, "New Game");
+			_file->saveGame(99, "New Game [reserved]");
 		}
 	}
 
@@ -322,6 +311,9 @@ Common::Error HugoEngine::run() {
 		Common::Event event;
 		while (_eventMan->pollEvent(event)) {
 			switch (event.type) {
+			case Common::EVENT_CUSTOM_ENGINE_ACTION_START:
+				_parser->actionHandler(event);
+				break;
 			case Common::EVENT_KEYDOWN:
 				_parser->keyHandler(event);
 				break;
@@ -418,6 +410,8 @@ void HugoEngine::runMachine() {
 		gameStatus._viewState = kViewIdle;
 		_status._doQuitFl = true;
 		break;
+	default:
+		break;
 	}
 }
 
@@ -426,12 +420,14 @@ void HugoEngine::runMachine() {
  */
 bool HugoEngine::loadHugoDat() {
 	Common::File in;
-	in.open("hugo.dat");
+	Common::String filename = "hugo.dat";
+	in.open(filename.c_str());
 
 	if (!in.isOpen()) {
-		Common::String errorMessage = "You're missing the 'hugo.dat' file. Get it from the ScummVM website";
+		const char *msg = _s("Unable to locate the '%s' engine data file.");
+		Common::U32String errorMessage = Common::U32String::format(_(msg), filename.c_str());
 		GUIErrorMessage(errorMessage);
-		warning("%s", errorMessage.c_str());
+		warning(msg, filename.c_str());
 		return false;
 	}
 
@@ -440,7 +436,7 @@ bool HugoEngine::loadHugoDat() {
 	in.read(buf, 4);
 
 	if (memcmp(buf, "HUGO", 4)) {
-		Common::String errorMessage = "File 'hugo.dat' is corrupt. Get it from the ScummVM website";
+		Common::U32String errorMessage = Common::U32String::format(_("The '%s' engine data file is corrupt."), filename.c_str());
 		GUIErrorMessage(errorMessage);
 		return false;
 	}
@@ -449,7 +445,9 @@ bool HugoEngine::loadHugoDat() {
 	int minVer = in.readByte();
 
 	if ((majVer != HUGO_DAT_VER_MAJ) || (minVer != HUGO_DAT_VER_MIN)) {
-		Common::String errorMessage = Common::String::format("File 'hugo.dat' is wrong version. Expected %d.%d but got %d.%d. Get it from the ScummVM website", HUGO_DAT_VER_MAJ, HUGO_DAT_VER_MIN, majVer, minVer);
+		Common::U32String errorMessage = Common::U32String::format(
+			_("Incorrect version of the '%s' engine data file found. Expected %d.%d but got %d.%d."),
+			filename.c_str(), HUGO_DAT_VER_MAJ, HUGO_DAT_VER_MIN, majVer, minVer);
 		GUIErrorMessage(errorMessage);
 		return false;
 	}
@@ -534,13 +532,13 @@ bool HugoEngine::loadHugoDat() {
 }
 
 uint16 **HugoEngine::loadLongArray(Common::SeekableReadStream &in) {
-	uint16 **resArray = 0;
+	uint16 **resArray = nullptr;
 
 	for (int varnt = 0; varnt < _numVariant; varnt++) {
 		uint16 numRows = in.readUint16BE();
 		if (varnt == _gameVariant) {
 			resArray = (uint16 **)malloc(sizeof(uint16 *) * (numRows + 1));
-			resArray[numRows] = 0;
+			resArray[numRows] = nullptr;
 		}
 		for (int i = 0; i < numRows; i++) {
 			uint16 numElems = in.readUint16BE();
@@ -631,7 +629,6 @@ void HugoEngine::initialize() {
 	calcMaxScore();                                 // Initialize maxscore
 
 	_rnd = new Common::RandomSource("hugo");
-	_rnd->setSeed(42);                              // Kick random number generator
 
 	switch (_gameVariant) {
 	case kGameVariantH1Dos:
@@ -719,11 +716,11 @@ void HugoEngine::endGame() {
 	_status._viewState = kViewExit;
 }
 
-bool HugoEngine::canLoadGameStateCurrently() {
+bool HugoEngine::canLoadGameStateCurrently(Common::U32String *msg) {
 	return true;
 }
 
-bool HugoEngine::canSaveGameStateCurrently() {
+bool HugoEngine::canSaveGameStateCurrently(Common::U32String *msg) {
 	return (_status._viewState == kViewPlay);
 }
 
@@ -737,10 +734,8 @@ void HugoEngine::syncSoundSettings() {
 	_sound->syncVolume();
 }
 
-Common::String HugoEngine::getSavegameFilename(int slot) {
+Common::String HugoEngine::getSaveStateName(int slot) const {
 	return _targetName + Common::String::format("-%02d.SAV", slot);
 }
-
-
 
 } // End of namespace Hugo

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -33,7 +32,7 @@
 #include "scumm/sound.h"
 
 #include "scumm/imuse/imuse.h"
-#include "scumm/imuse_digi/dimuse.h"
+#include "scumm/imuse_digi/dimuse_engine.h"
 
 #include "scumm/smush/smush_player.h"
 #include "scumm/smush/smush_font.h"
@@ -66,6 +65,18 @@ Insane::Insane(ScummEngine_v7 *scumm) {
 		readFileToMem("minefite.flu", &_smush_minefiteFlu);
 		_smush_bensgoggNut = new NutRenderer(_vm, "bensgogg.nut");
 		_smush_bencutNut = new NutRenderer(_vm, "bencut.nut");
+	} else {
+		_smush_roadrashRip = NULL;
+		_smush_roadrsh2Rip = NULL;
+		_smush_roadrsh3Rip = NULL;
+		_smush_goglpaltRip = NULL;
+		_smush_tovista1Flu = NULL;
+		_smush_tovista2Flu = NULL;
+		_smush_toranchFlu = NULL;
+		_smush_minedrivFlu = NULL;
+		_smush_minefiteFlu = NULL;
+		_smush_bensgoggNut = NULL;
+		_smush_bencutNut = NULL;
 	}
 
 	_smush_iconsNut = new NutRenderer(_vm, "icons.nut");
@@ -91,6 +102,10 @@ Insane::~Insane() {
 
 void Insane::setSmushParams(int speed) {
 	_speed = speed;
+}
+
+void Insane::setSmushPlayer(SmushPlayer *player) {
+	_player = player;
 }
 
 void Insane::initvars() {
@@ -453,7 +468,7 @@ void Insane::init_actStruct(int actornum, int actnum, int32 actorval, byte state
 }
 
 void Insane::init_enemyStruct(int n, int32 handler, int32 initializer,
-								   int16 occurences, int32 maxdamage, int32 isEmpty,
+								   int16 occurrences, int32 maxdamage, int32 isEmpty,
 								   int32 weapon, int32 sound, const char *filename,
 								   int32 costume4, int32 costume6, int32 costume5,
 								   int16 costumevar, int32 maxframe, int32 apprAnim) {
@@ -461,7 +476,7 @@ void Insane::init_enemyStruct(int n, int32 handler, int32 initializer,
 
 	_enemy[n].handler = handler;
 	_enemy[n].initializer = initializer;
-	_enemy[n].occurences = occurences;
+	_enemy[n].occurrences = occurrences;
 	_enemy[n].maxdamage = maxdamage;
 	_enemy[n].isEmpty = isEmpty;
 	_enemy[n].weapon = weapon;
@@ -521,6 +536,7 @@ int32 Insane::processMouse() {
 	_enemyState[EN_BEN][0] = _vm->_mouse.x;
 	_enemyState[EN_BEN][1] = _vm->_mouse.y;
 
+	/* TODO: Is this still needed? */
 	buttons = _vm->VAR(_vm->VAR_LEFTBTN_HOLD) ? 1 : 0;
 	buttons |= _vm->VAR(_vm->VAR_RIGHTBTN_HOLD) ? 2 : 0;
 
@@ -532,16 +548,24 @@ int32 Insane::processKeyboard() {
 	int dx = 0, dy = 0;
 	int tmpx, tmpy;
 
-	if (_vm->getKeyState(0x14f) || _vm->getKeyState(0x14b) || _vm->getKeyState(0x147))
+	if (_vm->getActionState(kScummActionInsaneLeft) ||
+	    _vm->getActionState(kScummActionInsaneUpLeft) ||
+	    _vm->getActionState(kScummActionInsaneDownLeft))
 		dx--;
 
-	if (_vm->getKeyState(0x151) || _vm->getKeyState(0x14d) || _vm->getKeyState(0x149))
+	if (_vm->getActionState(kScummActionInsaneRight) ||
+	    _vm->getActionState(kScummActionInsaneUpRight) ||
+	    _vm->getActionState(kScummActionInsaneDownRight))
 		dx++;
 
-	if (_vm->getKeyState(0x147) || _vm->getKeyState(0x148) || _vm->getKeyState(0x149))
+	if (_vm->getActionState(kScummActionInsaneUp) ||
+	    _vm->getActionState(kScummActionInsaneUpLeft) ||
+	    _vm->getActionState(kScummActionInsaneUpRight))
 		dy--;
 
-	if (_vm->getKeyState(0x14f) || _vm->getKeyState(0x150) || _vm->getKeyState(0x151))
+	if (_vm->getActionState(kScummActionInsaneDown) ||
+	    _vm->getActionState(kScummActionInsaneDownLeft) ||
+	    _vm->getActionState(kScummActionInsaneDownRight))
 		dy++;
 
 	if (dx == _keybOldDx)
@@ -577,24 +601,26 @@ int32 Insane::processKeyboard() {
 		_enemyState[EN_BEN][1] += tmpy;
 	}
 
-	if (_vm->getKeyState(Common::KEYCODE_RETURN))
+	if (_vm->getActionState(kScummActionInsaneAttack))
 		retval |= 1;
 
-	if (_vm->getKeyState(Common::KEYCODE_TAB))
+	if (_vm->getActionState(kScummActionInsaneSwitch))
 		retval |= 2;
 
 	return retval;
 }
 
 void Insane::readFileToMem(const char *name, byte **buf) {
-	ScummFile in;
+	ScummFile *file = _vm->instantiateScummFile();
 	uint32 len;
 
-	if (!_vm->openFile(in, name))
+	if (!_vm->openFile(*file, name))
 		error("Cannot open file %s", name);
-	len = in.size();
+	len = file->size();
 	*buf = (byte *)malloc(len);
-	in.read(*buf, len);
+	file->read(*buf, len);
+	file->close();
+	delete file;
 }
 
 void Insane::startVideo(const char *filename, int num, int argC, int frameRate,
@@ -614,7 +640,7 @@ void Insane::startVideo(const char *filename, int num, int argC, int frameRate,
 		smush_setupSanFromStart(filename, 0, -1, -1, 0);
 	}
 
-	_player->play(filename, _speed, offset, startFrame);
+	_player->play(filename, frameRate, offset, startFrame);
 }
 
 void Insane::smush_warpMouse(int x, int y, int buttons) {
@@ -660,15 +686,15 @@ void Insane::readState() { // PATCH
 		_posBrokenCar = readArray(326);
 		_val54d = readArray(327);
 		_posFatherTorque = readArray(328);
-		_enemy[EN_TORQUE].occurences = readArray(337);
-		_enemy[EN_ROTT1].occurences = readArray(329);
-		_enemy[EN_ROTT2].occurences = readArray(330);
-		_enemy[EN_ROTT3].occurences = readArray(331);
-		_enemy[EN_VULTF1].occurences = readArray(332);
-		_enemy[EN_VULTM1].occurences = readArray(333);
-		_enemy[EN_VULTF2].occurences = readArray(334);
-		_enemy[EN_VULTM2].occurences = readArray(335);
-		_enemy[EN_CAVEFISH].occurences = readArray(336);
+		_enemy[EN_TORQUE].occurrences = readArray(337);
+		_enemy[EN_ROTT1].occurrences = readArray(329);
+		_enemy[EN_ROTT2].occurrences = readArray(330);
+		_enemy[EN_ROTT3].occurrences = readArray(331);
+		_enemy[EN_VULTF1].occurrences = readArray(332);
+		_enemy[EN_VULTM1].occurrences = readArray(333);
+		_enemy[EN_VULTF2].occurrences = readArray(334);
+		_enemy[EN_VULTM2].occurrences = readArray(335);
+		_enemy[EN_CAVEFISH].occurrences = readArray(336);
 		_enemy[EN_VULTM2].isEmpty = readArray(340);
 		_enemy[EN_VULTF2].isEmpty = readArray(339);
 		_enemy[EN_CAVEFISH].isEmpty = readArray(56);
@@ -691,12 +717,12 @@ void Insane::readState() { // PATCH
 
 		// FIXME
 		// This used to be here but.
-		//  - bootparam 551 gives googles without cavefish met
-		//  - when you get the ramp, googles disappear, but you already won the cavefish
+		//  - bootparam 551 gives goggles without cavefish met
+		//  - when you get the ramp, goggles disappear, but you already won the cavefish
 		// Incorrect situation would be
-		//  you won cavefish, don't have googles, don't have ramp
+		//  you won cavefish, don't have goggles, don't have ramp
 		//
-		// So if you find out what how to check ramp presense, feel free to add check here
+		// So if you find out how to check ramp presence, feel free to add check here
 		// (beware of FT ver a and ver b. In version b var311 is inserted and all vars >311
 		// are shifted),
 		//
@@ -757,6 +783,7 @@ int32 Insane::idx2Tweak() {
 void Insane::smush_setToFinish() {
 	debugC(DEBUG_INSANE, "Video is set to finish");
 	_vm->_smushVideoShouldFinish = true;
+	_player->resetAudioTracks();
 }
 
 // smlayer_stopSound
@@ -838,22 +865,22 @@ int Insane::smush_changeState(int state) {
 }
 
 void Insane::queueSceneSwitch(int32 sceneId, byte *fluPtr, const char *filename,
-							  int32 arg_C, int32 arg_10, int32 startFrame, int32 numFrames) {
+							  int32 videoFlags, int32 arg_10, int32 startFrame, int32 numFrames) {
 	int32 tmp;
 
-	debugC(DEBUG_INSANE, "queueSceneSwitch(%d, *, %s, %d, %d, %d, %d)", sceneId, filename, arg_C, arg_10,
+	debugC(DEBUG_INSANE, "queueSceneSwitch(%d, *, %s, %d, %d, %d, %d)", sceneId, filename, videoFlags, arg_10,
 		  startFrame, numFrames);
 	if (_needSceneSwitch || _sceneData1Loaded)
 		return;
 
 	if (fluPtr) {
-		tmp = ((int)startFrame/30+1)*30;
+		tmp = ((int)startFrame / 30 + 1) * 30;
 		if (tmp >= numFrames)
 			tmp = 0;
 
-		smush_setupSanWithFlu(filename, arg_C|32, -1, -1, 0, fluPtr, tmp);
+		smush_setupSanWithFlu(filename, videoFlags | 32, -1, -1, 0, fluPtr, tmp);
 	} else {
-		smush_setupSanFromStart(filename, arg_C|32, -1, -1, 0);
+		smush_setupSanFromStart(filename, videoFlags | 32, -1, -1, 0);
 	}
 	_needSceneSwitch = true;
 	_temp2SceneId = sceneId;
@@ -861,9 +888,10 @@ void Insane::queueSceneSwitch(int32 sceneId, byte *fluPtr, const char *filename,
 
 void Insane::smush_rewindCurrentSan(int arg_0, int arg_4, int arg_8) {
 	debugC(DEBUG_INSANE, "smush_rewindCurrentSan(%d, %d, %d)", arg_0, arg_4, arg_8);
-	_smush_setupsan2 = arg_0;
+	_smush_curSanFlags = arg_0;
+	syncCurrentSanFlags();
 
-	smush_setupSanFile(0, 0, 0);
+	smush_setupSanFile(nullptr, 0, 0);
 	_smush_isSanFileSetup = 1;
 	smush_setFrameSteps(arg_4, arg_8);
 
@@ -1206,7 +1234,7 @@ void Insane::smlayer_setFluPalette(byte *pal, int shut_flag) {
 }
 
 bool Insane::smlayer_isSoundRunning(int32 sound) {
-	return _vm->_imuseDigital->getSoundStatus(readArray(sound)) != 0;
+	return _vm->_imuseDigital->isSoundRunning(readArray(sound)) != 0;
 }
 
 bool Insane::smlayer_startSfx(int32 sound) {
@@ -1226,11 +1254,11 @@ bool Insane::smlayer_startVoice(int32 sound) {
 }
 
 void Insane::smlayer_soundSetPan(int32 soundId, int32 pan) {
-	_vm->_imuseDigital->setPan(soundId, pan);
+	_vm->_imuseDigital->setPan(readArray(soundId), pan);
 }
 
 void Insane::smlayer_soundSetPriority(int32 soundId, int32 priority) {
-	_vm->_imuseDigital->setPriority(soundId, priority);
+	_vm->_imuseDigital->setPriority(readArray(soundId), priority);
 }
 
 void Insane::smlayer_drawSomething(byte *renderBitmap, int32 codecparam,
@@ -1250,10 +1278,8 @@ void Insane::smlayer_showStatusMsg(int32 arg_0, byte *renderBitmap, int32 codecp
 					   int32 flags, const char *formatString, const char *strng) {
 	SmushFont *sf = _player->getFont(0);
 	int color = 1;
-	int32 top = 0;
 	char *str = NULL, *string;
 	int len = strlen(formatString) + strlen(strng) + 16;
-
 	string = (char *)malloc(len);
 	str = string;
 
@@ -1284,26 +1310,27 @@ void Insane::smlayer_showStatusMsg(int32 arg_0, byte *renderBitmap, int32 codecp
 	}
 
 	assert(sf != NULL);
-	sf->setColor(color);
 
-	// flags:
-	// bit 0 - center       1
-	// bit 1 - not used     2
-	// bit 2 - ???          4
-	// bit 3 - wrap around  8
-	switch (flags) {
-	case 0:
-		sf->drawString(str, renderBitmap, _player->_width, _player->_height, pos_x, pos_y, false);
-		break;
-	case 1:
-		sf->drawString(str, renderBitmap, _player->_width, _player->_height, pos_x, MAX(pos_y, top), true);
-		break;
-	case 5:
-		sf->drawStringWrap(str, renderBitmap, _player->_width, _player->_height, pos_x, pos_y, 10, 300, true);
-		break;
-	default:
-		error("Insane::smlayer_showStatusMsg. Not handled flags: %d", flags);
+	if (_vm->_language == Common::HE_ISR && !(flags & kStyleAlignCenter)) {
+		flags |= kStyleAlignRight;
+		pos_x = _player->_width - 1 - pos_x;
 	}
+	TextStyleFlags flg = (TextStyleFlags)(flags & 7);
+	// flags:
+	// bit 0 - center                  0x01
+	// bit 1 - not used (align right)  0x02
+	// bit 2 - word wrap               0x04
+	// bit 3 - switchable              0x08
+	// bit 4 - fill background         0x10
+	if (flg & kStyleWordWrap) {
+		Common::Rect clipRect(0, 0, _player->_width, _player->_height);
+		sf->drawStringWrap(str, renderBitmap, clipRect, pos_x, pos_y, color, flg);
+	} else {
+		Common::Rect clipRect(10, 0, 310, _player->_height);
+		sf->drawString(str, renderBitmap, clipRect, pos_x, pos_y, color, flg);
+	}
+
+
 	free (string);
 }
 
@@ -1358,7 +1385,12 @@ void Insane::smlayer_setActorFacing(int actornum, int actnum, int frame, int dir
 
 const char *Insane::handleTrsTag(int32 trsId) {
 	debugC(DEBUG_INSANE, "Insane::handleTrsTag(%d)", trsId);
-	return _player->getString(trsId);
+	if (_player != nullptr) {
+		return _player->getString(trsId);
+	} else {
+		warning("Couldn't load Trs block corresponding to id {%d}, are you maybe missing a TRS subtitle file?", trsId);
+		return nullptr;
+	}
 }
 
 bool Insane::smush_eitherNotStartNewFrame() {
@@ -1406,7 +1438,7 @@ int32 Insane::smush_setupSanWithFlu(const char *filename, int32 setupsan2, int32
 	int32 offset;
 
 	debugC(DEBUG_INSANE, "smush_setupSanWithFlu(%s, %d, %d, %d, %d, %p, %d)", filename, setupsan2,
-		  step1, step2, setupsan1, fluPtr, numFrames);
+		  step1, step2, setupsan1, (void *)fluPtr, numFrames);
 
 	_smush_setupsan1 = setupsan1;
 
@@ -1414,7 +1446,8 @@ int32 Insane::smush_setupSanWithFlu(const char *filename, int32 setupsan2, int32
 	if (READ_BE_UINT32(fluPtr) == MKTAG('F','L','U','P'))
 		tmp += 8;
 
-	_smush_setupsan2 = setupsan2;
+	_smush_curSanFlags = setupsan2;
+	syncCurrentSanFlags();
 
 	if (tmp[2] <= 1) {
 		/* 0x300 -- palette, 0x8 -- header */
@@ -1441,11 +1474,12 @@ int32 Insane::smush_setupSanWithFlu(const char *filename, int32 setupsan2, int32
 	return offset;
 }
 
-void Insane::smush_setupSanFromStart(const char *filename, int32 setupsan2, int32 step1,
+void Insane::smush_setupSanFromStart(const char *filename, int32 videoFlags, int32 step1,
 									 int32 step2, int32 setupsan1) {
 	debugC(DEBUG_INSANE, "Insane::smush_setupFromStart(%s)", filename);
 	_smush_setupsan1 = setupsan1;
-	_smush_setupsan2 = setupsan2;
+	_smush_curSanFlags = videoFlags;
+	syncCurrentSanFlags();
 	smush_setupSanFile(filename, 0, 0);
 	_smush_isSanFileSetup = 1;
 	smush_setFrameSteps(step1, step2);
@@ -1459,9 +1493,13 @@ void Insane::smush_setFrameSteps(int32 step1, int32 step2) {
 }
 
 void Insane::smush_setupSanFile(const char *filename, int32 offset, int32 contFrame) {
-	debugC(DEBUG_INSANE, "Insane::smush_setupSanFile(%s, %x, %d)", filename, offset, contFrame);
+	debugC(DEBUG_INSANE, "Insane::smush_setupSanFile(%s, %x, %d)", (filename ? filename : "(null)"), offset, contFrame);
 
 	_player->seekSan(filename, offset, contFrame);
+}
+
+void Insane::syncCurrentSanFlags() {
+	_player->setCurVideoFlags(_smush_curSanFlags);
 }
 
 }

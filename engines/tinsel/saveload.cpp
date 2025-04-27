@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  * Save and restore scene and game.
  */
@@ -26,7 +25,7 @@
 #include "tinsel/dialogs.h"
 #include "tinsel/drives.h"
 #include "tinsel/dw.h"
-#include "tinsel/rince.h"
+#include "tinsel/movers.h"
 #include "tinsel/savescn.h"
 #include "tinsel/timers.h"
 #include "tinsel/tinlib.h"
@@ -55,21 +54,7 @@ namespace Tinsel {
  * only saves/loads those which are valid for the version of the savegame
  * which is being loaded/saved currently.
  */
-#define CURRENT_VER 2
-
-/**
- * An auxillary macro, used to specify savegame versions. We use this instead
- * of just writing the raw version, because this way they stand out more to
- * the reading eye, making it a bit easier to navigate through the code.
- */
-#define VER(x) x
-
-
-//----------------- GLOBAL GLOBAL DATA --------------------
-
-int	g_thingHeld = 0;
-int	g_restoreCD = 0;
-SRSTATE g_SRstate = SR_IDLE;
+#define CURRENT_VER 4
 
 //----------------- EXTERN FUNCTIONS --------------------
 
@@ -94,6 +79,7 @@ struct SaveGameHeader {
 	uint32 ver;
 	char desc[SG_DESC_LEN];
 	TimeDate dateTime;
+	uint32 playTime;
 	bool scnFlag;
 	byte language;
 	uint16 numInterpreters;			// Savegame version 2 or later only
@@ -102,10 +88,10 @@ struct SaveGameHeader {
 enum {
 	DW1_SAVEGAME_ID = 0x44575399,	// = 'DWSc' = "DiscWorld 1 ScummVM"
 	DW2_SAVEGAME_ID = 0x44573253,	// = 'DW2S' = "DiscWorld 2 ScummVM"
-	SAVEGAME_HEADER_SIZE = 4 + 4 + 4 + SG_DESC_LEN + 7 + 1 + 1 + 2
+	SAVEGAME_HEADER_SIZE = 4 + 4 + 4 + SG_DESC_LEN + 7 + 4 + 1 + 1 + 2
 };
 
-#define SAVEGAME_ID (TinselV2 ? (uint32)DW2_SAVEGAME_ID : (uint32)DW1_SAVEGAME_ID)
+#define SAVEGAME_ID ((TinselVersion >= 2) ? (uint32)DW2_SAVEGAME_ID : (uint32)DW1_SAVEGAME_ID)
 
 enum {
 	// FIXME: Save file names in ScummVM can be longer than 8.3, overflowing the
@@ -119,23 +105,47 @@ struct SFILES {
 	TimeDate dateTime;
 };
 
+//----------------- GLOBAL GLOBAL DATA --------------------
+
+int g_thingHeld = 0;
+int g_restoreCD = 0;
+SRSTATE g_SRstate = SR_IDLE;
+
 //----------------- LOCAL GLOBAL DATA --------------------
 
-// FIXME: Avoid non-const global vars
+// These vars are reset upon engine destruction
 
 static int	g_numSfiles = 0;
 static SFILES	g_savedFiles[MAX_SAVED_FILES];
 
 static bool g_NeedLoad = true;
 
-static SAVED_DATA *g_srsd = 0;
+static SAVED_DATA *g_srsd = nullptr;
 static int g_RestoreGameNumber = 0;
-static char *g_SaveSceneName = 0;
-static const char *g_SaveSceneDesc = 0;
+static char *g_SaveSceneName = nullptr;
+static const char *g_SaveSceneDesc = nullptr;
 static int *g_SaveSceneSsCount = 0;
-static SAVED_DATA *g_SaveSceneSsData = 0;	// points to 'SAVED_DATA ssdata[MAX_NEST]'
+static SAVED_DATA *g_SaveSceneSsData = nullptr;	// points to 'SAVED_DATA ssdata[MAX_NEST]'
 
 //------------- SAVE/LOAD SUPPORT METHODS ----------------
+
+void ResetVarsSaveLoad() {
+	g_thingHeld = 0;
+	g_restoreCD = 0;
+	g_SRstate = SR_IDLE;
+
+	g_numSfiles = 0;
+	memset(g_savedFiles, 0, sizeof(g_savedFiles));
+
+	g_NeedLoad = true;
+
+	g_srsd = nullptr;
+	g_RestoreGameNumber = 0;
+	g_SaveSceneName = nullptr;
+	g_SaveSceneDesc = nullptr;
+	g_SaveSceneSsCount = 0;
+	g_SaveSceneSsData = nullptr;
+}
 
 void setNeedLoad() {
 	g_NeedLoad = true;
@@ -160,12 +170,17 @@ static bool syncSaveGameHeader(Common::Serializer &s, SaveGameHeader &hdr) {
 
 	syncTime(s, hdr.dateTime);
 
+	if (hdr.ver >= 3)
+		s.syncAsUint32LE(hdr.playTime);
+	else
+		hdr.playTime = 0;
+
 	int tmp = hdr.size - s.bytesSynced();
 
 	// NOTE: We can't use SAVEGAME_ID here when attempting to remove a saved game from the launcher,
 	// as there is no TinselEngine initialized then. This means that we can't check if this is a DW1
 	// or DW2 savegame in this case, but it doesn't really matter, as the saved game is about to be
-	// deleted anyway. Refer to bug #3387551.
+	// deleted anyway. Refer to bug #5819.
 	bool correctID = _vm ? (hdr.id == SAVEGAME_ID) : (hdr.id == DW1_SAVEGAME_ID || hdr.id == DW2_SAVEGAME_ID);
 
 	// Perform sanity check
@@ -192,7 +207,10 @@ static bool syncSaveGameHeader(Common::Serializer &s, SaveGameHeader &hdr) {
 		hdr.numInterpreters = NUM_INTERPRET;
 		s.syncAsUint16LE(hdr.numInterpreters);
 	} else {
-		hdr.numInterpreters = (TinselV2 ? 70 : 64) - 20;
+		if(_vm) // See comment above about bug #5819
+			hdr.numInterpreters = ((TinselVersion >= 2) ? 70 : 64) - 20;
+		else
+			hdr.numInterpreters = 50; // This value doesn't matter since the saved game is being deleted.
 	}
 
 	// Skip over any extra bytes
@@ -225,7 +243,7 @@ static void syncSavedMover(Common::Serializer &s, SAVED_MOVER &sm) {
 			s.syncAsUint32LE(sm.talkReels[i][j]);
 
 
-	if (TinselV2) {
+	if (TinselVersion >= 2) {
 		s.syncAsByte(sm.bHidden);
 
 		s.syncAsSint32LE(sm.brightness);
@@ -244,8 +262,6 @@ static void syncSavedActor(Common::Serializer &s, SAVED_ACTOR &sa) {
 	s.syncAsUint16LE(sa.presPlayX);
 	s.syncAsUint16LE(sa.presPlayY);
 }
-
-extern void syncAllActorsAlive(Common::Serializer &s);
 
 static void syncNoScrollB(Common::Serializer &s, NOSCROLLB &ns) {
 	s.syncAsSint32LE(ns.ln);
@@ -271,7 +287,7 @@ static void syncSoundReel(Common::Serializer &s, SOUNDREELS &sr) {
 	s.syncAsSint32LE(sr.actorCol);
 }
 
-static void syncSavedData(Common::Serializer &s, SAVED_DATA &sd, int numInterp) {
+static void syncSavedData(Common::Serializer &s, SAVED_DATA &sd, int numInterp, int numSystemVars) {
 	s.syncAsUint32LE(sd.SavedSceneHandle);
 	s.syncAsUint32LE(sd.SavedBgroundHandle);
 	for (int i = 0; i < MAX_MOVERS; ++i)
@@ -300,7 +316,7 @@ static void syncSavedData(Common::Serializer &s, SAVED_DATA &sd, int numInterp) 
 	s.syncAsUint32LE(sd.SavedNoScrollData.NumNoH);
 
 	// Tinsel 2 fields
-	if (TinselV2) {
+	if (TinselVersion >= 2) {
 		// SavedNoScrollData
 		s.syncAsUint32LE(sd.SavedNoScrollData.xTrigger);
 		s.syncAsUint32LE(sd.SavedNoScrollData.xDistance);
@@ -319,10 +335,17 @@ static void syncSavedData(Common::Serializer &s, SAVED_DATA &sd, int numInterp) 
 			s.syncAsUint32LE(sd.SavedTune[i]);
 		s.syncAsByte(sd.bTinselDim);
 		s.syncAsSint32LE(sd.SavedScrollFocus);
-		for (int i = 0; i < SV_TOPVALID; ++i)
+		for (int i = 0; i < numSystemVars; ++i)
 			s.syncAsSint32LE(sd.SavedSystemVars[i]);
-		for (int i = 0; i < MAX_SOUNDREELS; ++i)
+
+		int numReels = s.getVersion() >= 4 ? MAX_SOUNDREELS : 5;
+		for (int i = 0; i < numReels; ++i)
 			syncSoundReel(s, sd.SavedSoundReels[i]);
+		// For old saves we zero the remaining sound reels
+		if (s.isLoading() && numReels < MAX_SOUNDREELS) {
+			const auto reelSize = sizeof sd.SavedSoundReels[0];
+			memset(&sd.SavedSoundReels[numReels], 0, reelSize * (MAX_SOUNDREELS - numReels));
+		}
 	}
 }
 
@@ -431,39 +454,39 @@ char *ListEntry(int i, letype which) {
 		return NULL;
 }
 
-static bool DoSync(Common::Serializer &s, int numInterp) {
+static bool DoSync(Common::Serializer &s, int numInterp, int numSystemVars) {
 	int	sg = 0;
 
-	if (TinselV2) {
+	if (TinselVersion >= 2) {
 		if (s.isSaving())
 			g_restoreCD = GetCurrentCD();
 		s.syncAsSint16LE(g_restoreCD);
+
+		if (s.isLoading())
+			_vm->_dialogs->holdItem(INV_NOICON);
 	}
 
-	if (TinselV2 && s.isLoading())
-		HoldItem(INV_NOICON);
-
-	syncSavedData(s, *g_srsd, numInterp);
+	syncSavedData(s, *g_srsd, numInterp, numSystemVars);
 	syncGlobInfo(s);		// Glitter globals
-	syncInvInfo(s);			// Inventory data
+	_vm->_dialogs->syncInvInfo(s); // Inventory data
 
 	// Held object
 	if (s.isSaving())
-		sg = WhichItemHeld();
+		sg = _vm->_dialogs->whichItemHeld();
 	s.syncAsSint32LE(sg);
 	if (s.isLoading()) {
-		if (sg != -1 && !GetIsInvObject(sg))
+		if (sg != -1 && !_vm->_dialogs->getIsInvObject(sg))
 			// Not a valid inventory object, so return false
 			return false;
 
-		if (TinselV2)
+		if (TinselVersion >= 2)
 			g_thingHeld = sg;
 		else
-			HoldItem(sg);
+			_vm->_dialogs->holdItem(sg);
 	}
 
 	syncTimerInfo(s);		// Timer data
-	if (!TinselV2)
+	if (TinselVersion <= 1)
 		syncPolyInfo(s);		// Dead polygon data
 	syncSCdata(s);			// Hook Scene and delayed scene
 
@@ -472,7 +495,7 @@ static bool DoSync(Common::Serializer &s, int numInterp) {
 	if (*g_SaveSceneSsCount != 0) {
 		SAVED_DATA *sdPtr = g_SaveSceneSsData;
 		for (int i = 0; i < *g_SaveSceneSsCount; ++i, ++sdPtr)
-			syncSavedData(s, *sdPtr, numInterp);
+			syncSavedData(s, *sdPtr, numInterp, numSystemVars);
 
 		// Flag that there is a saved scene to return to. Note that in this context 'saved scene'
 		// is a stored scene to return to from another scene, such as from the Summoning Book close-up
@@ -480,8 +503,8 @@ static bool DoSync(Common::Serializer &s, int numInterp) {
 		g_ASceneIsSaved = true;
 	}
 
-	if (!TinselV2)
-		syncAllActorsAlive(s);
+	if (TinselVersion <= 1)
+		_vm->_actor->syncAllActorsAlive(s);
 
 	return true;
 }
@@ -503,33 +526,68 @@ static bool DoRestore() {
 		return false;
 	}
 
+	s.setVersion(hdr.ver);
+	if (hdr.ver >= 3)
+		_vm->setTotalPlayTime(hdr.playTime);
+	else
+		_vm->setTotalPlayTime(0);
+
 	// Load in the data. For older savegame versions, we potentially need to load the data twice, once
 	// for pre 1.5 savegames, and if that fails, a second time for 1.5 savegames
 	int numInterpreters = hdr.numInterpreters;
 	int32 currentPos = f->pos();
-	for (int tryNumber = 0; tryNumber < ((hdr.ver >= 2) ? 1 : 2); ++tryNumber) {
-		// If it's the second loop iteration, try with the 1.5 savegame number of interpreter contexts
+	int numberOfTries = ((hdr.ver >= 2) ? 1 : 2);
+	int numSystemVars = SV_TOPVALID; // Appropriate for both Noir and DW2
+	for (int tryNumber = 0; tryNumber < numberOfTries; ++tryNumber) {
 		if (tryNumber == 1) {
 			f->seek(currentPos);
-			numInterpreters = 80;
+			// If it's the second loop iteration, try with the 1.5 savegame number of interpreter contexts
+			if (hdr.ver < 2) {
+				numInterpreters = 80;
+			}
 		}
 
 		// Load the savegame data
-		if (DoSync(s, numInterpreters))
+		bool successfullSync = DoSync(s, numInterpreters, numSystemVars);
+
+		uint32 id = f->readSint32LE();
+
+		int remaining = f->size() - f->pos();
+		// BUG #13897: Older savegames won't run on ScummVM 2.6.x
+		// The reason being that the system vars for Noir were added increasing the SV_TOPVALID value,
+		// which also affected DW2 unintentionally, creating some v3 savegames that had additional data
+		// stored there. To properly load these savegames, we'll have to try again, with the knowledge
+		// that we have to skip this data.
+		if (hdr.id == DW2_SAVEGAME_ID && hdr.ver == 3 && remaining != 0) {
+			if (tryNumber == 0) {
+				numberOfTries++;
+				// Make the second attempt read the Noir amount of sys-vars, so that the problematic
+				// savegames can be loaded.
+				numSystemVars = SV_TOPVALID_T3;
+			}
+			continue;
+		}
+
+		if (successfullSync) {
+			if (id != (uint32)0xFEEDFACE) {
+				error("Incompatible saved game");
+			}
+
 			// Data load was successful (or likely), so break out of loop
 			break;
+		}
 	}
 
-	uint32 id = f->readSint32LE();
-	if (id != (uint32)0xFEEDFACE)
-		error("Incompatible saved game");
-
+	int remainingBytes = f->size() - f->pos();
+	if (remainingBytes != 0) {
+		error("%d bytes of savegame not read", remainingBytes);
+	}
 	bool failed = (f->eos() || f->err());
 
 	delete f;
 
 	if (failed) {
-		GUI::MessageDialog dialog(_("Failed to load game state from file."));
+		GUI::MessageDialog dialog(_("Failed to load saved game from file."));
 		dialog.runModal();
 	}
 
@@ -541,8 +599,8 @@ static void SaveFailure(Common::OutSaveFile *f) {
 		delete f;
 		_vm->getSaveFileMan()->removeSavefile(g_SaveSceneName);
 	}
-	g_SaveSceneName = NULL;	// Invalidate save name
-	GUI::MessageDialog dialog(_("Failed to save game state to file."));
+	g_SaveSceneName= nullptr;	// Invalidate save name
+	GUI::MessageDialog dialog(_("Failed to save game to file."));
 	dialog.runModal();
 }
 
@@ -563,7 +621,7 @@ static void DoSave() {
 
 		while (1) {
 			Common::String fname = _vm->getSavegameFilename(ano);
-			strcpy(tmpName, fname.c_str());
+			Common::strlcpy(tmpName, fname.c_str(), FNAMELEN);
 
 			for (i = 0; i < g_numSfiles; i++)
 				if (!strcmp(g_savedFiles[i].name, tmpName))
@@ -594,9 +652,10 @@ static void DoSave() {
 	hdr.id = SAVEGAME_ID;
 	hdr.size = SAVEGAME_HEADER_SIZE;
 	hdr.ver = CURRENT_VER;
-	memcpy(hdr.desc, g_SaveSceneDesc, SG_DESC_LEN);
-	hdr.desc[SG_DESC_LEN - 1] = 0;
+	memset(hdr.desc, 0, SG_DESC_LEN);
+	Common::strlcpy(hdr.desc, g_SaveSceneDesc, SG_DESC_LEN);
 	g_system->getTimeAndDate(hdr.dateTime);
+	hdr.playTime = _vm->getTotalPlayTime();
 	hdr.scnFlag = _vm->getFeatures() & GF_SCNFILES;
 	hdr.language = _vm->_config->_language;
 
@@ -605,7 +664,8 @@ static void DoSave() {
 		return;
 	}
 
-	DoSync(s, hdr.numInterpreters);
+	s.setVersion(hdr.ver);
+	DoSync(s, hdr.numInterpreters, SV_TOPVALID);
 
 	// Write out the special Id for Discworld savegames
 	f->writeUint32LE(0xFEEDFACE);
@@ -616,7 +676,7 @@ static void DoSave() {
 
 	f->finalize();
 	delete f;
-	g_SaveSceneName = NULL;	// Invalidate save name
+	g_SaveSceneName= nullptr;	// Invalidate save name
 }
 
 /**
@@ -658,7 +718,7 @@ void RequestSaveGame(char *name, char *desc, SAVED_DATA *sd, int *pSsCount, SAVE
 }
 
 void RequestRestoreGame(int num, SAVED_DATA *sd, int *pSsCount, SAVED_DATA *pSsData) {
-	if (TinselV2) {
+	if (TinselVersion >= 2) {
 		if (num == -1)
 			return;
 		else if (num == -2) {

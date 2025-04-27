@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -226,7 +225,7 @@ public:
 protected:
 
 	OSystem *_system;
-	Archive *_fileArchive;
+	DisposablePtr<Archive> _fileArchive;
 
 	friend class VirtualKeyboardGUI;
 	VirtualKeyboardGUI *_kbdGUI;
@@ -237,11 +236,12 @@ protected:
 	VirtualKeyboardParser *_parser;
 
 	void reset();
-	bool openPack(const String &packName, const FSNode &node);
+	bool openPack(const String &packName, Archive *searchPath, DisposeAfterUse::Flag disposeSearchPath);
 	void deleteEvents();
 	bool checkModeResolutions();
 	void switchMode(Mode *newMode);
 	void switchMode(const String &newMode);
+	void initKeymap();
 	void handleMouseDown(int16 x, int16 y);
 	void handleMouseUp(int16 x, int16 y);
 	String findArea(int16 x, int16 y);

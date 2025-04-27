@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -776,6 +775,7 @@ void Insane::actor02Reaction(int32 buttons) {
 						_actor[0].act[2].state = 106;
 						break;
 					}
+				break;
 			default:
 				smlayer_setActorFacing(0, 2, 20, 180);
 				_actor[0].act[2].state = 16;
@@ -868,7 +868,7 @@ void Insane::actor02Reaction(int32 buttons) {
 					_actor[0].act[2].state = 77;
 					break;
 				}
-				// break skipped intentionally
+				// fall through
 			default:
 				smlayer_setActorFacing(0, 2, 20, 180);
 				_actor[0].act[2].state = 20;
@@ -954,7 +954,7 @@ void Insane::actor02Reaction(int32 buttons) {
 					_actor[0].act[2].state = 83;
 					break;
 				}
-				// break missed intentionally
+				// fall through
 			default:
 				smlayer_setActorFacing(0, 2, 20, 180);
 				_actor[0].act[2].state = 24;
@@ -1035,7 +1035,7 @@ void Insane::actor02Reaction(int32 buttons) {
 					_actor[0].act[2].state = 75;
 					break;
 				}
-				// break missed intentionaly
+				// fall through
 			default:
 				smlayer_setActorFacing(0, 2, 20, 180);
 				_actor[0].act[2].state = 28;
@@ -1562,6 +1562,9 @@ void Insane::actor02Reaction(int32 buttons) {
 	tmp = _actor[0].x + _actor[0].act[2].tilt + 17 + _actor[0].x1;
 	tmp2 = _actor[0].y + _actor[0].y1 - 98;
 
+	if (_actor[0].lost && (_vm->_game.features & GF_DEMO))
+		tmp2 += 98;
+
 	if (_actor[0].act[2].room)
 		smlayer_putActor(0, 2, tmp, tmp2, _smlayer_room2);
 	else
@@ -1720,6 +1723,8 @@ void Insane::actor01Reaction(int32 buttons) {
 			_actor[0].field_8 = 51;
 			_actor[0].tilt = 2;
 		}
+		break;
+	default:
 		break;
 	}
 
@@ -1884,6 +1889,9 @@ void Insane::chooseBenWeaponAnim(int buttons) {
 		case INV_DUST:
 			_actor[0].act[2].state = 0;
 			switchBenWeapon();
+			break;
+		default:
+			break;
 		}
 
 		_weaponBenJustSwitched = true;
@@ -2021,6 +2029,8 @@ void Insane::ouchSoundBen() {
 		break;
 	case 3:
 		smlayer_startVoice(98);
+		break;
+	default:
 		break;
 	}
 }

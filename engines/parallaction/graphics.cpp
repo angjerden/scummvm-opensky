@@ -5,10 +5,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -16,15 +16,14 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "common/system.h"
 #include "common/file.h"
 #include "common/textconsole.h"
-#include "graphics/palette.h"
+#include "graphics/paletteman.h"
 #include "graphics/primitives.h"
 #include "engines/util.h"
 
@@ -42,41 +41,42 @@ namespace Parallaction {
 
 #define	LABEL_TRANSPARENT_COLOR 0xFF
 
-void halfbritePixel(int x, int y, int color, void *data) {
-	Graphics::Surface *surf = (Graphics::Surface *)data;
-	byte *pixel = (byte *)surf->getBasePtr(x, y);
-	*pixel &= ~0x20;
-}
-
-void drawCircleLine(int xCenter, int yCenter, int x, int y, int color, void (*plotProc)(int, int, int, void *), void *data){
-	Graphics::drawLine(xCenter + x, yCenter + y, xCenter - x, yCenter + y, color, plotProc, data);
-	Graphics::drawLine(xCenter + x, yCenter - y, xCenter - x, yCenter - y, color, plotProc, data);
-	Graphics::drawLine(xCenter + y, yCenter + x, xCenter - y, yCenter + x, color, plotProc, data);
-	Graphics::drawLine(xCenter + y, yCenter - x, xCenter - y, yCenter - x, color, plotProc, data);
-}
-
-void drawCircle(int xCenter, int yCenter, int radius, int color, void (*plotProc)(int, int, int, void *), void *data) {
-	int x = 0;
-	int y = radius;
-	int p = 1 - radius;
-
-	/* Plot first set of points */
-	drawCircleLine(xCenter, yCenter, x, y, color, plotProc, data);
-
-	while (x < y) {
-		x++;
-		if (p < 0)
-			p += 2*x + 1;
-		else {
-			y--;
-			p += 2 * (x-y) + 1;
-		}
-		drawCircleLine(xCenter, yCenter, x, y, color, plotProc, data);
+class HalfbritePrimitives : public Graphics::Primitives {
+public:
+	void drawPoint(int x, int y, uint32 color, void *data) override {
+		Graphics::Surface *surf = (Graphics::Surface *)data;
+		byte *pixel = (byte *)surf->getBasePtr(x, y);
+		*pixel &= ~0x20;
 	}
-}
 
+	void drawCircleLine(int xCenter, int yCenter, int x, int y, int color, void *data) {
+		drawLine(xCenter + x, yCenter + y, xCenter - x, yCenter + y, color, data);
+		drawLine(xCenter + x, yCenter - y, xCenter - x, yCenter - y, color, data);
+		drawLine(xCenter + y, yCenter + x, xCenter - y, yCenter + x, color, data);
+		drawLine(xCenter + y, yCenter - x, xCenter - y, yCenter - x, color, data);
+	}
 
+	void drawCircle(int xCenter, int yCenter, int radius, int color, void *data) {
+		int x = 0;
+		int y = radius;
+		int p = 1 - radius;
 
+		/* Plot first set of points */
+		drawCircleLine(xCenter, yCenter, x, y, color, data);
+
+		while (x < y) {
+			x++;
+			if (p < 0)
+				p += 2*x + 1;
+			else {
+				y--;
+				p += 2 * (x-y) + 1;
+			}
+			drawCircleLine(xCenter, yCenter, x, y, color, data);
+		}
+	}
+
+};
 
 Palette::Palette() {
 
@@ -280,7 +280,7 @@ void Gfx::setProjectorPos(int x, int y) {
 }
 
 void Gfx::setProjectorProgram(int16 *data) {
-	if (_nextProjectorPos == 0) {
+	if (_nextProjectorPos == nullptr) {
 		_nextProjectorPos = data;
 	}
 }
@@ -419,7 +419,7 @@ void Gfx::updateScreen() {
 	// is needed
 	_overlayMode = false;
 
-	bool skipBackground = (_backgroundInfo->bg.getPixels() == 0);	// don't render frame if background is missing
+	bool skipBackground = (_backgroundInfo->bg.getPixels() == nullptr);	// don't render frame if background is missing
 
 	if (!skipBackground) {
 		// background may not cover the whole screen, so adjust bulk update size
@@ -464,7 +464,7 @@ void Gfx::applyHalfbriteEffect_NS(Graphics::Surface &surf) {
 		}
 	}
 	if (_hbCircleRadius > 0) {
-		drawCircle(_hbCirclePos.x, _hbCirclePos.y, _hbCircleRadius, 0, &halfbritePixel, &surf);
+		HalfbritePrimitives().drawCircle(_hbCirclePos.x, _hbCirclePos.y, _hbCircleRadius, 0, &surf);
 	}
 }
 
@@ -516,9 +516,6 @@ void Gfx::invertBackground(const Common::Rect& r) {
 }
 
 
-
-
-
 void setupLabelSurface(Graphics::Surface &surf, uint w, uint h) {
 	surf.create(w, h, Graphics::PixelFormat::createFormatCLUT8());
 	surf.fillRect(Common::Rect(w,h), LABEL_TRANSPARENT_COLOR);
@@ -536,12 +533,12 @@ GfxObj *Gfx::renderFloatingLabel(Font *font, char *text) {
 		setupLabelSurface(*cnv, w, h);
 
 		font->setColor((_gameType == GType_BRA) ? 0 : 7);
-		font->drawString((byte *)cnv->getBasePtr(1, 0), cnv->w, text);
-		font->drawString((byte *)cnv->getBasePtr(1, 2), cnv->w, text);
-		font->drawString((byte *)cnv->getBasePtr(0, 1), cnv->w, text);
-		font->drawString((byte *)cnv->getBasePtr(2, 1), cnv->w, text);
+		font->drawString(cnv, 1, 0, text);
+		font->drawString(cnv, 1, 2, text);
+		font->drawString(cnv, 0, 1, text);
+		font->drawString(cnv, 2, 1, text);
 		font->setColor((_gameType == GType_BRA) ? 11 : 1);
-		font->drawString((byte *)cnv->getBasePtr(1, 1), cnv->w, text);
+		font->drawString(cnv, 1, 1, text);
 	} else {
 		w = font->getStringWidth(text);
 		h = font->height();
@@ -572,15 +569,15 @@ void Gfx::showFloatingLabel(GfxObj *label) {
 }
 
 void Gfx::hideFloatingLabel() {
-	if (_floatingLabel != 0) {
+	if (_floatingLabel != nullptr) {
 		_floatingLabel->clearFlags(kGfxObjVisible);
 	}
-	_floatingLabel = 0;
+	_floatingLabel = nullptr;
 }
 
 
 void Gfx::updateFloatingLabel() {
-	if (_floatingLabel == 0) {
+	if (_floatingLabel == nullptr) {
 		return;
 	}
 
@@ -688,7 +685,7 @@ void Gfx::hideLabel(GfxObj *label) {
 
 void Gfx::freeLabels() {
 	_labels.clear();
-	_floatingLabel = 0;
+	_floatingLabel = nullptr;
 }
 
 void Gfx::unregisterLabel(GfxObj *label) {
@@ -722,7 +719,7 @@ void Gfx::grabBackground(const Common::Rect& r, Graphics::Surface &dst) {
 
 
 Gfx::Gfx(Parallaction* vm) :
-	_vm(vm), _disk(vm->_disk), _backgroundInfo(0),
+	_vm(vm), _disk(vm->_disk), _backgroundInfo(nullptr),
 	_scrollPosX(0), _scrollPosY(0),_minScrollX(0), _maxScrollX(0),
 	_minScrollY(0), _maxScrollY(0),
 	_requestedHScrollSteps(0), _requestedVScrollSteps(0),
@@ -731,17 +728,19 @@ Gfx::Gfx(Parallaction* vm) :
 	_gameType = _vm->getGameType();
 	_doubleBuffering = _gameType != GType_Nippon;
 
-	initGraphics(_vm->_screenWidth, _vm->_screenHeight, _gameType == GType_BRA);
+	initGraphics(_vm->_screenWidth, _vm->_screenHeight);
 
 	setPalette(_palette);
 
-	_floatingLabel = 0;
+	_floatingLabel = nullptr;
 
-	_backgroundInfo = 0;
+	_backgroundInfo = nullptr;
 
 	_halfbrite = false;
-	_nextProjectorPos = 0;
+	_nextProjectorPos = nullptr;
 	_hbCircleRadius = 0;
+
+	_overlayMode = false;
 
 	_unpackedBitmap = new byte[MAXIMUM_UNPACKED_BITMAP_SIZE];
 	assert(_unpackedBitmap);
@@ -820,12 +819,12 @@ void Gfx::freeDialogueObjects() {
 
 void Gfx::setBackground(uint type, BackgroundInfo *info) {
 	if (!info) {
-		warning("Gfx::setBackground() called with an null BackgroundInfo");
+		warning("Gfx::setBackground() called with a null BackgroundInfo");
 		return;
 	}
 
 	_hbCircleRadius = 0;
-	_nextProjectorPos = 0;
+	_nextProjectorPos = nullptr;
 
 	delete _backgroundInfo;
 	_backgroundInfo = info;
@@ -854,8 +853,8 @@ void Gfx::setBackground(uint type, BackgroundInfo *info) {
 	_backgroundInfo->finalizePath();
 
 	if (_gameType == GType_BRA) {
-		int width = CLIP(info->width, (int)_vm->_screenWidth, info->width);
-		int height = CLIP(info->height, (int)_vm->_screenHeight, info->height);
+		int width = MAX(info->width, (int)_vm->_screenWidth);
+		int height = MAX(info->height, (int)_vm->_screenHeight);
 
 		if (width != _backBuffer.w || height != _backBuffer.h) {
 			_backBuffer.create(width, height, Graphics::PixelFormat::createFormatCLUT8());
@@ -869,7 +868,7 @@ void Gfx::setBackground(uint type, BackgroundInfo *info) {
 }
 
 
-BackgroundInfo::BackgroundInfo() : _x(0), _y(0), width(0), height(0), _mask(0), _path(0) {
+BackgroundInfo::BackgroundInfo() : _x(0), _y(0), width(0), height(0), _mask(nullptr), _path(nullptr) {
 	layers[0] = layers[1] = layers[2] = layers[3] = 0;
 	memset(ranges, 0, sizeof(ranges));
 }
@@ -881,7 +880,7 @@ BackgroundInfo::~BackgroundInfo() {
 }
 
 bool BackgroundInfo::hasMask() {
-	return _mask != 0;
+	return _mask != nullptr;
 }
 
 void BackgroundInfo::clearMaskData() {
@@ -892,7 +891,7 @@ void BackgroundInfo::clearMaskData() {
 	}
 	_maskPatches.clear();
 	delete _mask;
-	_mask = 0;
+	_mask = nullptr;
 	_maskBackup.free();
 }
 
@@ -942,7 +941,7 @@ void BackgroundInfo::setPaletteRange(int index, const PaletteFxRange& range) {
 }
 
 bool BackgroundInfo::hasPath() {
-	return _path != 0;
+	return _path != nullptr;
 }
 
 void BackgroundInfo::clearPathData() {
@@ -953,7 +952,7 @@ void BackgroundInfo::clearPathData() {
 	}
 	_pathPatches.clear();
 	delete _path;
-	_path = 0;
+	_path = nullptr;
 	_pathBackup.free();
 }
 
@@ -990,7 +989,7 @@ void BackgroundInfo::togglePathPatch(uint id, int x, int y, bool apply) {
 	}
 }
 
-MaskBuffer::MaskBuffer() : w(0), internalWidth(0), h(0), size(0), data(0), bigEndian(true) {
+MaskBuffer::MaskBuffer() : w(0), internalWidth(0), h(0), size(0), data(nullptr), bigEndian(true) {
 }
 
 MaskBuffer::~MaskBuffer() {
@@ -1022,7 +1021,7 @@ void MaskBuffer::create(uint16 width, uint16 height) {
 
 void MaskBuffer::free() {
 	::free(data);
-	data = 0;
+	data = nullptr;
 	w = 0;
 	h = 0;
 	internalWidth = 0;
@@ -1073,7 +1072,7 @@ void MaskBuffer::bltCopy(uint16 dx, uint16 dy, const MaskBuffer &src, uint16 sx,
 
 
 
-PathBuffer::PathBuffer() : w(0), internalWidth(0), h(0), size(0), data(0), bigEndian(true) {
+PathBuffer::PathBuffer() : w(0), internalWidth(0), h(0), size(0), data(nullptr), bigEndian(true) {
 }
 
 PathBuffer::~PathBuffer() {
@@ -1101,7 +1100,7 @@ void PathBuffer::create(uint16 width, uint16 height) {
 
 void PathBuffer::free() {
 	::free(data);
-	data = 0;
+	data = nullptr;
 	w = 0;
 	h = 0;
 	internalWidth = 0;

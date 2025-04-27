@@ -4,19 +4,18 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
-
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -48,8 +47,8 @@ void BbvsEngine::startWalkObject(SceneObject *sceneObject) {
 		return;
 
 	initWalkAreas(sceneObject);
-	_sourceWalkAreaPt.x = sceneObject->x >> 16;
-	_sourceWalkAreaPt.y = sceneObject->y >> 16;
+	_sourceWalkAreaPt.x = sceneObject->x / 65536;
+	_sourceWalkAreaPt.y = sceneObject->y / 65536;
 
 	_sourceWalkArea = getWalkAreaAtPos(_sourceWalkAreaPt);
 	if (!_sourceWalkArea)
@@ -86,7 +85,7 @@ void BbvsEngine::updateWalkObject(SceneObject *sceneObject) {
 		animIndex = sceneObject->sceneObjectDef->animIndices[kWalkTurnTbl[sceneObject->turnValue]];
 	}
 
-	Animation *anim = 0;
+	Animation *anim = nullptr;
 	if (animIndex > 0)
 		anim = _gameModule->getAnimation(animIndex);
 
@@ -97,7 +96,7 @@ void BbvsEngine::updateWalkObject(SceneObject *sceneObject) {
 			sceneObject->frameTicks = 1;
 			sceneObject->frameIndex = anim->frameCount - 1;
 		} else {
-			sceneObject->anim = 0;
+			sceneObject->anim = nullptr;
 			sceneObject->animIndex = 0;
 			sceneObject->frameTicks = 0;
 			sceneObject->frameIndex = 0;
@@ -107,8 +106,8 @@ void BbvsEngine::updateWalkObject(SceneObject *sceneObject) {
 }
 
 void BbvsEngine::walkObject(SceneObject *sceneObject, const Common::Point &destPt, int walkSpeed) {
-	int deltaX = destPt.x - (sceneObject->x >> 16);
-	int deltaY = destPt.y - (sceneObject->y >> 16);
+	int deltaX = destPt.x - (sceneObject->x / 65536);
+	int deltaY = destPt.y - (sceneObject->y / 65536);
 	float distance = (float)sqrt((double)(deltaX * deltaX + deltaY * deltaY));
 	// NOTE The original doesn't have this check but without it the whole pathfinding breaks
 	if (distance > 0.0f) {
@@ -190,19 +189,19 @@ WalkInfo *BbvsEngine::addWalkInfo(int16 x, int16 y, int delta, int direction, in
 }
 
 void BbvsEngine::initWalkAreas(SceneObject *sceneObject) {
-	int16 objX = sceneObject->x >> 16;
-	int16 objY = sceneObject->y >> 16;
+	int16 objX = sceneObject->x / 65536;
+	int16 objY = sceneObject->y / 65536;
 	Common::Rect rect;
 	bool doRect = false;
 	Common::Rect *workWalkableRects;
 
 	if (_buttheadObject == sceneObject && _beavisObject->anim) {
 		rect = _beavisObject->anim->frameRects2[_beavisObject->frameIndex];
-		rect.translate(_beavisObject->x >> 16, 1 + (_beavisObject->y >> 16));
+		rect.translate(_beavisObject->x / 65536, 1 + (_beavisObject->y / 65536));
 		doRect = !rect.isEmpty();
 	} else if (_buttheadObject->anim) {
 		rect = _buttheadObject->anim->frameRects2[_buttheadObject->frameIndex];
-		rect.translate(_buttheadObject->x >> 16, 1 + (_buttheadObject->y >> 16));
+		rect.translate(_buttheadObject->x / 65536, 1 + (_buttheadObject->y / 65536));
 		doRect = !rect.isEmpty();
 	}
 
@@ -285,7 +284,7 @@ WalkArea *BbvsEngine::getWalkAreaAtPos(const Common::Point &pt) {
 		if (walkArea->contains(pt))
 			return walkArea;
 	}
-	return 0;
+	return nullptr;
 }
 
 bool BbvsEngine::canButtheadWalkToDest(const Common::Point &destPt) {
@@ -293,8 +292,8 @@ bool BbvsEngine::canButtheadWalkToDest(const Common::Point &destPt) {
 
 	_walkReachedDestArea = false;
 	initWalkAreas(_buttheadObject);
-	srcPt.x = _buttheadObject->x >> 16;
-	srcPt.y = _buttheadObject->y >> 16;
+	srcPt.x = _buttheadObject->x / 65536;
+	srcPt.y = _buttheadObject->y / 65536;
 	_sourceWalkArea = getWalkAreaAtPos(srcPt);
 	if (_sourceWalkArea) {
 		_destWalkArea = getWalkAreaAtPos(destPt);
@@ -326,12 +325,10 @@ void BbvsEngine::canWalkToDest(WalkArea *walkArea, int infoCount) {
 }
 
 bool BbvsEngine::walkTestLineWalkable(const Common::Point &sourcePt, const Common::Point &destPt, WalkInfo *walkInfo) {
-	const float ptDeltaX = destPt.x - sourcePt.x;
+	const float ptDeltaX = MAX<float>(destPt.x - sourcePt.x, 1.0f);
 	const float ptDeltaY = destPt.y - sourcePt.y;
 	const float wDeltaX = walkInfo->x - sourcePt.x;
 	const float wDeltaY = walkInfo->y - sourcePt.y;
-	if (destPt.x == sourcePt.x)
-		return true;
 	if (walkInfo->direction) {
 		const float nDeltaY = wDeltaX * ptDeltaY / ptDeltaX + (float)sourcePt.y - (float)walkInfo->y;
 		return (nDeltaY >= 0.0f) && (nDeltaY < (float)walkInfo->delta);
@@ -443,7 +440,7 @@ void BbvsEngine::updateWalkableRects() {
 		Animation *anim = sceneObject->anim;
 		if (anim && _buttheadObject != sceneObject && _beavisObject != sceneObject) {
 			Common::Rect rect = sceneObject->anim->frameRects2[sceneObject->frameIndex];
-			rect.translate(sceneObject->x >> 16, sceneObject->y >> 16);
+			rect.translate(sceneObject->x / 65536, sceneObject->y / 65536);
 			int count = _walkableRectsCount;
 			_walkableRectsCount = 0;
 			for (int j = 0; j < count; ++j)

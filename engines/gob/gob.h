@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,13 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ *
+ * This file is dual-licensed.
+ * In addition to the GPLv3 license mentioned above, this code is also
+ * licensed under LGPL 2.1. See LICENSES/COPYING.LGPL file for the
+ * full text of the license.
  *
  */
 
@@ -25,38 +30,63 @@
 
 #include "common/random.h"
 #include "common/system.h"
-#include "common/savefile.h"
 
 #include "graphics/pixelformat.h"
 
 #include "engines/engine.h"
 
 #include "gob/console.h"
-
-namespace GUI {
-class StaticTextWidget;
-}
+#include "gob/detection/detection.h"
 
 /**
  * This is the namespace of the Gob engine.
  *
- * Status of this engine: ???
+ * Status of this engine: Supported
  *
  * Games using this engine:
+ * - Adi 1
+ * - Adi 2
+ * - Adi 4
+ * - Adi 5
+ * - Adibou 1
+ * - Adibou 2
+ * - Adibou 3
+ * - Adibou présente Cuisine
+ * - Adibou présente Dessin
+ * - Adibou présente Magie
+ * - Adiboud'chou a la mer
+ * - Adiboud'chou sur la banquise
+ * - Adiboud'chou a la campagne
+ * - Adiboud'chou dans la jungle et la savane
+ * - English Fever
  * - Gobliiins
  * - Gobliins 2
  * - Goblins 3
  * - Ween: The Prophecy
  * - Bargon Attack
+ * - Le pays des Pierres Magiques
  * - Lost in Time
+ * - Nathan Vacances CM1/CE2
  * - The Bizarre Adventures of Woodruff and the Schnibble
  * - Fascination
+ * - Inca II: Nations of Immortality
  * - Urban Runner
  * - Bambou le sauveur de la jungle
+ * - Playtoons 1 Uncle Archibald
+ * - Playtoons 2 The Case of the Counterfeit Collaborator (Spirou)
+ * - Playtoons 3 The Secret of the Castle
+ * - Playtoons 4 The Mandarin Prince
+ * - Playtoons 5 The Stone of Wakan
+ * - Playtoons Construction Kit 1 Monsters
+ * - Playtoons Construction Kit 2 Knights
+ * - Playtoons Construction Kit 3 The Far West
  * - Geisha
+ * - Once Upon A Time: Abracadabra
+ * - Once Upon A Time: Baba Yaga
  * - Once Upon A Time: Little Red Riding Hood
  * - Croustibat
  */
+
 namespace Gob {
 
 class Game;
@@ -75,7 +105,6 @@ class PalAnim;
 class Scenery;
 class Util;
 class SaveLoad;
-class GobConsole;
 class PreGob;
 
 #define WRITE_VAR_UINT32(var, val)  _vm->_inter->_variables->writeVar32(var, val)
@@ -109,48 +138,6 @@ enum Endianness {
 	kEndiannessBE
 };
 
-// WARNING: Reordering these will invalidate save games!
-//          Add new games to the bottom of the list.
-enum GameType {
-	kGameTypeNone = 0,
-	kGameTypeGob1,
-	kGameTypeGob2,
-	kGameTypeGob3,
-	kGameTypeWoodruff,
-	kGameTypeBargon,
-	kGameTypeWeen,
-	kGameTypeLostInTime,
-	kGameTypeInca2,
-	kGameTypeDynasty,
-	kGameTypeUrban,
-	kGameTypePlaytoons,
-	kGameTypeBambou,
-	kGameTypeFascination,
-	kGameTypeGeisha,
-	kGameTypeAdi2,
-	kGameTypeAdi4,
-	kGameTypeAdibou2,
-	kGameTypeAdibou1,
-	kGameTypeAbracadabra,
-	kGameTypeBabaYaga,
-	kGameTypeLittleRed,
-	kGameTypeOnceUponATime, // Need more inspection to see if Baba Yaga or Abracadabra
-	kGameTypeAJWorld,
-	kGameTypeCrousti
-};
-
-enum Features {
-	kFeaturesNone      =      0,
-	kFeaturesCD        = 1 << 0,
-	kFeaturesEGA       = 1 << 1,
-	kFeaturesAdLib     = 1 << 2,
-	kFeaturesSCNDemo   = 1 << 3,
-	kFeaturesBATDemo   = 1 << 4,
-	kFeatures640x480   = 1 << 5,
-	kFeatures800x600   = 1 << 6,
-	kFeaturesTrueColor = 1 << 7
-};
-
 enum EndiannessMethod {
 	kEndiannessMethodLE,     ///< Always little endian.
 	kEndiannessMethodBE,     ///< Always big endian.
@@ -159,37 +146,36 @@ enum EndiannessMethod {
 };
 
 enum {
-	kDebugFuncOp     = 1 <<  0,
-	kDebugDrawOp     = 1 <<  1,
-	kDebugGobOp      = 1 <<  2,
-	kDebugSound      = 1 <<  3,
-	kDebugExpression = 1 <<  4,
-	kDebugGameFlow   = 1 <<  5,
-	kDebugFileIO     = 1 <<  6,
-	kDebugSaveLoad   = 1 <<  7,
-	kDebugGraphics   = 1 <<  8,
-	kDebugVideo      = 1 <<  9,
-	kDebugHotspots   = 1 << 10,
-	kDebugDemo       = 1 << 11
+	kDebugFuncOp = 1,
+	kDebugDrawOp,
+	kDebugGobOp,
+	kDebugSound,
+	kDebugExpression,
+	kDebugGameFlow,
+	kDebugFileIO,
+	kDebugSaveLoad,
+	kDebugGraphics,
+	kDebugVideo,
+	kDebugHotspots,
+	kDebugDemo,
 };
-
-struct GOBGameDescription;
 
 class GobEngine : public Engine {
 private:
 	GameType _gameType;
 	int32 _features;
 	Common::Platform _platform;
+	const char *_extra;
 
 	EndiannessMethod _endiannessMethod;
 
 	uint32 _pauseStart;
 
 	// Engine APIs
-	virtual Common::Error run();
-	virtual bool hasFeature(EngineFeature f) const;
-	virtual void pauseEngineIntern(bool pause);
-	virtual void syncSoundSettings();
+	Common::Error run() override;
+	bool hasFeature(EngineFeature f) const override;
+	void pauseEngineIntern(bool pause) override;
+	void syncSoundSettings() override;
 
 	Common::Error initGameParts();
 	Common::Error initGraphics();
@@ -218,6 +204,8 @@ public:
 	GobConsole *_console;
 
 	bool _resourceSizeWorkaround;
+	bool _enableAdibou2FreeBananasWorkaround;
+	bool _enableAdibou2FlowersInfiniteLoopWorkaround;
 
 	Global *_global;
 	Util *_util;
@@ -252,8 +240,10 @@ public:
 	bool hasAdLib() const;
 	bool isSCNDemo() const;
 	bool isBATDemo() const;
+	bool is640x400() const;
 	bool is640x480() const;
 	bool is800x600() const;
+	bool is16Colors() const;
 	bool isTrueColor() const;
 	bool isDemo() const;
 
@@ -263,14 +253,20 @@ public:
 
 	void setTrueColor(bool trueColor);
 
-	GUI::Debugger *getDebugger() { return _console; }
-
 	const Graphics::PixelFormat &getPixelFormat() const;
 
 	GobEngine(OSystem *syst);
-	virtual ~GobEngine();
+	~GobEngine() override;
 
 	void initGame(const GOBGameDescription *gd);
+	GameType getGameType(const char *gameId) const;
+
+	/**
+	 * Used to obtain the game version as a fallback
+	 * from our detection tables, if the VERSION file
+	 * is missing
+	 */
+	const char *getGameVersion() const;
 };
 
 } // End of namespace Gob

@@ -1,5 +1,5 @@
 /* Copyright (C) 2003, 2004, 2005, 2006, 2008, 2009 Dean Beeler, Jerome Fisher
- * Copyright (C) 2011, 2012, 2013, 2014 Dean Beeler, Jerome Fisher, Sergey V. Mikayev
+ * Copyright (C) 2011-2022 Dean Beeler, Jerome Fisher, Sergey V. Mikayev
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU Lesser General Public License as published by
@@ -18,9 +18,14 @@
 #ifndef MT32EMU_PART_H
 #define MT32EMU_PART_H
 
+#include "globals.h"
+#include "internals.h"
+#include "Types.h"
+#include "Structures.h"
+
 namespace MT32Emu {
 
-class PartialManager;
+class Poly;
 class Synth;
 
 class PolyList {
@@ -50,6 +55,7 @@ private:
 	bool holdpedal;
 
 	unsigned int activePartialCount;
+	unsigned int activeNonReleasingPolyCount;
 	PatchCache patchCache[4];
 	PolyList activePolys;
 
@@ -64,6 +70,8 @@ protected:
 	MemParams::PatchTemp *patchTemp;
 	char name[8]; // "Part 1".."Part 8", "Rhythm"
 	char currentInstr[11];
+	// Values outside the valid range 0..100 imply no override.
+	Bit8u volumeOverride;
 	Bit8u modulation;
 	Bit8u expression;
 	Bit32s pitchBend;
@@ -90,8 +98,10 @@ public:
 	virtual void noteOff(unsigned int midiKey);
 	void allNotesOff();
 	void allSoundOff();
-	Bit8u getVolume() const; // Internal volume, 0-100, exposed for use by ExternalInterface
-	void setVolume(unsigned int midiVolume);
+	Bit8u getVolume() const; // Effective output level, valid range 0..100.
+	void setVolume(unsigned int midiVolume); // Valid range 0..127, as defined for MIDI controller 7.
+	Bit8u getVolumeOverride() const;
+	void setVolumeOverride(Bit8u volumeOverride);
 	Bit8u getModulation() const;
 	void setModulation(unsigned int midiModulation);
 	Bit8u getExpression() const;
@@ -117,13 +127,14 @@ public:
 
 	// This should only be called by Poly
 	void partialDeactivated(Poly *poly);
+	virtual void polyStateChanged(PolyState oldState, PolyState newState);
 
 	// These are rather specialised, and should probably only be used by PartialManager
 	bool abortFirstPoly(PolyState polyState);
 	// Abort the first poly in PolyState_HELD, or if none exists, the first active poly in any state.
 	bool abortFirstPolyPreferHeld();
 	bool abortFirstPoly();
-};
+}; // class Part
 
 class RhythmPart: public Part {
 	// Pointer to the area of the MT-32's memory dedicated to rhythm
@@ -141,7 +152,9 @@ public:
 	unsigned int getAbsTimbreNum() const;
 	void setPan(unsigned int midiPan);
 	void setProgram(unsigned int patchNum);
+	void polyStateChanged(PolyState oldState, PolyState newState);
 };
 
-}
-#endif
+} // namespace MT32Emu
+
+#endif // #ifndef MT32EMU_PART_H

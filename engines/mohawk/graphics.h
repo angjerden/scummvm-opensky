@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -41,7 +40,7 @@ class MohawkBitmap;
 class MohawkSurface {
 public:
 	MohawkSurface();
-	MohawkSurface(Graphics::Surface *surface, byte *palette = NULL, int offsetX = 0, int offsetY = 0);
+	explicit MohawkSurface(Graphics::Surface *surface, byte *palette = nullptr, int offsetX = 0, int offsetY = 0);
 	~MohawkSurface();
 
 	// getSurface() returns the surface in the current format
@@ -74,6 +73,10 @@ public:
 	// Free all surfaces in the cache
 	void clearCache();
 
+	// findImage will search the cache to find the image.
+	// If not found, it will call decodeImage to get a new one.
+	MohawkSurface *findImage(uint16 id);
+
 	void preloadImage(uint16 image);
 	virtual void setPalette(uint16 id);
 	void copyAnimImageToScreen(uint16 image, int left = 0, int top = 0);
@@ -84,10 +87,6 @@ public:
 
 protected:
 	void copyAnimImageSectionToScreen(MohawkSurface *image, Common::Rect src, Common::Rect dest);
-
-	// findImage will search the cache to find the image.
-	// If not found, it will call decodeImage to get a new one.
-	MohawkSurface *findImage(uint16 id);
 
 	// decodeImage will always return a new image.
 	virtual MohawkSurface *decodeImage(uint16 id) = 0;

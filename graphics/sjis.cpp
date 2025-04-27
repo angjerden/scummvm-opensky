@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -49,13 +48,12 @@ FontSJIS *FontSJIS::createFont(const Common::Platform platform) {
 		if (ret->loadData())
 			return ret;
 		delete ret;
-	} // TODO: PC98 font rom support
-	/* else if (platform == Common::kPlatformPC98) {
-		ret = new FontPC98();
-		if (ret->loadData())
-			return ret;
-		delete ret;
-	}*/
+	} else if (platform == Common::kPlatformPC98) {
+		FontPC98 *ret98 = new FontPC98();
+		if (ret98->loadBMPData() || ret98->loadData())
+			return ret98;
+		delete ret98;
+	}
 
 	// Try ScummVM's font.
 	ret = new FontSjisSVM(platform);
@@ -71,7 +69,7 @@ void FontSJIS::drawChar(Graphics::Surface &dst, uint16 ch, int x, int y, uint32 
 }
 
 FontSJISBase::FontSJISBase()
-	: _drawMode(kDefaultMode), _flippedMode(false), _fontWidth(16), _fontHeight(16), _bitPosNewLineMask(0) {
+: _drawMode(kDefaultMode), _flippedMode(false), _fatPrint(false), _fontWidth(16), _fontHeight(16), _bitPosNewLineMask(0) {
 }
 
 void FontSJISBase::setDrawingMode(DrawingMode mode) {
@@ -86,6 +84,13 @@ void FontSJISBase::toggleFlippedMode(bool enable) {
 		_flippedMode = enable;
 	else
 		warning("Flipped mode unsupported by this font");
+}
+
+void FontSJISBase::toggleFatPrint(bool enable) {
+	if (hasFeature(kFeatFatPrint))
+		_fatPrint = enable;
+	else
+		warning("Fat print unsupported by this font");
 }
 
 uint FontSJISBase::getFontHeight() const {
@@ -207,6 +212,25 @@ const uint8 *FontSJISBase::flipCharacter(const uint8 *glyph, const int w) const 
 }
 #endif
 
+const uint8 *FontSJISBase::makeFatCharacter(const uint8 *glyph, const int w) const {
+	// This is the EOB II FM-Towns implementation.
+	// The last bit to the right of each line is cut off so that the fat
+	// character actually has the same width as it would normally have.
+	if (w == 8) {
+		for (int i = 0; i < 16; ++i) {
+			_tempGlyph2[i] = *glyph | (*glyph >> 1);
+			glyph++;
+		}
+	} else {
+		for (int i = 0; i < 16; ++i) {
+			uint16 l = READ_BE_UINT16(glyph);
+			WRITE_BE_UINT16(&_tempGlyph2[i << 1], l | (l >> 1));
+			glyph += 2;
+		}
+	}
+	return _tempGlyph2;
+}
+
 void FontSJISBase::drawChar(void *dst, uint16 ch, int pitch, int bpp, uint32 c1, uint32 c2, int maxW, int maxH) const {
 	const uint8 *glyphSource = 0;
 	int width = 0, height = 0;
@@ -243,15 +267,21 @@ void FontSJISBase::drawChar(void *dst, uint16 ch, int pitch, int bpp, uint32 c1,
 		return;
 	}
 
+	if (_fatPrint)
+		glyphSource = makeFatCharacter(glyphSource, width);
+
 #ifndef DISABLE_FLIPPED_MODE
 	if (_flippedMode)
 		glyphSource = flipCharacter(glyphSource, width);
 #endif
 
+	int shadowOffset = bpp;
 	uint8 outline[18 * 18];
 	if (_drawMode == kOutlineMode) {
 		memset(outline, 0, sizeof(outline));
 		createOutline(outline, glyphSource, width, height);
+	} else if (_drawMode == kShadowLeftMode) {
+		shadowOffset = -shadowOffset;
 	}
 
 	if (bpp == 1) {
@@ -260,10 +290,10 @@ void FontSJISBase::drawChar(void *dst, uint16 ch, int pitch, int bpp, uint32 c1,
 			blitCharacter<uint8>(glyphSource, width - outlineXOffset, height - outlineYOffset, (uint8 *)dst + pitch + 1, pitch, c1);
 		} else {
 			if (_drawMode != kDefaultMode) {
-				blitCharacter<uint8>(glyphSource, width - outlineXOffset, height, ((uint8 *)dst) + 1, pitch, c2);
+				blitCharacter<uint8>(glyphSource, width - outlineXOffset, height, ((uint8 *)dst) + shadowOffset, pitch, c2);
 				blitCharacter<uint8>(glyphSource, width, height - outlineYOffset, ((uint8 *)dst) + pitch, pitch, c2);
-				if (_drawMode == kShadowMode)
-					blitCharacter<uint8>(glyphSource, width - outlineXOffset, height - outlineYOffset, ((uint8 *)dst) + pitch + 1, pitch, c2);
+				if (_drawMode != kFMTownsShadowMode)
+					blitCharacter<uint8>(glyphSource, width - outlineXOffset, height - outlineYOffset, ((uint8 *)dst) + pitch + shadowOffset, pitch, c2);
 			}
 
 			blitCharacter<uint8>(glyphSource, width, height, (uint8 *)dst, pitch, c1);
@@ -274,10 +304,10 @@ void FontSJISBase::drawChar(void *dst, uint16 ch, int pitch, int bpp, uint32 c1,
 			blitCharacter<uint16>(glyphSource, width - outlineXOffset, height - outlineYOffset, (uint8 *)dst + pitch + 2, pitch, c1);
 		} else {
 			if (_drawMode != kDefaultMode) {
-				blitCharacter<uint16>(glyphSource, width - outlineXOffset, height, ((uint8 *)dst) + 2, pitch, c2);
+				blitCharacter<uint16>(glyphSource, width - outlineXOffset, height, ((uint8 *)dst) + shadowOffset, pitch, c2);
 				blitCharacter<uint16>(glyphSource, width, height - outlineYOffset, ((uint8 *)dst) + pitch, pitch, c2);
-				if (_drawMode == kShadowMode)
-					blitCharacter<uint16>(glyphSource, width - outlineXOffset, height - outlineYOffset, ((uint8 *)dst) + pitch + 2, pitch, c2);
+				if (_drawMode != kFMTownsShadowMode)
+					blitCharacter<uint16>(glyphSource, width - outlineXOffset, height - outlineYOffset, ((uint8 *)dst) + pitch + shadowOffset, pitch, c2);
 			}
 
 			blitCharacter<uint16>(glyphSource, width, height, (uint8 *)dst, pitch, c1);
@@ -312,104 +342,233 @@ bool FontTowns::loadData() {
 	return retValue;
 }
 
-const uint8 *FontTowns::getCharData(uint16 ch) const {
-	if (ch < kFont8x16Chars) {
-		return _fontData8x16 + ch * 16;
-	} else {
-		uint8 f = ch & 0xFF;
-		uint8 s = ch >> 8;
+int FontTowns::getCharFMTChunk(uint16 ch) {
+	uint8 f = ch & 0xFF;
+	uint8 s = ch >> 8;
 
-		// moved from scumm\charset.cpp
-		enum {
-			KANA = 0,
-			KANJI = 1,
-			EKANJI = 2
-		};
+	// moved from scumm\charset.cpp
+	enum {
+		KANA = 0,
+		KANJI = 1,
+		EKANJI = 2
+	};
 
-		int base = s - ((s + 1) % 32);
-		int c = 0, p = 0, chunk_f = 0, chunk = 0, cr = 0, kanjiType = KANA;
+	int base = s - ((s + 1) % 32);
+	int c = 0, p = 0, chunk_f = 0, chunk = 0, cr = 0, kanjiType = KANA;
 
-		if (f >= 0x81 && f <= 0x84) kanjiType = KANA;
-		if (f >= 0x88 && f <= 0x9f) kanjiType = KANJI;
-		if (f >= 0xe0 && f <= 0xea) kanjiType = EKANJI;
+	if (f >= 0x81 && f <= 0x84) kanjiType = KANA;
+	if (f >= 0x88 && f <= 0x9f) kanjiType = KANJI;
+	if (f >= 0xe0 && f <= 0xea) kanjiType = EKANJI;
 
-		if ((f > 0xe8 || (f == 0xe8 && base >= 0x9f)) || (f > 0x90 || (f == 0x90 && base >= 0x9f))) {
-			c = 48; //correction
-			p = -8; //correction
-		}
-
-		if (kanjiType == KANA) {//Kana
-			chunk_f = (f - 0x81) * 2;
-		} else if (kanjiType == KANJI) {//Standard Kanji
-			p += f - 0x88;
-			chunk_f = c + 2 * p;
-		} else if (kanjiType == EKANJI) {//Enhanced Kanji
-			p += f - 0xe0;
-			chunk_f = c + 2 * p;
-		}
-
-		// Base corrections
-		if (base == 0x7f && s == 0x7f)
-			base -= 0x20;
-		if (base == 0x9f && s == 0xbe)
-			base += 0x20;
-		if (base == 0xbf && s == 0xde)
-			base += 0x20;
-		//if (base == 0x7f && s == 0x9e)
-		//	base += 0x20;
-
-		switch (base) {
-		case 0x3f:
-			cr = 0; //3f
-			if (kanjiType == KANA) chunk = 1;
-			else if (kanjiType == KANJI) chunk = 31;
-			else if (kanjiType == EKANJI) chunk = 111;
-			break;
-		case 0x5f:
-			cr = 0; //5f
-			if (kanjiType == KANA) chunk = 17;
-			else if (kanjiType == KANJI) chunk = 47;
-			else if (kanjiType == EKANJI) chunk = 127;
-			break;
-		case 0x7f:
-			cr = -1; //80
-			if (kanjiType == KANA) chunk = 9;
-			else if (kanjiType == KANJI) chunk = 63;
-			else if (kanjiType == EKANJI) chunk = 143;
-			break;
-		case 0x9f:
-			cr = 1; //9e
-			if (kanjiType == KANA) chunk = 2;
-			else if (kanjiType == KANJI) chunk = 32;
-			else if (kanjiType == EKANJI) chunk = 112;
-			break;
-		case 0xbf:
-			cr = 1; //be
-			if (kanjiType == KANA) chunk = 18;
-			else if (kanjiType == KANJI) chunk = 48;
-			else if (kanjiType == EKANJI) chunk = 128;
-			break;
-		case 0xdf:
-			cr = 1; //de
-			if (kanjiType == KANA) chunk = 10;
-			else if (kanjiType == KANJI) chunk = 64;
-			else if (kanjiType == EKANJI) chunk = 144;
-			break;
-		default:
-			debug(4, "Invalid Char! f %x s %x base %x c %d p %d", f, s, base, c, p);
-		}
-
-		debug(6, "Kanji: %c%c f 0x%x s 0x%x base 0x%x c %d p %d chunk %d cr %d index %d", f, s, f, s, base, c, p, chunk, cr, ((chunk_f + chunk) * 32 + (s - base)) + cr);
-		const int chunkNum = (((chunk_f + chunk) * 32 + (s - base)) + cr);
-		if (chunkNum < 0 || chunkNum >= kFont16x16Chars)
-			return 0;
-		else
-			return _fontData16x16 + chunkNum * 32;
+	if ((f > 0xe8 || (f == 0xe8 && base >= 0x9f)) || (f > 0x90 || (f == 0x90 && base >= 0x9f))) {
+		c = 48; // correction
+		p = -8; // correction
 	}
+
+	if (kanjiType == KANA) {
+		chunk_f = (f - 0x81) * 2;
+	} else if (kanjiType == KANJI) { // Standard Kanji
+		p += f - 0x88;
+		chunk_f = c + 2 * p;
+	} else if (kanjiType == EKANJI) { // Enhanced Kanji
+		p += f - 0xe0;
+		chunk_f = c + 2 * p;
+	}
+
+	// Base corrections
+	if (base == 0x7f && s == 0x7f)
+		base -= 0x20;
+	if (base == 0x9f && s == 0xbe)
+		base += 0x20;
+	if (base == 0xbf && s == 0xde)
+		base += 0x20;
+	//if (base == 0x7f && s == 0x9e)
+	//	base += 0x20;
+
+	switch (base) {
+	case 0x3f:
+		cr = 0; // 3f
+		if (kanjiType == KANA) chunk = 1;
+		else if (kanjiType == KANJI) chunk = 31;
+		else if (kanjiType == EKANJI) chunk = 111;
+		break;
+	case 0x5f:
+		cr = 0; // 5f
+		if (kanjiType == KANA) chunk = 17;
+		else if (kanjiType == KANJI) chunk = 47;
+		else if (kanjiType == EKANJI) chunk = 127;
+		break;
+	case 0x7f:
+		cr = -1; // 80
+		if (kanjiType == KANA) chunk = 9;
+		else if (kanjiType == KANJI) chunk = 63;
+		else if (kanjiType == EKANJI) chunk = 143;
+		break;
+	case 0x9f:
+		cr = 1; // 9e
+		if (kanjiType == KANA) chunk = 2;
+		else if (kanjiType == KANJI) chunk = 32;
+		else if (kanjiType == EKANJI) chunk = 112;
+		break;
+	case 0xbf:
+		cr = 1; // be
+		if (kanjiType == KANA) chunk = 18;
+		else if (kanjiType == KANJI) chunk = 48;
+		else if (kanjiType == EKANJI) chunk = 128;
+		break;
+	case 0xdf:
+		cr = 1; // de
+		if (kanjiType == KANA) chunk = 10;
+		else if (kanjiType == KANJI) chunk = 64;
+		else if (kanjiType == EKANJI) chunk = 144;
+		break;
+	default:
+		debug(4, "Invalid Char! f %x s %x base %x c %d p %d", f, s, base, c, p);
+	}
+
+	debug(6, "Kanji: %c%c f 0x%x s 0x%x base 0x%x c %d p %d chunk %d cr %d index %d", f, s, f, s, base, c, p, chunk, cr, ((chunk_f + chunk) * 32 + (s - base)) + cr);
+	return (((chunk_f + chunk) * 32 + (s - base)) + cr);
+}
+
+const uint8 *FontTowns::getCharData(uint16 ch) const {
+	if (ch < kFont8x16Chars)
+		return _fontData8x16 + ch * 16;
+
+	int chunkNum = getCharFMTChunk(ch);
+
+	if (chunkNum < 0 || chunkNum >= kFont16x16Chars)
+		return 0;
+	else
+		return _fontData16x16 + chunkNum * 32;
 }
 
 bool FontTowns::hasFeature(int feat) const {
-	static const int features = kFeatDefault | kFeatOutline | kFeatShadow | kFeatFMTownsShadow | kFeatFlipped;
+	static const int features = kFeatDefault | kFeatOutline | kFeatShadow | kFeatFMTownsShadow | kFeatFlipped | kFeatFatPrint;
+	return (features & feat) ? true : false;
+}
+
+// PC98 ROM font
+
+bool FontPC98::loadData() {
+	Common::ScopedPtr<Common::SeekableReadStream> data(SearchMan.createReadStreamForMember("FONT.ROM"));
+	if (!data)
+		return false;
+
+	// First comes 8x8 font that we skip
+	data->seek(256 * 8, SEEK_SET);
+	data->read(_fontData8x16, kFont8x16Chars * 16);
+
+	for (uint i = 0; i < kFont16x16Chars; i++) {
+		byte block[32];
+		data->read(block, 32);
+		// PC98 uses 2 8x16 bitmaps to form one 16x16 glyph. Reshuffle to make a single 16x16 glyph
+		for (uint j = 0; j < 16; j++)
+			_fontData16x16[i * 32 + 2 * j] = block[j];
+		for (uint j = 0; j < 16; j++)
+			_fontData16x16[i * 32 + 2 * j + 1] = block[j + 16];
+	}
+
+	return !data->err();
+}
+
+bool FontPC98::loadBMPData() {
+	Common::ScopedPtr<Common::SeekableReadStream> data(SearchMan.createReadStreamForMember("FONT.BMP"));
+	if (!data)
+		return false;
+
+	if (data->readUint16BE() != MKTAG16('B', 'M')) {
+		warning("Invalid header in font.bmp");
+		return false;
+	}
+
+	data->readUint32LE();
+	data->readUint16LE();
+	data->readUint16LE();
+	uint32 imageOffset = data->readUint32LE();
+
+	uint32 infoSize = data->readUint32LE();
+
+	if (infoSize != 40) {
+		warning("Unexpected header size in font.bmp");
+		return false;
+	}
+
+	if (data->readUint32LE() != 2048 || data->readUint32LE() != 2048) {
+		warning("font.bmp needs to be 2048x2048");
+		return false;
+	}
+
+	if (data->readUint16LE() != 1) {
+		warning("font.bmp needs to be single-plane'd");
+		return false;
+	}
+
+	if (data->readUint16LE() != 1) {
+		warning("font.bmp needs to be 1bpp");
+		return false;
+	}
+
+	data->seek(imageOffset);
+
+	for (int row = 95; row >= 0; row--)
+		for (int y = 15; y >= 0; y--) {
+			// Skip 16 pixels
+			data->skip(2);
+			for (uint col = 0; col < 96; col++) {
+				byte a = data->readByte();
+				byte b = data->readByte();
+				uint point = row + col * 96;
+				if (point >= kFont16x16Chars)
+					continue;
+				_fontData16x16[point * 32 + y * 2] = ~a;
+				_fontData16x16[point * 32 + y * 2 + 1] = ~b;
+			}
+			data->skip((2048 - 96 * 16 - 16) / 8);
+		}
+
+	data->seek(imageOffset + (2048 - 16) * (2048 / 8));
+
+	for (int y = 15; y >= 0; y--)
+		for (uint i = 0; i < kFont8x16Chars; i++)
+			_fontData8x16[i * 16 + y] = ~data->readByte();
+
+	return true;
+}
+
+const uint8 *FontPC98::getCharData(uint16 ch) const {
+	if (ch < kFont8x16Chars)
+		return _fontData8x16 + ch * 16;
+
+	uint8 lo = ch >> 8, hi = ch & 0xff;
+
+	uint hiblock = 0;
+
+	if (hi >= 0x81 && hi <= 0x9f)
+		hiblock = hi - 0x81;
+	else if (hi >= 0xe0 && hi <= 0xee)
+		hiblock = hi - 0x81 - 0x40;
+	else
+		return nullptr;
+	
+	uint glyph = hiblock * 192;
+
+	if (lo >= 0x3f && lo <= 0x7e)
+		glyph += lo - 0x3f;
+	else if (lo >= 0x80 && lo <= 0x9e)
+		glyph += lo - 0x80 + 64;
+	else if (lo >= 0x9f && lo <= 0xfc)
+		glyph += lo - 0x9e + 96;
+	else
+		return nullptr;
+
+	if (glyph >= kFont16x16Chars)
+		return nullptr;
+	else
+		return _fontData16x16 + glyph * 32;
+}
+
+bool FontPC98::hasFeature(int feat) const {
+	static const int features = kFeatDefault | kFeatOutline | kFeatShadow | kFeatFMTownsShadow | kFeatFlipped | kFeatFatPrint;
 	return (features & feat) ? true : false;
 }
 
@@ -577,7 +736,7 @@ bool FontSjisSVM::hasFeature(int feat) const {
 	// Flipped mode is not supported since the hard coded table (taken from SCUMM 5 FM-TOWNS)
 	// is set up for font sizes of 8/16. This mode is also not required at the moment, since
 	// there aren't any SCUMM 5 PC-Engine games.
-	static const int features16 = kFeatDefault | kFeatOutline | kFeatShadow | kFeatFMTownsShadow | kFeatFlipped;
+	static const int features16 = kFeatDefault | kFeatOutline | kFeatShadow | kFeatFMTownsShadow | kFeatFlipped | kFeatFatPrint;
 	static const int features12 = kFeatDefault | kFeatOutline | kFeatShadow | kFeatFMTownsShadow;
 	return (((_fontWidth == 12) ? features12 : features16) & feat) ? true : false;
 }

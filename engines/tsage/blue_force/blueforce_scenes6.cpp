@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,13 +15,11 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "tsage/blue_force/blueforce_scenes6.h"
-#include "tsage/blue_force/blueforce_dialogs.h"
 #include "tsage/scenes.h"
 #include "tsage/tsage.h"
 #include "tsage/staticres.h"
@@ -78,7 +76,7 @@ void Scene600::Action1::signal() {
 			pObj->animate(ANIM_MODE_NONE, NULL);
 		}
 
-		BF_GLOBALS._screenSurface.fillRect(BF_GLOBALS._screenSurface.getBounds(), 0);
+		BF_GLOBALS._screen.fillRect(BF_GLOBALS._screen.getBounds(), 0);
 		scene->loadScene(999);
 		setDelay(5);
 		break;
@@ -259,6 +257,8 @@ void Scene666::Action1::signal() {
 	case 1:
 		BF_GLOBALS._game->restartGame();
 		break;
+	default:
+		break;
 	}
 }
 
@@ -275,7 +275,7 @@ void Scene666::postInit(SceneObjectList *OwnerList) {
 	SceneExt::postInit();
 	BF_GLOBALS._interfaceY = SCREEN_HEIGHT;
 	loadScene(999);
-	BF_GLOBALS._screenSurface.fillRect(BF_GLOBALS._screenSurface.getBounds(), 0);
+	BF_GLOBALS._screen.fillRect(BF_GLOBALS._screen.getBounds(), 0);
 
 	if (BF_GLOBALS._dayNumber == 0) {
 		BF_GLOBALS._dayNumber = 1;

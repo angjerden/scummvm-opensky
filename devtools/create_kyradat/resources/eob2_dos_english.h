@@ -246,7 +246,7 @@ static const char *const kEoB2WandStringsDOSEnglish[1] = {
 static const StringListProvider kEoB2WandStringsDOSEnglishProvider = { ARRAYSIZE(kEoB2WandStringsDOSEnglish), kEoB2WandStringsDOSEnglish };
 
 static const char *const kEoB2ItemMisuseStringsDOSEnglish[3] = {
-	" can not use this item.\r",
+	"%s can not use this item.\r",
 	"This item automatically used when worn.\r",
 	"This item is not used in this way.\r"
 };
@@ -556,7 +556,7 @@ static const char *const kEoB2CharStatusStrings82DOSEnglish[1] = {
 static const StringListProvider kEoB2CharStatusStrings82DOSEnglishProvider = { ARRAYSIZE(kEoB2CharStatusStrings82DOSEnglish), kEoB2CharStatusStrings82DOSEnglish };
 
 static const char *const kEoB2CharStatusStrings9DOSEnglish[1] = {
-	"%s is no longer paralyzed!\r"
+	"\x06\x04""%s is no longer paralyzed!\r"
 };
 
 static const StringListProvider kEoB2CharStatusStrings9DOSEnglishProvider = { ARRAYSIZE(kEoB2CharStatusStrings9DOSEnglish), kEoB2CharStatusStrings9DOSEnglish };
@@ -655,6 +655,7 @@ static const char *const kEoB2ClericSpellsListDOSEnglish[30] = {
 	"True Seeing",
 	"Harm",
 	"Heal",
+	// FIXME: Spelling incorrect. ressurection should be resurrection. Fixing changes game data and thus may cause issues
 	"Ressurection",
 	"Lay on Hands",
 	"Turn undead"
@@ -721,6 +722,7 @@ static const char *const kEoB2SpellNamesDOSEnglish[68] = {
 	"true seeing",
 	"harm",
 	"heal",
+	// FIXME: Spelling incorrect. ressurection should be resurrection. Fixing changes game data and thus may cause issues
 	"ressurection",
 	"lay on hands",
 	"turn undead",
@@ -1345,3 +1347,13 @@ static const char *const kEoB2HornStringsDOSEnglish[4] = {
 
 static const StringListProvider kEoB2HornStringsDOSEnglishProvider = { ARRAYSIZE(kEoB2HornStringsDOSEnglish), kEoB2HornStringsDOSEnglish };
 
+static const char *const kEoB2NpcPresetsNamesDOSEnglish[6] = {
+	"Insal",
+	"Calandra",
+	"Shorn",
+	"San-raal",
+	"Tanglor",
+	"Amber"
+};
+
+static const StringListProvider kEoB2NpcPresetsNamesDOSEnglishProvider = { ARRAYSIZE(kEoB2NpcPresetsNamesDOSEnglish), kEoB2NpcPresetsNamesDOSEnglish };

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -39,7 +38,7 @@
 
 namespace Audio {
 
-class ADPCMStream : public RewindableAudioStream {
+class ADPCMStream : public SeekableAudioStream {
 protected:
 	Common::DisposablePtr<Common::SeekableReadStream> _stream;
 	int32 _startpos;
@@ -54,6 +53,7 @@ protected:
 		struct {
 			int32 last;
 			int32 stepIndex;
+			int16 sample[2];
 		} ima_ch[2];
 	} _status;
 
@@ -67,6 +67,8 @@ public:
 	virtual int getRate() const { return _rate; }
 
 	virtual bool rewind();
+	virtual bool seek(const Timestamp &where) { return false; }
+	virtual Timestamp getLength() const { return Timestamp(); }
 
 	/**
 	 * This table is used by some ADPCM variants (IMA and OKI) to adjust the
@@ -93,6 +95,24 @@ protected:
 private:
 	uint8 _decodedSampleCount;
 	int16 _decodedSamples[2];
+};
+
+class XA_ADPCMStream : public ADPCMStream {
+public:
+	XA_ADPCMStream(Common::SeekableReadStream *stream, DisposeAfterUse::Flag disposeAfterUse, uint32 size, int rate, int channels, uint32 blockAlign)
+		: ADPCMStream(stream, disposeAfterUse, size, rate, channels, blockAlign) { _decodedSampleCount = 0; }
+
+	virtual bool endOfData() const { return (_stream->eos() || _stream->pos() >= _endpos) && (_decodedSampleCount == 0); }
+
+	virtual int readBuffer(int16 *buffer, const int numSamples);
+
+protected:
+	void decodeXA(const byte *src);
+
+private:
+	uint8 _decodedSampleCount;
+	uint8 _decodedSampleIndex;
+	int16 _decodedSamples[28 * 2 * 4];
 };
 
 class Ima_ADPCMStream : public ADPCMStream {
@@ -207,6 +227,7 @@ public:
 			error("MS_ADPCMStream(): blockAlign isn't specified for MS ADPCM");
 		memset(&_status, 0, sizeof(_status));
 		_decodedSampleCount = 0;
+		_decodedSampleIndex = 0;
 	}
 
 	virtual bool endOfData() const { return (_stream->eos() || _stream->pos() >= _endpos) && (_decodedSampleCount == 0); }
@@ -218,6 +239,7 @@ protected:
 
 private:
 	uint8 _decodedSampleCount;
+	uint8 _decodedSampleIndex;
 	int16 _decodedSamples[4];
 };
 
@@ -225,20 +247,12 @@ private:
 // Based on FFmpeg's decoder and http://wiki.multimedia.cx/index.php?title=Duck_DK3_IMA_ADPCM
 
 class DK3_ADPCMStream : public Ima_ADPCMStream {
-protected:
-
-	void reset() {
-		Ima_ADPCMStream::reset();
-		_topNibble = false;
-	}
-
 public:
 	DK3_ADPCMStream(Common::SeekableReadStream *stream, DisposeAfterUse::Flag disposeAfterUse, uint32 size, int rate, int channels, uint32 blockAlign)
 		: Ima_ADPCMStream(stream, disposeAfterUse, size, rate, channels, blockAlign) {
 
 		// DK3 only works as a stereo stream
 		assert(channels == 2);
-		_topNibble = false;
 	}
 
 	virtual int readBuffer(int16 *buffer, const int numSamples);

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -28,6 +27,7 @@
 #include "common/list.h"
 #include "common/file.h"
 #include "common/ptr.h"
+#include "common/str-array.h"
 #include "common/textconsole.h"
 
 namespace Lure {
@@ -403,7 +403,7 @@ private:
 	int _numParams;
 public:
 	CharacterScheduleEntry() { _action = NONE; _parent = NULL; }
-	CharacterScheduleEntry(Action theAction, ...);
+	CharacterScheduleEntry(int theAction, ...);
 	CharacterScheduleEntry(CharacterScheduleSet *parentSet,
 		CharacterScheduleResource *&rec);
 	CharacterScheduleEntry(CharacterScheduleEntry *src);
@@ -411,7 +411,7 @@ public:
 	Action action() { return _action; }
 	int numParams() { return _numParams; }
 	uint16 param(int index);
-	void setDetails(Action theAction, ...);
+	void setDetails(int theAction, ...);
 	void setDetails2(Action theAction, int numParamEntries, uint16 *paramList);
 	CharacterScheduleEntry *next();
 	CharacterScheduleSet *parent() { return _parent; }
@@ -850,22 +850,19 @@ enum StringEnum {S_CREDITS = 25, S_RESTART_GAME = 26, S_SAVE_GAME = 27, S_RESTOR
 
 class StringList {
 private:
-	MemoryBlock *_data;
-	int _numEntries;
-	char **_entries;
+	Common::StringArray _entries;
 public:
-	StringList() { _numEntries = 0; }
-	~StringList() { clear(); }
+	StringList() {}
 
 	void load(MemoryBlock *data);
 	void clear();
-	int count() { return _numEntries; }
+	int count() { return _entries.size(); }
 	const char *getString(int index) {
-		if ((index < 0) || (index >= _numEntries)) error("Invalid index specified to String List");
-		return _entries[index];
+		return _entries[index].c_str();
 	}
-	const char *getString(Action action) { return getString((int) action - 1); }
-	const char *getString(StringEnum sEnum) { return getString((int) sEnum); }
+	const char *getString(Action action) { return getString((int)action - 1); }
+	const char *getString(StringEnum sEnum) { return getString((int)sEnum); }
+	void setString(Action action, const Common::String &s) { _entries[(int)action - 1] = s; }
 };
 
 // The following class holds the field list used by the script engine as

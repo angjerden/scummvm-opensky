@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -55,7 +54,7 @@ public:
 	Archive();
 	virtual ~Archive();
 
-	bool openFile(const Common::String &fileName);
+	bool openFile(const Common::Path &fileName);
 	virtual bool openStream(Common::SeekableReadStream *stream) = 0;
 	void close();
 
@@ -90,9 +89,9 @@ protected:
 class ComposerArchive : public Archive {
 public:
 	ComposerArchive() : Archive() {}
-	~ComposerArchive() {}
+	~ComposerArchive() override {}
 
-	bool openStream(Common::SeekableReadStream *stream);
+	bool openStream(Common::SeekableReadStream *stream) override;
 };
 
 struct PipeResourceEntry {
@@ -106,7 +105,7 @@ struct PipeResource {
 
 class Pipe {
 public:
-	Pipe(Common::SeekableReadStream *stream);
+	Pipe(Common::SeekableReadStream *stream, uint16 id);
 	virtual ~Pipe();
 	virtual void nextFrame();
 
@@ -116,6 +115,11 @@ public:
 	Common::SeekableReadStream *getResource(uint32 tag, uint16 id, bool buffering);
 
 	virtual const Common::Array<uint16> *getScripts() { return NULL; }
+	uint16 getPipeId() const { return _pipeId; }
+	virtual uint32 getOffset() const { return _offset; }
+	virtual void setOffset(uint32 offset) { while (_offset < offset) nextFrame(); }
+	typedef Common::HashMap<uint32, Common::List<uint16> > DelMap;
+	DelMap _bufferedResources;
 
 protected:
 	Common::SeekableReadStream *_stream;
@@ -123,16 +127,19 @@ protected:
 	typedef Common::HashMap<uint16, PipeResource> ResourceMap;
 	typedef Common::HashMap<uint32, ResourceMap> TypeMap;
 	TypeMap _types;
+	uint16 _pipeId;
 
 	uint32 _offset;
 };
 
 class OldPipe : public Pipe {
 public:
-	OldPipe(Common::SeekableReadStream *stream);
-	void nextFrame();
+	OldPipe(Common::SeekableReadStream *stream, uint16 pipeId);
+	void nextFrame() override;
 
-	const Common::Array<uint16> *getScripts() { return &_scripts; }
+	const Common::Array<uint16> *getScripts() override { return &_scripts; }
+	uint32 getOffset() const override { return _currFrame; }
+	void setOffset(uint32 offset) override { while (_currFrame < offset) nextFrame(); }
 
 protected:
 	uint32 _currFrame, _numFrames;

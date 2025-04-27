@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -52,7 +51,7 @@ public:
 	Common::String _character;
 
 protected:
-	int PreFunctionInvokation(lua_State *L) {
+	int preFunctionInvocation(lua_State *L) override {
 		lua_pushstring(L, _character.c_str());
 		return 1;
 	}
@@ -69,7 +68,7 @@ public:
 	InputEngine::KEY_COMMANDS _command;
 
 protected:
-	int preFunctionInvokation(lua_State *L) {
+	int preFunctionInvocation(lua_State *L) override {
 		lua_pushnumber(L, _command);
 		return 1;
 	}
@@ -164,10 +163,38 @@ static int wasKeyDown(lua_State *L) {
 	return 1;
 }
 
+static int setMouseX(lua_State *L) {
+	InputEngine *pIE = getIE();
+
+	pIE->setMouseX((int)luaL_checknumber(L, 1));
+	return 0;
+}
+
+static int setMouseY(lua_State *L) {
+	InputEngine *pIE = getIE();
+
+	pIE->setMouseY((int)luaL_checknumber(L, 1));
+	return 0;
+}
+
 static void theCharacterCallback(int character) {
 	characterCallbackPtr->_character = static_cast<byte>(character);
 	lua_State *L = static_cast<lua_State *>(Kernel::getInstance()->getScript()->getScriptObject());
 	characterCallbackPtr->invokeCallbackFunctions(L, 1);
+}
+
+static int registerCharacterCallback(lua_State *L) {
+	luaL_checktype(L, 1, LUA_TFUNCTION);
+	characterCallbackPtr->registerCallbackFunction(L, 1);
+
+	return 0;
+}
+
+static int unregisterCharacterCallback(lua_State *L) {
+	luaL_checktype(L, 1, LUA_TFUNCTION);
+	characterCallbackPtr->unregisterCallbackFunction(L, 1);
+
+	return 0;
 }
 
 static void theCommandCallback(int command) {
@@ -176,10 +203,18 @@ static void theCommandCallback(int command) {
 	commandCallbackPtr->invokeCallbackFunctions(L, 1);
 }
 
-// Marks a function that should never be used
-static int dummyFuncError(lua_State *L) {
-	error("Dummy function invoked by LUA");
-	return 1;
+static int registerCommandCallback(lua_State *L) {
+	luaL_checktype(L, 1, LUA_TFUNCTION);
+	commandCallbackPtr->registerCallbackFunction(L, 1);
+
+	return 0;
+}
+
+static int unregisterCommandCallback(lua_State *L) {
+	luaL_checktype(L, 1, LUA_TFUNCTION);
+	commandCallbackPtr->unregisterCallbackFunction(L, 1);
+
+	return 0;
 }
 
 static const char *PACKAGE_LIBRARY_NAME = "Input";
@@ -194,14 +229,14 @@ static const luaL_reg PACKAGE_FUNCTIONS[] = {
 	{"IsLeftDoubleClick", isLeftDoubleClick},
 	{"GetMouseX", getMouseX},
 	{"GetMouseY", getMouseY},
-	{"SetMouseX", dummyFuncError},
-	{"SetMouseY", dummyFuncError},
+	{"SetMouseX", setMouseX},
+	{"SetMouseY", setMouseY},
 	{"IsKeyDown", isKeyDown},
 	{"WasKeyDown", wasKeyDown},
-	{"RegisterCharacterCallback", dummyFuncError},	// debug
-	{"UnregisterCharacterCallback", dummyFuncError},
-	{"RegisterCommandCallback", dummyFuncError},
-	{"UnregisterCommandCallback", dummyFuncError},
+	{"RegisterCharacterCallback", registerCharacterCallback},
+	{"UnregisterCharacterCallback", unregisterCharacterCallback},
+	{"RegisterCommandCallback", registerCommandCallback},
+	{"UnregisterCommandCallback", unregisterCommandCallback},
 	{0, 0}
 };
 

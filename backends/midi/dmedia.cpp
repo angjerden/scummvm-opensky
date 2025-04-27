@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -58,7 +57,7 @@ public:
 	int open();
 	bool isOpen() const { return _isOpen; }
 	void close();
-	void send(uint32 b);
+	void send(uint32 b) override;
 	void sysEx(const byte *msg, uint16 length);
 
 private:
@@ -117,7 +116,7 @@ int MidiDriver_DMEDIA::open() {
 
 	_fd = mdGetFd(_midiPort);
 	if (!_fd) {
-		warning("Failed to aquire filehandle for MIDI port %s", _midiportName);
+		warning("Failed to acquire filehandle for MIDI port %s", _midiportName);
 		mdClosePort(_midiPort);
 		return -1;
 	}
@@ -135,6 +134,8 @@ void MidiDriver_DMEDIA::close() {
 }
 
 void MidiDriver_DMEDIA::send(uint32 b) {
+	midiDriverCommonSend(b);
+
 	MDevent event;
 	byte status_byte = (b & 0x000000FF);
 	byte first_byte = (b & 0x0000FF00) >> 8;
@@ -166,7 +167,8 @@ void MidiDriver_DMEDIA::send(uint32 b) {
 	if (mdSend(_midiPort, &event, 1) != 1) {
 		warning("failed sending MIDI event (dump follows...)");
 		warning("MIDI Event (len=%u):", event.msglen);
-		for (int i = 0; i < event.msglen; i++) warning("%02x ", (int)event.msg[i]);
+		for (int i = 0; i < event.msglen; i++)
+			warning("%02x ", (int)event.msg[i]);
 	}
 }
 
@@ -175,6 +177,8 @@ void MidiDriver_DMEDIA::sysEx (const byte *msg, uint16 length) {
 	char buf [1024];
 
 	assert(length + 2 <= 256);
+
+	midiDriverCommonSysEx(msg, length);
 
 	memcpy(buf, msg, length);
 	buf[length] = MD_EOX;
@@ -186,7 +190,8 @@ void MidiDriver_DMEDIA::sysEx (const byte *msg, uint16 length) {
 
 	if (mdSend(_midiPort, &event, 1) != 1) {
 		fprintf(stderr, "failed sending MIDI SYSEX event (dump follows...)\n");
-		for (int i = 0; i < event.msglen; i++) warning("%02x ", (int)event.msg[i]);
+		for (int i = 0; i < event.msglen; i++)
+			warning("%02x ", (int)event.msg[i]);
 	}
 }
 

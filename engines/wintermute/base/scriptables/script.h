@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -33,12 +32,15 @@
 #include "engines/wintermute/base/base.h"
 #include "engines/wintermute/base/scriptables/dcscript.h"   // Added by ClassView
 #include "engines/wintermute/coll_templ.h"
+#include "engines/wintermute/persistent.h"
 
 namespace Wintermute {
 class BaseScriptHolder;
 class BaseObject;
 class ScEngine;
 class ScStack;
+class ScValue;
+
 class ScScript : public BaseClass {
 public:
 	BaseArray<int> _breakpoints;
@@ -50,7 +52,7 @@ public:
 	bool copyParameters(ScStack *stack);
 
 	void afterLoad();
-private:
+protected:
 	ScValue *_operand;
 	ScValue *_reg1;
 public:
@@ -125,7 +127,7 @@ public:
 	ScValue *_globals;
 	ScEngine *_engine;
 	int32 _currentLine;
-	bool executeInstruction();
+	virtual bool executeInstruction();
 	char *getString();
 	uint32 getDWORD();
 	double getFloat();
@@ -139,7 +141,7 @@ private:
 public:
 	Common::SeekableReadStream *_scriptStream;
 	ScScript(BaseGame *inGame, ScEngine *engine);
-	virtual ~ScScript();
+	~ScScript() override;
 	char *_filename;
 	bool _thread;
 	bool _methodThread;
@@ -162,11 +164,14 @@ private:
 	bool initScript();
 	bool initTables();
 
+	virtual void preInstHook(uint32 inst);
+	virtual void postInstHook(uint32 inst);
 
-// IWmeDebugScript interface implementation
-public:
-	virtual int dbgGetLine();
-	virtual const char *dbgGetFilename();
+#ifdef ENABLE_FOXTAIL
+	TOpcodesType _opcodesType;
+	void initOpcodesType();
+	uint32 decodeAltOpcodes(uint32 inst);
+#endif
 };
 
 } // End of namespace Wintermute

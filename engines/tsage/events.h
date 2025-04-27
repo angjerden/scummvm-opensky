@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -31,8 +30,8 @@
 
 namespace TsAGE {
 
-enum EventType {EVENT_NONE = 0, EVENT_BUTTON_DOWN = 1, EVENT_BUTTON_UP = 2, EVENT_KEYPRESS = 4,
-	EVENT_MOUSE_MOVE = 8, EVENT_UNK27 = 27};
+enum EventType {EVENT_NONE = 0, EVENT_BUTTON_DOWN = 1, EVENT_BUTTON_UP = 2, EVENT_KEYPRESS = 4, 
+	EVENT_MOUSE_MOVE = 8, EVENT_CUSTOM_ACTIONSTART = 16, EVENT_UNK27 = 27};
 
 enum ButtonShiftFlags {BTNSHIFT_LEFT = 0, BTNSHIFT_RIGHT = 3, BTNSHIFT_MIDDLE = 4};
 
@@ -51,6 +50,7 @@ public:
 	Common::Point mousePos;
 	int btnState;
 	Common::KeyState kbd;
+	Common::CustomEventType customType;
 	int ctr;
 	GfxManager *gfxMan;
 	bool handled;
@@ -143,7 +143,7 @@ public:
 	bool isCursorVisible() const;
 
 	bool pollEvent();
-	void waitForPress(int eventMask = EVENT_BUTTON_DOWN | EVENT_KEYPRESS);
+	void waitForPress(int eventMask = EVENT_BUTTON_DOWN | EVENT_CUSTOM_ACTIONSTART | EVENT_KEYPRESS);
 
 	bool getEvent(Event &evt, int eventMask = ~EVENT_MOUSE_MOVE);
 	Common::Event event() { return _event; }
@@ -153,7 +153,7 @@ public:
 	bool isInventoryIcon() const { return (_currentCursor >= 0) && (_currentCursor < 256); }
 	void proc1() { warning("TODO: EventsClass::proc1"); }
 
-	virtual void listenerSynchronize(Serializer &s);
+	void listenerSynchronize(Serializer &s) override;
 	static void loadNotifierProc(bool postFlag);
 };
 

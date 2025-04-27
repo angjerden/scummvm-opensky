@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -52,7 +51,7 @@ bool SaveManager::scummVMSaveLoadDialog(bool isSave) {
 		desc = dialog->getResultString();
 
 		if (desc.empty()) {
-			// create our own description for the saved game, the user didnt enter it
+			// create our own description for the saved game, the user didn't enter it
 			desc = dialog->createDefaultSaveDescription(slot);
 		}
 
@@ -82,7 +81,7 @@ void SaveManager::saveGame(uint slot, const Common::String &saveName, bool useSa
 		return;
 
 	Common::SaveFileManager *saveFileManager = g_system->getSavefileManager();
-	Common::OutSaveFile *file = saveFileManager->openForSaving(_engine->generateSaveFileName(slot));
+	Common::OutSaveFile *file = saveFileManager->openForSaving(_engine->getSaveStateName(slot));
 
 	writeSaveGameHeader(file, saveName, useSaveBuffer);
 
@@ -98,10 +97,6 @@ void SaveManager::saveGame(uint slot, const Common::String &saveName, bool useSa
 		flushSaveBuffer();
 
 	_lastSaveTime = g_system->getMillis();
-}
-
-void SaveManager::autoSave() {
-	saveGame(0, "Auto save", false);
 }
 
 void SaveManager::writeSaveGameHeader(Common::OutSaveFile *file, const Common::String &saveName, bool useSaveBuffer) {
@@ -128,6 +123,8 @@ void SaveManager::writeSaveGameHeader(Common::OutSaveFile *file, const Common::S
 	file->writeSint16LE(td.tm_mday);
 	file->writeSint16LE(td.tm_hour);
 	file->writeSint16LE(td.tm_min);
+
+	file->writeUint32LE(g_engine->getTotalPlayTime() / 1000);
 }
 
 Common::Error SaveManager::loadGame(int slot) {
@@ -162,8 +159,6 @@ Common::Error SaveManager::loadGame(int slot) {
 	scriptManager->deserialize(saveFile);
 
 	delete saveFile;
-	if (header.thumbnail)
-		delete header.thumbnail;
 
 	if (_engine->getGameId() == GID_NEMESIS && scriptManager->getCurrentLocation() == "tv2f") {
 		// WORKAROUND for script bug #6793: location tv2f (stairs) has two states:
@@ -186,26 +181,32 @@ Common::Error SaveManager::loadGame(int slot) {
 		}
 	}
 
+	g_engine->setTotalPlayTime(header.playTime * 1000);
+
 	return Common::kNoError;
 }
 
-bool SaveManager::readSaveGameHeader(Common::InSaveFile *in, SaveGameHeader &header) {
+bool SaveManager::readSaveGameHeader(Common::InSaveFile *in, SaveGameHeader &header, bool skipThumbnail) {
+	header.saveYear    = 0;
+	header.saveMonth   = 0;
+	header.saveDay     = 0;
+	header.saveHour    = 0;
+	header.saveMinutes = 0;
+	header.playTime    = 0;
+	header.saveName.clear();
+	header.thumbnail   = nullptr;
+	header.version     = 0;
+
 	uint32 tag = in->readUint32BE();
 	// Check if it's original savegame than fill header structure
 	if (tag == MKTAG('Z', 'N', 'S', 'G')) {
-		header.saveYear = 0;
-		header.saveMonth = 0;
-		header.saveDay = 0;
-		header.saveHour = 0;
-		header.saveMinutes = 0;
 		header.saveName = "Original Save";
-		header.thumbnail = NULL;
 		header.version = SAVE_ORIGINAL;
 		in->seek(-4, SEEK_CUR);
 		return true;
 	}
 	if (tag != SAVEGAME_ID) {
-		warning("File is not a ZVision save file. Aborting load");
+		warning("File is not a Z-Vision saved game. Aborting load");
 		return false;
 	}
 
@@ -216,45 +217,48 @@ bool SaveManager::readSaveGameHeader(Common::InSaveFile *in, SaveGameHeader &hea
 	if (header.version > SAVE_VERSION) {
 		uint tempVersion = header.version;
 		GUI::MessageDialog dialog(
-			Common::String::format(
-				"This save file uses version %u, but this engine only "
-				"supports up to version %d. You will need an updated version "
-				"of the engine to use this save file.", tempVersion, SAVE_VERSION
+			Common::U32String::format(
+				_("This saved game uses version %u, but this engine only "
+				  "supports up to version %d. You will need an updated version "
+				  "of the engine to use this saved game."), tempVersion, SAVE_VERSION
 			),
-		"OK");
+		_("OK"));
 		dialog.runModal();
 	}
 
 	// Read in the save name
-	header.saveName.clear();
 	char ch;
 	while ((ch = (char)in->readByte()) != '\0')
 		header.saveName += ch;
 
 	// Get the thumbnail
-	header.thumbnail = Graphics::loadThumbnail(*in);
-	if (!header.thumbnail)
+	if (!Graphics::loadThumbnail(*in, header.thumbnail, skipThumbnail)) {
 		return false;
+	}
 
 	// Read in save date/time
-	header.saveYear = in->readSint16LE();
-	header.saveMonth = in->readSint16LE();
-	header.saveDay = in->readSint16LE();
-	header.saveHour = in->readSint16LE();
+	header.saveYear    = in->readSint16LE();
+	header.saveMonth   = in->readSint16LE();
+	header.saveDay     = in->readSint16LE();
+	header.saveHour    = in->readSint16LE();
 	header.saveMinutes = in->readSint16LE();
+
+	if (header.version >= 2) {
+		header.playTime  = in->readUint32LE();
+	}
 
 	return true;
 }
 
 Common::SeekableReadStream *SaveManager::getSlotFile(uint slot) {
-	Common::SeekableReadStream *saveFile = g_system->getSavefileManager()->openForLoading(_engine->generateSaveFileName(slot));
+	Common::SeekableReadStream *saveFile = g_system->getSavefileManager()->openForLoading(_engine->getSaveStateName(slot));
 	if (saveFile == NULL) {
 		// Try to load standard save file
-		Common::String filename;
+		Common::Path filename;
 		if (_engine->getGameId() == GID_GRANDINQUISITOR)
-			filename = Common::String::format("inqsav%u.sav", slot);
+			filename = Common::Path(Common::String::format("inqsav%u.sav", slot));
 		else if (_engine->getGameId() == GID_NEMESIS)
-			filename = Common::String::format("nemsav%u.sav", slot);
+			filename = Common::Path(Common::String::format("nemsav%u.sav", slot));
 
 		saveFile = _engine->getSearchManager()->openFile(filename);
 		if (saveFile == NULL) {
@@ -273,11 +277,11 @@ Common::SeekableReadStream *SaveManager::getSlotFile(uint slot) {
 
 void SaveManager::prepareSaveBuffer() {
 	delete _tempThumbnail;
-	_tempThumbnail = new Common::MemoryWriteStreamDynamic;
+	_tempThumbnail = new Common::MemoryWriteStreamDynamic(DisposeAfterUse::YES);
 	Graphics::saveThumbnail(*_tempThumbnail);
 
 	delete _tempSave;
-	_tempSave = new Common::MemoryWriteStreamDynamic;
+	_tempSave = new Common::MemoryWriteStreamDynamic(DisposeAfterUse::YES);
 	_engine->getScriptManager()->serialize(_tempSave);
 }
 

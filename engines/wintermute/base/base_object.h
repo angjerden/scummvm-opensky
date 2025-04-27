@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -31,6 +30,7 @@
 
 
 #include "engines/wintermute/base/base_script_holder.h"
+#include "engines/wintermute/base/gfx/xmath.h"
 #include "engines/wintermute/persistent.h"
 #include "common/events.h"
 #include "graphics/transform_struct.h"
@@ -44,6 +44,8 @@ class BaseScriptHolder;
 class ScValue;
 class ScStack;
 class ScScript;
+class XModel;
+
 class BaseObject : public BaseScriptHolder {
 protected:
 	bool _autoSoundPanning;
@@ -77,6 +79,9 @@ protected:
 	char *_soundEvent;
 public:
 	Graphics::TSpriteBlendMode _blendMode;
+#ifdef ENABLE_WME3D
+	virtual bool renderModel();
+#endif
 	virtual bool afterMove();
 	float _scale;
 	uint32 _alphaColor;
@@ -87,7 +92,7 @@ public:
 	bool updateOneSound(BaseSound *sound);
 	int32 _sFXVolume;
 
-	virtual bool handleMouseWheel(int delta);
+	virtual bool handleMouseWheel(int32 delta);
 	virtual bool handleMouse(TMouseEvent event, TMouseButton button);
 	virtual bool handleKeypress(Common::Event *event, bool printable = false);
 	virtual int32 getHeight();
@@ -105,8 +110,8 @@ public:
 	BaseSprite *_cursor;
 	bool _sharedCursors;
 	BaseSprite *_activeCursor;
-	virtual bool saveAsText(BaseDynamicBuffer *buffer, int indent);
-	virtual bool listen(BaseScriptHolder *param1, uint32 param2);
+	bool saveAsText(BaseDynamicBuffer *buffer, int indent) override;
+	bool listen(BaseScriptHolder *param1, uint32 param2) override;
 
 	bool _movable;
 	bool _zoomable;
@@ -118,7 +123,7 @@ public:
 	bool _saveState;
 
 	BaseObject(BaseGame *inGame);
-	virtual ~BaseObject();
+	~BaseObject() override;
 	// base
 	virtual bool update()  {
 		return STATUS_FAILED;
@@ -134,13 +139,32 @@ public:
 	};
 	bool _nonIntMouseEvents;
 
+#ifdef ENABLE_WME3D
+	float _angle;
+	XModel *_xmodel;
+	XModel *_shadowModel;
+	DXMatrix _worldMatrix;
+	DXVector3 _posVector;
+	bool getMatrix(DXMatrix *modelMatrix, DXVector3 *posVect = nullptr);
+	uint32 _shadowColor;
+	BaseSurface *_shadowImage;
+	float _shadowSize;
+	float _scale3D;
+	DXVector3 _shadowLightPos;
+	bool _drawBackfaces;
+	TShadowType _shadowType;
+
+	virtual uint32 getAnimTransitionTime(char *from, char *to) {
+		return 0;
+	};
+#endif
 
 public:
 	// scripting interface
-	virtual ScValue *scGetProperty(const Common::String &name) override;
-	virtual bool scSetProperty(const char *name, ScValue *value) override;
-	virtual bool scCallMethod(ScScript *script, ScStack *stack, ScStack *thisStack, const char *name) override;
-	virtual const char *scToString() override;
+	ScValue *scGetProperty(const Common::String &name) override;
+	bool scSetProperty(const char *name, ScValue *value) override;
+	bool scCallMethod(ScScript *script, ScStack *stack, ScStack *thisStack, const char *name) override;
+	const char *scToString() override;
 };
 
 } // End of namespace Wintermute

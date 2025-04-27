@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -39,7 +38,7 @@ private:
 	/**
 	 * Private variables related to log files.
 	 */
-	Common::String _logDirectory;
+	Common::Path _logDirectory;
 	Common::String _logFilename;
 	Common::WriteStream *_ws;
 
@@ -54,6 +53,10 @@ private:
 	 */
 	bool _isInteractive;
 	bool _isGameDataFound;
+#ifdef USE_LIBCURL
+	bool _isCloudTestCallbackCalled;
+	bool _isCloudTestErrorCallbackCalled;
+#endif
 	bool _rerunTests;
 	TestbedConfigManager *_testbedConfMan;
 
@@ -68,11 +71,19 @@ public:
 	bool isGameDataFound() { return _isGameDataFound; }
 	void setGameDataFound(bool status) { _isGameDataFound = status; }
 
+#ifdef USE_LIBCURL
+	bool isCloudTestCallbackCalled() const { return _isCloudTestCallbackCalled; }
+	void setCloudTestCallbackCalled(bool status) { _isCloudTestCallbackCalled = status; }
+
+	bool isCloudTestErrorCallbackCalled() const { return _isCloudTestErrorCallbackCalled; }
+	void setCloudTestErrorCallbackCalled(bool status) { _isCloudTestErrorCallbackCalled = status; }
+#endif
+
 	TestbedConfigManager *getTestbedConfigManager() { return _testbedConfMan; }
 	void setTestbedConfigManager(TestbedConfigManager* confMan) { _testbedConfMan = confMan; }
 
-	Common::String &getLogDirectory() {	return _logDirectory; }
-	void setLogDirectory(const Common::String &dirname) { _logDirectory = dirname; }
+	Common::Path &getLogDirectory() {	return _logDirectory; }
+	void setLogDirectory(const Common::Path &dirname) { _logDirectory = dirname; }
 	Common::String &getLogFilename() { return _logFilename; }
 	void setLogFilename(const Common::String &filename) { _logFilename = filename; }
 
@@ -83,7 +94,7 @@ public:
 	/**
 	 * Note: To enable logging, this function must be called once first.
 	 */
-	void initLogging(const char *dirname, const char *filename, bool enable = true);
+	void initLogging(const Common::Path &dirname, const char *filename, bool enable = true);
 	void initLogging(bool enable = true);
 
 	void deleteWriteStream();

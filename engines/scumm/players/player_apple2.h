@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -25,11 +24,9 @@
 
 #include "common/mutex.h"
 #include "common/scummsys.h"
-#include "common/memstream.h"
 #include "scumm/music.h"
 #include "audio/audiostream.h"
 #include "audio/mixer.h"
-#include "audio/softsynth/sid.h"
 
 namespace Scumm {
 
@@ -234,30 +231,30 @@ public:
 	/* returns true if finished */
 	virtual bool update() = 0;
 protected:
-	Player_AppleII *_player;
+	Player_AppleII *_player = nullptr;
 };
 
 class Player_AppleII : public Audio::AudioStream, public MusicEngine {
 public:
 	Player_AppleII(ScummEngine *scumm, Audio::Mixer *mixer);
-	virtual ~Player_AppleII();
+	~Player_AppleII() override;
 
-	virtual void setMusicVolume(int vol) { _sampleConverter.setMusicVolume(vol); }
+	void setMusicVolume(int vol) override { _sampleConverter.setMusicVolume(vol); }
 	void setSampleRate(int rate) {
 		_sampleRate = rate;
 		_sampleConverter.setSampleRate(rate);
 	}
-	virtual void startSound(int sound);
-	virtual void stopSound(int sound);
-	virtual void stopAllSounds();
-	virtual int  getSoundStatus(int sound) const;
-	virtual int  getMusicTimer();
+	void startSound(int sound) override;
+	void stopSound(int sound) override;
+	void stopAllSounds() override;
+	int  getSoundStatus(int sound) const override;
+	int  getMusicTimer() override;
 
 	// AudioStream API
-	int readBuffer(int16 *buffer, const int numSamples);
-	bool isStereo() const { return false; }
-	bool endOfData() const { return false; }
-	int getRate() const { return _sampleRate; }
+	int readBuffer(int16 *buffer, const int numSamples) override;
+	bool isStereo() const override { return false; }
+	bool endOfData() const override { return false; }
+	int getRate() const override { return _sampleRate; }
 
 public:
 	void speakerToggle();
@@ -266,28 +263,26 @@ public:
 
 private:
 	// sound number
-	int _soundNr;
+	int _soundNr = 0;
 	// type of sound
-	int _type;
+	int _type = 0;
 	// number of loops left
-	int _loop;
+	int _loop = 0;
 	// global sound param list
-	const byte *_params;
+	const byte *_params = nullptr;
 	// speaker toggle state (0 / 1)
-	byte _speakerState;
+	byte _speakerState = 0;
 	// sound function
 	AppleII_SoundFunction *_soundFunc;
 	// cycle to sample converter
 	SampleConverter _sampleConverter;
 
-private:
 	ScummEngine *_vm;
 	Audio::Mixer *_mixer;
 	Audio::SoundHandle _soundHandle;
-	int _sampleRate;
+	int _sampleRate = 0;
 	Common::Mutex _mutex;
 
-private:
 	void resetState();
 	bool updateSound();
 };

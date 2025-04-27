@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -42,6 +41,8 @@ static String errorToString(ErrorCode errorCode) {
 		return _s("Game id not supported");
 	case kUnsupportedColorMode:
 		return _s("Unsupported color mode");
+	case kAudioDeviceInitFailed:
+		return _s("Audio device initialization failed");
 
 	case kReadPermissionDenied:
 		return _s("Read permission denied");
@@ -65,7 +66,7 @@ static String errorToString(ErrorCode errorCode) {
 	case kEnginePluginNotFound:
 		return _s("Could not find suitable engine plugin");
 	case kEnginePluginNotSupportSaves:
-		return _s("Engine plugin does not support save states");
+		return _s("Engine plugin does not support saved games");
 
 	case kUserCanceled:
 		return _s("User canceled");
@@ -77,11 +78,27 @@ static String errorToString(ErrorCode errorCode) {
 }
 
 Error::Error(ErrorCode code)
-	: _code(code), _desc(errorToString(code)) {
+	: _code(code), _desc() {
 }
 
 Error::Error(ErrorCode code, const String &desc)
-	: _code(code), _desc(errorToString(code) + " (" + desc + ")") {
+	: _code(code), _desc(desc) {
+}
+
+String Error::getDesc() const {
+	if (!_desc.empty()) {
+		return Common::String::format("%s (%s)", errorToString(_code).c_str(), _desc.c_str());
+	} else {
+		return errorToString(_code);
+	}
+}
+
+U32String Error::getTranslatedDesc() const {
+	if (!_desc.empty()) {
+		return Common::U32String::format("%S (%S)", _(errorToString(_code)).c_str(), _(_desc).c_str());
+	} else {
+		return _(errorToString(_code));
+	}
 }
 
 

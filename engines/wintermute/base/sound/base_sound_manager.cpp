@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -97,18 +96,22 @@ BaseSoundBuffer *BaseSoundMgr::addSound(const Common::String &filename, Audio::M
 		return nullptr;
 	}
 
+	if (filename.empty()) {
+		// At least one game, Bickadoodle, calls playSound with an empty filename, see #6594
+		BaseEngine::LOG(0, "addSound called with empty filename");
+	}
+
 	BaseSoundBuffer *sound;
 
 	Common::String useFilename = filename;
+	useFilename.toLowercase();
 	// try to switch WAV to OGG file (if available)
-	AnsiString ext = PathUtil::getExtension(filename);
-	if (StringUtil::compareNoCase(ext, "wav")) {
-		AnsiString path = PathUtil::getDirectoryName(filename);
-		AnsiString name = PathUtil::getFileNameWithoutExtension(filename);
-
-		AnsiString newFile = PathUtil::combine(path, name + "ogg");
-		if (BaseFileManager::getEngineInstance()->hasFile(newFile)) {
-			useFilename = newFile;
+	if (useFilename.hasSuffix(".wav")) {
+		Common::String oggFilename = useFilename;
+		oggFilename.erase(oggFilename.size() - 4);
+		oggFilename = oggFilename + ".ogg";
+		if (BaseFileManager::getEngineInstance()->hasFile(oggFilename)) {
+			useFilename = oggFilename;
 		}
 	}
 
@@ -186,6 +189,9 @@ bool BaseSoundMgr::setVolume(Audio::Mixer::SoundType type, int volume) {
 		break;
 	case Audio::Mixer::kPlainSoundType:
 		error("Plain sound type shouldn't be used in WME");
+		break;
+	default:
+		break;
 	}
 	g_engine->syncSoundSettings();
 

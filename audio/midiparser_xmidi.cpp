@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,12 +15,13 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "audio/midiparser.h"
+#include "audio/mididrv.h"
+#include "audio/miles.h"
 #include "common/textconsole.h"
 #include "common/util.h"
 
@@ -32,6 +33,8 @@
  */
 class MidiParser_XMIDI : public MidiParser {
 protected:
+	static const uint8 MAXIMUM_TRACK_BRANCHES = 128;
+
 	struct Loop {
 		byte *pos;
 		byte repeat;
@@ -40,25 +43,62 @@ protected:
 	Loop _loop[4];
 	int _loopCount;
 
+	/**
+	 * The sequence branches defined for each track. These point to
+	 * positions in the MIDI data.
+	 */
+	byte *_trackBranches[MAXIMUM_TRACKS][MAXIMUM_TRACK_BRANCHES];
+
 	XMidiCallbackProc _callbackProc;
 	void *_callbackData;
 
+	// We need to support XMIDI TIMB for 7th guest, which uses
+	// Miles Audio drivers. The MT32 driver needs to get the TIMB chunk, so that it
+	// can install all required timbres before the song starts playing.
+	// This contains a pointer to _driver if it supports the required
+	// interface; otherwise it is null.
+	Audio::MidiDriver_Miles_Xmidi_Timbres *_newTimbreListDriver;
+
+	byte  *_tracksTimbreList[120]; ///< Timbre-List for each track.
+	uint32 _tracksTimbreListSize[120]; ///< Size of the Timbre-List for each track.
+
 protected:
 	uint32 readVLQ2(byte * &data);
-	void parseNextEvent(EventInfo &info);
+	/**
+	 * Platform independent LE uint32 read-and-advance.
+	 * This helper function reads Little Endian 32-bit numbers
+	 * from a memory pointer, at the same time advancing
+	 * the pointer.
+	 */
+	uint32 read4low(byte *&data);
 
-	virtual void resetTracking() {
+	void parseNextEvent(EventInfo &info) override;
+
+	void resetTracking() override {
 		MidiParser::resetTracking();
 		_loopCount = -1;
 	}
-
+	void onTrackStart(uint8 track) override;
 public:
-	MidiParser_XMIDI(XMidiCallbackProc proc, void *data) : _callbackProc(proc), _callbackData(data), _loopCount(-1) {}
-	~MidiParser_XMIDI() { }
+	MidiParser_XMIDI(XMidiCallbackProc proc, void *data, int8 source = -1) :
+			MidiParser(source),
+			_callbackProc(proc),
+			_callbackData(data),
+			_newTimbreListDriver(nullptr),
+			_loopCount(-1) {
+		memset(_loop, 0, sizeof(_loop));
+		memset(_trackBranches, 0, sizeof(_trackBranches));
+		memset(_tracksTimbreList, 0, sizeof(_tracksTimbreList));
+		memset(_tracksTimbreListSize, 0, sizeof(_tracksTimbreListSize));
+	}
+	~MidiParser_XMIDI() { stopPlaying(); }
 
-	bool loadMusic(byte *data, uint32 size);
+	void setMidiDriver(MidiDriver_BASE *driver) override;
+	bool loadMusic(byte *data, uint32 size) override;
+	bool hasJumpIndex(uint8 index) override;
+	bool jumpToIndex(uint8 index, bool stopNotes) override;
+	int32 determineDataSize(Common::SeekableReadStream *stream) override;
 };
-
 
 // This is a special XMIDI variable length quantity
 uint32 MidiParser_XMIDI::readVLQ2(byte * &pos) {
@@ -69,17 +109,70 @@ uint32 MidiParser_XMIDI::readVLQ2(byte * &pos) {
 	return value;
 }
 
+uint32 MidiParser_XMIDI::read4low(byte *&data) {
+	uint32 val = READ_LE_UINT32(data);
+	data += 4;
+	return val;
+}
+
+bool MidiParser_XMIDI::hasJumpIndex(uint8 index) {
+	if (_activeTrack >= _numTracks)
+		return false;
+
+	return index < MAXIMUM_TRACK_BRANCHES && _trackBranches[_activeTrack][index] != nullptr;
+}
+
+bool MidiParser_XMIDI::jumpToIndex(uint8 index, bool stopNotes) {
+	if (_activeTrack >= _numTracks || _pause)
+		return false;
+
+	if (index >= MAXIMUM_TRACK_BRANCHES || _trackBranches[_activeTrack][index] == nullptr) {
+		warning("MidiParser-XMIDI: jumpToIndex called with invalid sequence branch index %x", index);
+		return false;
+	}
+
+	// Prevent concurrent execution of multiple jumps
+	assert(!_jumpingToTick);
+	_jumpingToTick = true;
+
+	if (stopNotes) {
+		if (!_smartJump || !_position.isTracking()) {
+			allNotesOff();
+		} else {
+			hangAllActiveNotes();
+		}
+	}
+
+	resetTracking();
+	_position._subtracks[0]._playPos = _trackBranches[_activeTrack][index];
+	parseNextEvent(*_nextEvent);
+
+	_jumpingToTick = false;
+
+	return true;
+}
+
 void MidiParser_XMIDI::parseNextEvent(EventInfo &info) {
-	info.start = _position._playPos;
-	info.delta = readVLQ2(_position._playPos);
+	byte *playPos = _position._subtracks[0]._playPos;
+	info.start = playPos;
+	info.delta = readVLQ2(playPos);
+	info.loop = false;
 
 	// Process the next event.
-	info.event = *(_position._playPos++);
+	info.event = *(playPos++);
 	switch (info.event >> 4) {
 	case 0x9: // Note On
-		info.basic.param1 = *(_position._playPos++);
-		info.basic.param2 = *(_position._playPos++);
-		info.length = readVLQ(_position._playPos);
+		info.basic.param1 = *(playPos++);
+		info.basic.param2 = *(playPos++);
+		info.length = readVLQ(playPos);
+		if (info.length == 0) {
+			// Notes with length 0 are played with a very short duration by the AIL driver.
+			// However, the MidiParser will treat notes with length 0 as "active notes"; i.e.
+			// they will only get turned off when a corresponding Note Off event is encountered.
+			// Because XMIDI does not contain Note Off events, this will cause the note to hang.
+			// Set length to 1 to prevent this from happening.
+			info.length = 1;
+		}
 		if (info.basic.param2 == 0) {
 			info.event = info.channel() | 0x80;
 			info.length = 0;
@@ -88,20 +181,20 @@ void MidiParser_XMIDI::parseNextEvent(EventInfo &info) {
 
 	case 0xC:
 	case 0xD:
-		info.basic.param1 = *(_position._playPos++);
+		info.basic.param1 = *(playPos++);
 		info.basic.param2 = 0;
 		break;
 
 	case 0x8:
 	case 0xA:
 	case 0xE:
-		info.basic.param1 = *(_position._playPos++);
-		info.basic.param2 = *(_position._playPos++);
+		info.basic.param1 = *(playPos++);
+		info.basic.param2 = *(playPos++);
 		break;
 
 	case 0xB:
-		info.basic.param1 = *(_position._playPos++);
-		info.basic.param2 = *(_position._playPos++);
+		info.basic.param1 = *(playPos++);
+		info.basic.param2 = *(playPos++);
 
 		// This isn't a full XMIDI implementation, but it should
 		// hopefully be "good enough" for most things.
@@ -109,7 +202,7 @@ void MidiParser_XMIDI::parseNextEvent(EventInfo &info) {
 		switch (info.basic.param1) {
 		// Simplified XMIDI looping.
 		case 0x74: {	// XMIDI_CONTROLLER_FOR_LOOP
-				byte *pos = _position._playPos;
+				byte *pos = playPos;
 				if (_loopCount < ARRAYSIZE(_loop) - 1)
 					_loopCount++;
 				else
@@ -120,7 +213,7 @@ void MidiParser_XMIDI::parseNextEvent(EventInfo &info) {
 				break;
 			}
 
-		case 0x75:	// XMIDI_CONTORLLER_NEXT_BREAK
+		case 0x75:	// XMIDI_CONTROLLER_NEXT_BREAK
 			if (_loopCount >= 0) {
 				if (info.basic.param2 < 64) {
 					// End the current loop.
@@ -128,12 +221,15 @@ void MidiParser_XMIDI::parseNextEvent(EventInfo &info) {
 				} else {
 					// Repeat 0 means "loop forever".
 					if (_loop[_loopCount].repeat) {
-						if (--_loop[_loopCount].repeat == 0)
+						if (--_loop[_loopCount].repeat == 0) {
 							_loopCount--;
-						else
-							_position._playPos = _loop[_loopCount].pos;
+						} else {
+							playPos = _loop[_loopCount].pos;
+							info.loop = true;
+						}
 					} else {
-						_position._playPos = _loop[_loopCount].pos;
+						playPos = _loop[_loopCount].pos;
+						info.loop = true;
 					}
 				}
 			}
@@ -144,19 +240,28 @@ void MidiParser_XMIDI::parseNextEvent(EventInfo &info) {
 				_callbackProc(info.basic.param2, _callbackData);
 			break;
 
+		case 0x78:	// XMIDI_CONTROLLER_SEQ_BRANCH_INDEX
+			// This controller marks a branch point. It is converted
+			// to an entry in the RBRN header by the XMIDI conversion
+			// tool. For playback it is unnecessary.
+			break;
+
 		case 0x6e:	// XMIDI_CONTROLLER_CHAN_LOCK
 		case 0x6f:	// XMIDI_CONTROLLER_CHAN_LOCK_PROT
 		case 0x70:	// XMIDI_CONTROLLER_VOICE_PROT
 		case 0x71:	// XMIDI_CONTROLLER_TIMBRE_PROT
 		case 0x72:	// XMIDI_CONTROLLER_BANK_CHANGE
+			// These controllers are handled in the Miles drivers
+			break;
+
 		case 0x73:	// XMIDI_CONTROLLER_IND_CTRL_PREFIX
 		case 0x76:	// XMIDI_CONTROLLER_CLEAR_BB_COUNT
-		case 0x78:	// XMIDI_CONTROLLER_SEQ_BRANCH_INDEX
 		default:
-			if (info.basic.param1 >= 0x6e && info.basic.param1 <= 0x78) {
+			if (info.basic.param1 >= 0x73 && info.basic.param1 <= 0x76) {
 				warning("Unsupported XMIDI controller %d (0x%2x)",
 					info.basic.param1, info.basic.param1);
 			}
+			break;
 		}
 
 		// Should we really keep passing the XMIDI controller events to
@@ -169,12 +274,12 @@ void MidiParser_XMIDI::parseNextEvent(EventInfo &info) {
 	case 0xF: // Meta or SysEx event
 		switch (info.event & 0x0F) {
 		case 0x2: // Song Position Pointer
-			info.basic.param1 = *(_position._playPos++);
-			info.basic.param2 = *(_position._playPos++);
+			info.basic.param1 = *(playPos++);
+			info.basic.param2 = *(playPos++);
 			break;
 
 		case 0x3: // Song Select
-			info.basic.param1 = *(_position._playPos++);
+			info.basic.param1 = *(playPos++);
 			info.basic.param2 = 0;
 			break;
 
@@ -188,16 +293,16 @@ void MidiParser_XMIDI::parseNextEvent(EventInfo &info) {
 			break;
 
 		case 0x0: // SysEx
-			info.length = readVLQ(_position._playPos);
-			info.ext.data = _position._playPos;
-			_position._playPos += info.length;
+			info.length = readVLQ(playPos);
+			info.ext.data = playPos;
+			playPos += info.length;
 			break;
 
 		case 0xF: // META event
-			info.ext.type = *(_position._playPos++);
-			info.length = readVLQ(_position._playPos);
-			info.ext.data = _position._playPos;
-			_position._playPos += info.length;
+			info.ext.type = *(playPos++);
+			info.length = readVLQ(playPos);
+			info.ext.data = playPos;
+			playPos += info.length;
 			if (info.ext.type == 0x51 && info.length == 3) {
 				// Tempo event. We want to make these constant 500,000.
 				info.ext.data[0] = 0x07;
@@ -208,8 +313,20 @@ void MidiParser_XMIDI::parseNextEvent(EventInfo &info) {
 
 		default:
 			warning("MidiParser_XMIDI::parseNextEvent: Unsupported event code %x", info.event);
+			break;
 		}
+		break;
+
+	default:
+		break;
 	}
+
+	_position._subtracks[0]._playPos = playPos;
+}
+
+void MidiParser_XMIDI::setMidiDriver(MidiDriver_BASE *driver) {
+	MidiParser::setMidiDriver(driver);
+	_newTimbreListDriver = dynamic_cast<Audio::MidiDriver_Miles_Xmidi_Timbres *>(driver);
 }
 
 bool MidiParser_XMIDI::loadMusic(byte *data, uint32 size) {
@@ -314,6 +431,11 @@ bool MidiParser_XMIDI::loadMusic(byte *data, uint32 size) {
 		}
 
 		int tracksRead = 0;
+		uint32 branchOffsets[128];
+		memset(branchOffsets, 0, sizeof(branchOffsets));
+		memset(_trackBranches, 0, sizeof(_trackBranches));
+		memset(_tracksTimbreList, 0, sizeof(_tracksTimbreList));
+		memset(_tracksTimbreListSize, 0, sizeof(_tracksTimbreListSize));
 		while (tracksRead < _numTracks) {
 			if (!memcmp(pos, "FORM", 4)) {
 				// Skip this plus the 4 bytes after it.
@@ -322,19 +444,58 @@ bool MidiParser_XMIDI::loadMusic(byte *data, uint32 size) {
 				// Skip this.
 				pos += 4;
 			} else if (!memcmp(pos, "TIMB", 4)) {
-				// Custom timbres?
-				// We don't support them.
-				// Read the length, skip it, and hope there was nothing there.
+				// Custom timbres
+				// chunk data is as follows:
+				// UINT16LE timbre count (amount of custom timbres used by this track)
+				//   BYTE     patchId
+				//   BYTE     bankId
+				//    * timbre count
 				pos += 4;
 				len = read4high(pos);
+				_tracksTimbreList[tracksRead] = pos; // Skip the length bytes
+				_tracksTimbreListSize[tracksRead] = len;
 				pos += (len + 1) & ~1;
 			} else if (!memcmp(pos, "EVNT", 4)) {
 				// Ahh! What we're looking for at last.
-				_tracks[tracksRead] = pos + 8; // Skip the EVNT and length bytes
+				_tracks[tracksRead][0] = pos + 8; // Skip the EVNT and length bytes
+				_numSubtracks[tracksRead] = 1;
 				pos += 4;
 				len = read4high(pos);
 				pos += (len + 1) & ~1;
+				// Calculate branch index positions using the track position we just found
+				for (int j = 0; j < MAXIMUM_TRACK_BRANCHES; ++j) {
+					if (branchOffsets[j] != 0) {
+						byte *branchPos = _tracks[tracksRead][0] + branchOffsets[j];
+						if (branchPos >= pos) {
+							warning("Invalid sequence branch position (after track end)");
+							branchPos = _tracks[tracksRead][0];
+						}
+						_trackBranches[tracksRead][j] = branchPos;
+					}
+				}
+				// Clear the branch offsets for the next track
+				memset(branchOffsets, 0, sizeof(branchOffsets));
 				++tracksRead;
+			} else if (!memcmp(pos, "RBRN", 4)) {
+				// optional branch point offsets
+				pos += 4;
+				len = read4high(pos);
+				uint16 numBranches = (len - 2) / 6;
+				uint16 numBranches2 = read2low(pos);
+				if (numBranches != numBranches2) {
+					warning("Number of sequence branch definitions %d does not match RBRN block length %d", numBranches2, len);
+					numBranches = 0;
+				}
+				for (int j = 0; j < numBranches; ++j) {
+					uint16 index = read2low(pos);
+					if (index >= MAXIMUM_TRACK_BRANCHES) {
+						warning("Invalid sequence branch index value %x", index);
+						pos += 4;
+						continue;
+					}
+					// This is the offset from the start of the track
+					branchOffsets[index] = read4low(pos);
+				}
 			} else {
 				warning("Hit invalid block '%c%c%c%c' while scanning for track locations", pos[0], pos[1], pos[2], pos[3]);
 				return false;
@@ -349,17 +510,65 @@ bool MidiParser_XMIDI::loadMusic(byte *data, uint32 size) {
 		_ppqn = 60;
 		resetTracking();
 		setTempo(500000);
+
+		// Start playback of the first track.
 		setTrack(0);
+
 		return true;
 	}
 
 	return false;
 }
 
+int32 MidiParser_XMIDI::determineDataSize(Common::SeekableReadStream *stream) {
+	int32 length = 0;
+
+	byte buf[4];
+	Common::fill(buf, buf + 4, 0);
+	// Read FourCC.
+	stream->read(buf, 4);
+
+	if (!memcmp(buf, "FORM", 4)) {
+		// Optional XDIR header.
+
+		// Skip over the header.
+		uint32 headerLength = stream->readUint32BE();
+		stream->seek(headerLength, SEEK_CUR);
+
+		// Read next FourCC.
+		Common::fill(buf, buf + 4, 0);
+		stream->read(buf, 4);
+
+		// Add header length to total length.
+		length += 8;
+		length += headerLength;
+	}
+
+	if (!memcmp(buf, "CAT ", 4)) {
+		// CAT chunk.
+		uint32 catLength = stream->readUint32BE();
+		// Add catalog chunk length to total length.
+		length += 8;
+		length += catLength;
+	} else {
+		// XMIDI files must have a CAT chunk.
+		warning("Expected FORM or CAT  but found '%c%c%c%c' instead", buf[0], buf[1], buf[2], buf[3]);
+		return -1;
+	}
+
+	return length;
+}
+
+void MidiParser_XMIDI::onTrackStart(uint8 track) {
+	// Load custom timbres
+	if (_newTimbreListDriver && _tracksTimbreListSize[track] > 0)
+		_newTimbreListDriver->processXMIDITimbreChunk(_tracksTimbreList[track], _tracksTimbreListSize[track]);
+}
+
 void MidiParser::defaultXMidiCallback(byte eventData, void *data) {
 	warning("MidiParser: defaultXMidiCallback(%d)", eventData);
 }
 
-MidiParser *MidiParser::createParser_XMIDI(XMidiCallbackProc proc, void *data) {
-	return new MidiParser_XMIDI(proc, data);
+MidiParser *MidiParser::createParser_XMIDI(XMidiCallbackProc proc, void *data, int source) {
+	return new MidiParser_XMIDI(proc, data, source);
 }

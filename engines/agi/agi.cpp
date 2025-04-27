@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,13 +15,11 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "common/md5.h"
-#include "common/events.h"
 #include "common/file.h"
 #include "common/memstream.h"
 #include "common/savefile.h"
@@ -38,13 +36,19 @@
 #include "graphics/cursorman.h"
 
 #include "audio/mididrv.h"
-#include "audio/mixer.h"
 
 #include "agi/agi.h"
+#include "agi/detection.h"
+#include "agi/font.h"
 #include "agi/graphics.h"
+#include "agi/inv.h"
+#include "agi/loader.h"
 #include "agi/sprite.h"
+#include "agi/text.h"
 #include "agi/keyboard.h"
 #include "agi/menu.h"
+#include "agi/systemui.h"
+#include "agi/words.h"
 
 #include "gui/predictivedialog.h"
 
@@ -54,280 +58,25 @@ void AgiEngine::allowSynthetic(bool allow) {
 	_allowSynthetic = allow;
 }
 
-void AgiEngine::processEvents() {
-	Common::Event event;
-	int key = 0;
-
-	while (_eventMan->pollEvent(event)) {
-		switch (event.type) {
-		case Common::EVENT_PREDICTIVE_DIALOG: {
-			GUI::PredictiveDialog _predictiveDialog;
-			_predictiveDialog.runModal();
-			strcpy(_predictiveResult, _predictiveDialog.getResult());
-			if (strcmp(_predictiveResult, "")) {
-				if (_game.inputMode == INPUT_NORMAL) {
-					strcpy((char *)_game.inputBuffer, _predictiveResult);
-					handleKeys(KEY_ENTER);
-				} else if (_game.inputMode == INPUT_GETSTRING) {
-					strcpy(_game.strings[_stringdata.str], _predictiveResult);
-					newInputMode(INPUT_NORMAL);
-					_gfx->printCharacter(_stringdata.x + strlen(_game.strings[_stringdata.str]) + 1,
-							_stringdata.y, ' ', _game.colorFg, _game.colorBg);
-				} else if (_game.inputMode == INPUT_NONE) {
-					for (int n = 0; _predictiveResult[n]; n++)
-						keyEnqueue(_predictiveResult[n]);
-				}
-			}
-			/*
-			if (predictiveDialog()) {
-				if (_game.inputMode == INPUT_NORMAL) {
-					strcpy((char *)_game.inputBuffer, _predictiveResult);
-					handleKeys(KEY_ENTER);
-				} else if (_game.inputMode == INPUT_GETSTRING) {
-					strcpy(_game.strings[_stringdata.str], _predictiveResult);
-					newInputMode(INPUT_NORMAL);
-					_gfx->printCharacter(_stringdata.x + strlen(_game.strings[_stringdata.str]) + 1,
-							_stringdata.y, ' ', _game.colorFg, _game.colorBg);
-				} else if (_game.inputMode == INPUT_NONE) {
-					for (int n = 0; _predictiveResult[n]; n++)
-						keyEnqueue(_predictiveResult[n]);
-				}
-			}
-			*/
-			}
-			break;
-		case Common::EVENT_LBUTTONDOWN:
-			if (_game.mouseEnabled) {
-				key = BUTTON_LEFT;
-				_mouse.button = kAgiMouseButtonLeft;
-				keyEnqueue(key);
-				_mouse.x = event.mouse.x;
-				_mouse.y = event.mouse.y;
-			}
-			break;
-		case Common::EVENT_RBUTTONDOWN:
-			if (_game.mouseEnabled) {
-				key = BUTTON_RIGHT;
-				_mouse.button = kAgiMouseButtonRight;
-				keyEnqueue(key);
-				_mouse.x = event.mouse.x;
-				_mouse.y = event.mouse.y;
-			}
-			break;
-		case Common::EVENT_WHEELUP:
-			if (_game.mouseEnabled) {
-				key = WHEEL_UP;
-				keyEnqueue(key);
-			}
-			break;
-		case Common::EVENT_WHEELDOWN:
-			if (_game.mouseEnabled) {
-				key = WHEEL_DOWN;
-				keyEnqueue(key);
-			}
-			break;
-		case Common::EVENT_MOUSEMOVE:
-			if (_game.mouseEnabled) {
-				_mouse.x = event.mouse.x;
-				_mouse.y = event.mouse.y;
-
-				if (!_game.mouseFence.isEmpty()) {
-					if (_mouse.x < _game.mouseFence.left)
-						_mouse.x = _game.mouseFence.left;
-					if (_mouse.x > _game.mouseFence.right)
-						_mouse.x = _game.mouseFence.right;
-					if (_mouse.y < _game.mouseFence.top)
-						_mouse.y = _game.mouseFence.top;
-					if (_mouse.y > _game.mouseFence.bottom)
-						_mouse.y = _game.mouseFence.bottom;
-
-					g_system->warpMouse(_mouse.x, _mouse.y);
-				}
-			}
-
-			break;
-		case Common::EVENT_LBUTTONUP:
-		case Common::EVENT_RBUTTONUP:
-			if (_game.mouseEnabled) {
-				_mouse.button = kAgiMouseButtonUp;
-				_mouse.x = event.mouse.x;
-				_mouse.y = event.mouse.y;
-			}
-			break;
-		case Common::EVENT_KEYDOWN:
-			if (event.kbd.hasFlags(Common::KBD_CTRL) && event.kbd.keycode == Common::KEYCODE_d) {
-				_console->attach();
-				break;
-			}
-
-			switch (key = event.kbd.keycode) {
-			case Common::KEYCODE_LEFT:
-			case Common::KEYCODE_KP4:
-				if (_allowSynthetic || !event.synthetic)
-					key = KEY_LEFT;
-				break;
-			case Common::KEYCODE_RIGHT:
-			case Common::KEYCODE_KP6:
-				if (_allowSynthetic || !event.synthetic)
-					key = KEY_RIGHT;
-				break;
-			case Common::KEYCODE_UP:
-			case Common::KEYCODE_KP8:
-				if (_allowSynthetic || !event.synthetic)
-					key = KEY_UP;
-				break;
-			case Common::KEYCODE_DOWN:
-			case Common::KEYCODE_KP2:
-				if (_allowSynthetic || !event.synthetic)
-					key = KEY_DOWN;
-				break;
-			case Common::KEYCODE_PAGEUP:
-			case Common::KEYCODE_KP9:
-				if (_allowSynthetic || !event.synthetic)
-					key = KEY_UP_RIGHT;
-				break;
-			case Common::KEYCODE_PAGEDOWN:
-			case Common::KEYCODE_KP3:
-				if (_allowSynthetic || !event.synthetic)
-					key = KEY_DOWN_RIGHT;
-				break;
-			case Common::KEYCODE_HOME:
-			case Common::KEYCODE_KP7:
-				if (_allowSynthetic || !event.synthetic)
-					key = KEY_UP_LEFT;
-				break;
-			case Common::KEYCODE_END:
-			case Common::KEYCODE_KP1:
-				if (_allowSynthetic || !event.synthetic)
-					key = KEY_DOWN_LEFT;
-				break;
-			case Common::KEYCODE_KP5:
-				key = KEY_STATIONARY;
-				break;
-			case Common::KEYCODE_PLUS:
-				key = '+';
-				break;
-			case Common::KEYCODE_MINUS:
-				key = '-';
-				break;
-			case Common::KEYCODE_TAB:
-				key = 0x0009;
-				break;
-			case Common::KEYCODE_F1:
-				key = 0x3b00;
-				break;
-			case Common::KEYCODE_F2:
-				key = 0x3c00;
-				break;
-			case Common::KEYCODE_F3:
-				key = 0x3d00;
-				break;
-			case Common::KEYCODE_F4:
-				key = 0x3e00;
-				break;
-			case Common::KEYCODE_F5:
-				key = 0x3f00;
-				break;
-			case Common::KEYCODE_F6:
-				key = 0x4000;
-				break;
-			case Common::KEYCODE_F7:
-				key = 0x4100;
-				break;
-			case Common::KEYCODE_F8:
-				key = 0x4200;
-				break;
-			case Common::KEYCODE_F9:
-				key = 0x4300;
-				break;
-			case Common::KEYCODE_F10:
-				key = 0x4400;
-				break;
-			case Common::KEYCODE_F11:
-				key = KEY_STATUSLN;
-				break;
-			case Common::KEYCODE_F12:
-				key = KEY_PRIORITY;
-				break;
-			case Common::KEYCODE_ESCAPE:
-				key = 0x1b;
-				break;
-			case Common::KEYCODE_RETURN:
-			case Common::KEYCODE_KP_ENTER:
-				key = KEY_ENTER;
-				break;
-			case Common::KEYCODE_BACKSPACE:
-				key = KEY_BACKSPACE;
-				break;
-			default:
-				// Not a special key, so get the ASCII code for it
-				key = event.kbd.ascii;
-
-				if (Common::isAlpha(key)) {
-					// Key is A-Z.
-					// Map Ctrl-A to 1, Ctrl-B to 2, etc.
-					if (event.kbd.flags & Common::KBD_CTRL) {
-						key = toupper(key) - 'A' + 1;
-					} else if (event.kbd.flags & Common::KBD_ALT) {
-						// Map Alt-A, Alt-B etc. to special scancode values according to an internal scancode table.
-						key = scancodeTable[toupper(key) - 'A'] << 8;
-					}
-				}
-				break;
-			}
-			if (key)
-				keyEnqueue(key);
-			break;
-
-		case Common::EVENT_KEYUP:
-			if (_egoHoldKey)
-				_game.viewTable[0].direction = 0;
-
-		default:
-			break;
-		}
-	}
-}
-
-void AgiEngine::pollTimer() {
-	_lastTick += 50;
-
-	while (_system->getMillis() < _lastTick) {
-		processEvents();
-		_console->onFrame();
-		_system->delayMillis(10);
-		_system->updateScreen();
-	}
-
-	_lastTick = _system->getMillis();
-}
-
-void AgiEngine::pause(uint32 msec) {
+void AgiEngine::wait(uint32 msec, bool busy) {
 	uint32 endTime = _system->getMillis() + msec;
 
-	_gfx->setCursor(_renderMode == Common::kRenderAmiga, true);
+	if (busy) {
+		_gfx->setMouseCursor(true); // Busy mouse cursor
+	}
 
-	while (_system->getMillis() < endTime) {
-		processEvents();
+	do {
+		processScummVMEvents();
 		_system->updateScreen();
 		_system->delayMillis(10);
-	}
-	_gfx->setCursor(_renderMode == Common::kRenderAmiga);
-}
+	} while (_system->getMillis() < endTime);
 
-void AgiEngine::initPriTable() {
-	int i, p, y = 0;
-
-	for (p = 1; p < 15; p++) {
-		for (i = 0; i < 12; i++) {
-			_game.priTable[y++] = p < 4 ? 4 : p;
-		}
+	if (busy) {
+		_gfx->setMouseCursor(); // regular mouse cursor
 	}
 }
 
 int AgiEngine::agiInit() {
-	int ec, i;
-
 	debug(2, "initializing");
 	debug(2, "game version = 0x%x", getVersion());
 
@@ -335,42 +84,42 @@ int AgiEngine::agiInit() {
 	_game.adjMouseX = _game.adjMouseY = 0;
 
 	// reset all flags to false and all variables to 0
-	for (i = 0; i < MAX_FLAGS; i++)
-		_game.flags[i] = 0;
-	for (i = 0; i < MAX_VARS; i++)
-		_game.vars[i] = 0;
+	memset(_game.flags, 0, sizeof(_game.flags));
+	memset(_game.vars, 0, sizeof(_game.vars));
 
 	// clear all resources and events
-	for (i = 0; i < MAX_DIRS; i++) {
-		memset(&_game.views[i], 0, sizeof(struct AgiView));
-		memset(&_game.pictures[i], 0, sizeof(struct AgiPicture));
-		memset(&_game.logics[i], 0, sizeof(struct AgiLogic));
-		memset(&_game.sounds[i], 0, sizeof(class AgiSound *)); // _game.sounds contains pointers now
-		memset(&_game.dirView[i], 0, sizeof(struct AgiDir));
-		memset(&_game.dirPic[i], 0, sizeof(struct AgiDir));
-		memset(&_game.dirLogic[i], 0, sizeof(struct AgiDir));
-		memset(&_game.dirSound[i], 0, sizeof(struct AgiDir));
+	for (int i = 0; i < MAX_DIRECTORY_ENTRIES; i++) {
+		_game.views[i].reset();
+		_game.pictures[i].reset();
+		_game.logics[i].reset();
+		_game.sounds[i] = nullptr; // _game.sounds contains pointers now
+		_game.dirView[i].reset();
+		_game.dirPic[i].reset();
+		_game.dirLogic[i].reset();
+		_game.dirSound[i].reset();
 	}
 
 	// clear view table
-	for (i = 0; i < MAX_VIEWTABLE; i++)
-		memset(&_game.viewTable[i], 0, sizeof(struct VtEntry));
+	for (int i = 0; i < SCREENOBJECTS_MAX; i++) {
+		_game.screenObjTable[i].reset();
+	}
 
-	initWords();
+	_game.addToPicView.reset();
+
+	_words->clearEgoWords();
 
 	if (!_menu)
-		_menu = new Menu(this, _gfx, _picture);
+		_menu = new GfxMenu(this, _gfx, _picture, _text);
 
-	initPriTable();
+	_gfx->initPriorityTable();
 
 	// Clear the string buffer on startup, but not when the game restarts, as
 	// some scripts expect that the game strings remain unaffected after a
 	// restart. An example is script 98 in SQ2, which is not invoked on restart
 	// to ask Ego's name again. The name is supposed to be maintained in string 1.
-	// Fixes bug #3292784.
+	// Fixes bug #5673.
 	if (!_restartGame) {
-		for (i = 0; i < MAX_STRINGS; i++)
-			_game.strings[i][0] = 0;
+		memset(_game.strings, 0, sizeof(_game.strings));
 	}
 
 	// setup emulation
@@ -378,107 +127,173 @@ int AgiEngine::agiInit() {
 	switch (getVersion() >> 12) {
 	case 2:
 		debug("Emulating Sierra AGI v%x.%03x",
-				(int)(getVersion() >> 12) & 0xF,
-				(int)(getVersion()) & 0xFFF);
+		      (int)(getVersion() >> 12) & 0xF,
+		      (int)(getVersion()) & 0xFFF);
 		break;
 	case 3:
 		debug("Emulating Sierra AGI v%x.002.%03x",
-				(int)(getVersion() >> 12) & 0xF,
-				(int)(getVersion()) & 0xFFF);
+		      (int)(getVersion() >> 12) & 0xF,
+		      (int)(getVersion()) & 0xFFF);
+		break;
+	default:
+		warning("Unknown AGI Emulation Version %x", (int)(getVersion() >> 12));
 		break;
 	}
 
 	if (getPlatform() == Common::kPlatformAmiga)
-		_game.gameFlags |= ID_AMIGA;
-
-	if (getFeatures() & GF_AGDS)
-		_game.gameFlags |= ID_AGDS;
-
-	// Make the 256 color AGI screen the default AGI screen when AGI256 or AGI256-2 is used
-	if (getFeatures() & (GF_AGI256 | GF_AGI256_2))
-		_game.sbuf = _game.sbuf256c;
-
-	if (_game.gameFlags & ID_AMIGA)
 		debug(1, "Amiga padded game detected.");
 
-	if (_game.gameFlags & ID_AGDS)
+	if (getFeatures() & GF_AGDS)
 		debug(1, "AGDS mode enabled.");
 
-	ec = _loader->init();	// load vol files, etc
+	int ec = _loader->loadDirs();
 
 	if (ec == errOK)
-		ec = _loader->loadObjects(OBJECTS);
+		ec = _loader->loadObjects();
 
-	// note: demogs has no words.tok
+	// note: demos has no words.tok
 	if (ec == errOK)
-		ec = _loader->loadWords(WORDS);
-
-	// FIXME: load IIgs instruments and samples
-	// load_instruments("kq.sys16");
+		ec = _loader->loadWords();
 
 	// Load logic 0 into memory
 	if (ec == errOK)
-		ec = _loader->loadResource(rLOGIC, 0);
+		ec = loadResource(RESOURCETYPE_LOGIC, 0);
 
-#ifdef __DS__
-	// Normally, the engine loads the predictive text dictionary when the predictive dialog
-	// is shown.  On the DS version, the word completion feature needs the dictionary too.
-
-	// FIXME - loadDict() no long exists in AGI as this has been moved to within the
-	// GUI Predictive Dialog, but DS Word Completion is probably broken due to this...
-#endif
-
-	_egoHoldKey = false;
+	_keyHoldMode = false;
+	_keyHoldModeLastKey = Common::KEYCODE_INVALID;
 
 	_game.mouseFence.setWidth(0); // Reset
 
+	// Reset in-game timer
+	inGameTimerReset();
+
+	applyVolumeToMixer();
+
+	// Error on Game Adaptation Language, because it is not implemented yet.
+	// This allows testing the GAL components that have been developed, such
+	// as the resource loader, with our debug console.
+	if (getGameType() == GType_GAL) {
+		error("Game Adaptation Language not implemented yet");
+	}
+
 	return ec;
 }
 
-/*
- * Public functions
- */
-
-void AgiEngine::agiUnloadResources() {
-	int i;
-
+void AgiEngine::unloadResources() {
 	// Make sure logic 0 is always loaded
-	for (i = 1; i < MAX_DIRS; i++) {
-		_loader->unloadResource(rLOGIC, i);
+	for (int i = 1; i < MAX_DIRECTORY_ENTRIES; i++) {
+		unloadResource(RESOURCETYPE_LOGIC, i);
 	}
-	for (i = 0; i < MAX_DIRS; i++) {
-		_loader->unloadResource(rVIEW, i);
-		_loader->unloadResource(rPICTURE, i);
-		_loader->unloadResource(rSOUND, i);
+	for (int i = 0; i < MAX_DIRECTORY_ENTRIES; i++) {
+		unloadResource(RESOURCETYPE_VIEW, i);
+		unloadResource(RESOURCETYPE_PICTURE, i);
+		unloadResource(RESOURCETYPE_SOUND, i);
 	}
 }
 
-int AgiEngine::agiDeinit() {
-	int ec;
+void AgiEngine::agiDeinit() {
+	if (!_loader)
+		return;
 
-	cleanInput();		// remove all words from memory
-	agiUnloadResources();	// unload resources in memory
-	_loader->unloadResource(rLOGIC, 0);
-	ec = _loader->deinit();
-	unloadObjects();
-	unloadWords();
+	_words->clearEgoWords(); // remove all words from memory
+	unloadResources();    // unload resources in memory
+	unloadResource(RESOURCETYPE_LOGIC, 0);
+	_objects.clear();
+	_words->unloadDictionary();
 
 	clearImageStack();
-
-	return ec;
 }
 
-int AgiEngine::agiLoadResource(int r, int n) {
-	int i;
+int AgiEngine::loadResource(int16 resourceType, int16 resourceNr) {
+	if (resourceNr >= MAX_DIRECTORY_ENTRIES)
+		return errBadResource;
 
-	i = _loader->loadResource(r, n);
+	int ec = errOK;
+	uint8 *data = nullptr;
+	switch (resourceType) {
+	case RESOURCETYPE_LOGIC:
+		if (~_game.dirLogic[resourceNr].flags & RES_LOADED) {
+			unloadResource(RESOURCETYPE_LOGIC, resourceNr);
+
+			// load raw resource into data
+			data = _loader->loadVolumeResource(&_game.dirLogic[resourceNr]);
+			_game.logics[resourceNr].data = data;
+
+			// uncompressed logic files need to be decrypted
+			if (data != nullptr) {
+				// RES_LOADED flag gets set by decode logic
+				ec = decodeLogic(resourceNr);
+				_game.logics[resourceNr].sIP = 2;
+			} else {
+				ec = errBadResource;
+			}
+		}
+
+		// reset code pointer in case logic was cached
+		_game.logics[resourceNr].cIP = _game.logics[resourceNr].sIP;
+		break;
+
+	case RESOURCETYPE_PICTURE:
+		if (~_game.dirPic[resourceNr].flags & RES_LOADED) {
+			// if loaded but not cached, unload it
+			// if cached but not loaded, etc
+			unloadResource(RESOURCETYPE_PICTURE, resourceNr);
+			data = _loader->loadVolumeResource(&_game.dirPic[resourceNr]);
+
+			if (data != nullptr) {
+				_game.pictures[resourceNr].rdata = data;
+				_game.dirPic[resourceNr].flags |= RES_LOADED;
+			} else {
+				ec = errBadResource;
+			}
+		}
+		break;
+
+	case RESOURCETYPE_SOUND:
+		if (~_game.dirSound[resourceNr].flags & RES_LOADED) {
+			data = _loader->loadVolumeResource(&_game.dirSound[resourceNr]);
+
+			// "data" is freed by objects created by createFromRawResource on success
+			const bool isAgiV1 = (getVersion() <= 0x2001);
+			_game.sounds[resourceNr] = AgiSound::createFromRawResource(data, _game.dirSound[resourceNr].len, resourceNr, _soundemu, isAgiV1);
+			if (_game.sounds[resourceNr] != nullptr) {
+				_game.dirSound[resourceNr].flags |= RES_LOADED;
+			} else {
+				free(data);
+				ec = errBadResource;
+			}
+		}
+		break;
+
+	case RESOURCETYPE_VIEW:
+		// Load a VIEW resource into memory...
+		// Since VIEWS alter the view table ALL the time
+		// can we cache the view? or must we reload it all
+		// the time?
+		if (~_game.dirView[resourceNr].flags & RES_LOADED) {
+			unloadResource(RESOURCETYPE_VIEW, resourceNr);
+			data = _loader->loadVolumeResource(&_game.dirView[resourceNr]);
+			if (data) {
+				_game.dirView[resourceNr].flags |= RES_LOADED;
+				ec = decodeView(data, _game.dirView[resourceNr].len, resourceNr);
+				free(data);
+			} else {
+				ec = errBadResource;
+			}
+		}
+		break;
+
+	default:
+		ec = errBadResource;
+		break;
+	}
 
 	// WORKAROUND: Patches broken picture 147 in a corrupted Amiga version of Gold Rush! (v2.05 1989-03-09).
 	// The picture can be seen in room 147 after dropping through the outhouse's hole in room 146.
-	if (i == errOK && getGameID() == GID_GOLDRUSH && r == rPICTURE && n == 147 && _game.dirPic[n].len == 1982) {
-		uint8 *pic = _game.pictures[n].rdata;
-		Common::MemoryReadStream picStream(pic, _game.dirPic[n].len);
-		Common::String md5str = Common::computeStreamMD5AsString(picStream, _game.dirPic[n].len);
+	if (ec == errOK && getGameID() == GID_GOLDRUSH && resourceType == RESOURCETYPE_PICTURE && resourceNr == 147 && _game.dirPic[resourceNr].len == 1982) {
+		uint8 *pic = _game.pictures[resourceNr].rdata;
+		Common::MemoryReadStream picStream(pic, _game.dirPic[resourceNr].len);
+		Common::String md5str = Common::computeStreamMD5AsString(picStream, _game.dirPic[resourceNr].len);
 		if (md5str == "1c685eb048656cedcee4eb6eca2cecea") {
 			pic[0x042] = 0x4B; // 0x49 -> 0x4B
 			pic[0x043] = 0x66; // 0x26 -> 0x66
@@ -489,11 +304,34 @@ int AgiEngine::agiLoadResource(int r, int n) {
 		}
 	}
 
-	return i;
+	return ec;
 }
 
-int AgiEngine::agiUnloadResource(int r, int n) {
-	return _loader->unloadResource(r, n);
+void AgiEngine::unloadResource(int16 resourceType, int16 resourceNr) {
+	switch (resourceType) {
+	case RESOURCETYPE_LOGIC:
+		unloadLogic(resourceNr);
+		break;
+	case RESOURCETYPE_PICTURE:
+		unloadPicture(resourceNr);
+		break;
+	case RESOURCETYPE_VIEW:
+		unloadView(resourceNr);
+		break;
+	case RESOURCETYPE_SOUND:
+		_sound->unloadSound(resourceNr);
+		break;
+	default:
+		break;
+	}
+}
+
+void AgiEngine::unloadPicture(int16 picNr) {
+	if (_game.dirPic[picNr].flags & RES_LOADED) {
+		free(_game.pictures[picNr].rdata);
+		_game.pictures[picNr].rdata = nullptr;
+		_game.dirPic[picNr].flags &= ~RES_LOADED;
+	}
 }
 
 struct GameSettings {
@@ -505,15 +343,10 @@ struct GameSettings {
 };
 
 AgiBase::AgiBase(OSystem *syst, const AGIGameDescription *gameDesc) : Engine(syst), _gameDescription(gameDesc) {
-	// Assign default values to the config manager, in case settings are missing
-	ConfMan.registerDefault("originalsaveload", "false");
-	ConfMan.registerDefault("altamigapalette", "false");
-	ConfMan.registerDefault("mousesupport", "true");
-
 	_noSaveLoadAllowed = false;
 
 	_rnd = new Common::RandomSource("agi");
-	_sound = 0;
+	_sound = nullptr;
 
 	initFeatures();
 	initVersion();
@@ -521,100 +354,122 @@ AgiBase::AgiBase(OSystem *syst, const AGIGameDescription *gameDesc) : Engine(sys
 
 AgiBase::~AgiBase() {
 	delete _rnd;
-
 	delete _sound;
 }
 
 void AgiBase::initRenderMode() {
+	Common::Platform platform = Common::parsePlatform(ConfMan.get("platform"));
+	Common::RenderMode configRenderMode = Common::parseRenderMode(ConfMan.get("render_mode").c_str());
+
+	// Default to EGA PC rendering
 	_renderMode = Common::kRenderEGA;
 
-	if (ConfMan.hasKey("platform")) {
-		Common::Platform platform = Common::parsePlatform(ConfMan.get("platform"));
-		_renderMode = (platform == Common::kPlatformAmiga) ? Common::kRenderAmiga : Common::kRenderEGA;
+	switch (platform) {
+	case Common::kPlatformDOS:
+		// Keep EGA
+		break;
+	case Common::kPlatformAmiga:
+		_renderMode = Common::kRenderAmiga;
+		break;
+	case Common::kPlatformApple2GS:
+		_renderMode = Common::kRenderApple2GS;
+		break;
+	case Common::kPlatformAtariST:
+		_renderMode = Common::kRenderAtariST;
+		break;
+	case Common::kPlatformMacintosh:
+		_renderMode = Common::kRenderMacintosh;
+		break;
+	default:
+		break;
 	}
 
-	if (ConfMan.hasKey("render_mode")) {
-		Common::RenderMode tmpMode = Common::parseRenderMode(ConfMan.get("render_mode").c_str());
-		if (tmpMode != Common::kRenderDefault)
-			_renderMode = tmpMode;
+	// If render mode is explicitly set, force rendermode
+	switch (configRenderMode) {
+	case Common::kRenderCGA:
+	case Common::kRenderEGA:
+	case Common::kRenderVGA:
+	case Common::kRenderHercG:
+	case Common::kRenderHercA:
+	case Common::kRenderAmiga:
+	case Common::kRenderApple2GS:
+	case Common::kRenderAtariST:
+	case Common::kRenderMacintosh:
+		_renderMode = configRenderMode;
+		break;
+	default:
+		break;
+	}
+
+	if (getFeatures() & GF_AGI256) {
+		// If current game is AGI256, switch (force) to VGA render mode
+		_renderMode = Common::kRenderVGA;
 	}
 }
 
-AgiEngine::AgiEngine(OSystem *syst, const AGIGameDescription *gameDesc) : AgiBase(syst, gameDesc) {
+const byte *AgiBase::getFontData() {
+	return _font->getFontData();
+}
 
+AgiEngine::AgiEngine(OSystem *syst, const AGIGameDescription *gameDesc) : AgiBase(syst, gameDesc) {
 	// Setup mixer
 	syncSoundSettings();
 
-	parseFeatures();
-
-	DebugMan.addDebugChannel(kDebugLevelMain, "Main", "Generic debug level");
-	DebugMan.addDebugChannel(kDebugLevelResources, "Resources", "Resources debugging");
-	DebugMan.addDebugChannel(kDebugLevelSprites, "Sprites", "Sprites debugging");
-	DebugMan.addDebugChannel(kDebugLevelInventory, "Inventory", "Inventory debugging");
-	DebugMan.addDebugChannel(kDebugLevelInput, "Input", "Input events debugging");
-	DebugMan.addDebugChannel(kDebugLevelMenu, "Menu", "Menu debugging");
-	DebugMan.addDebugChannel(kDebugLevelScripts, "Scripts", "Scripts debugging");
-	DebugMan.addDebugChannel(kDebugLevelSound, "Sound", "Sound debugging");
-	DebugMan.addDebugChannel(kDebugLevelText, "Text", "Text output debugging");
-	DebugMan.addDebugChannel(kDebugLevelSavegame, "Savegame", "Saving & restoring game debugging");
-
-
-	memset(&_game, 0, sizeof(struct AgiGame));
 	memset(&_debug, 0, sizeof(struct AgiDebug));
-	memset(&_mouse, 0, sizeof(struct Mouse));
 
-	_game.mouseEnabled = true;
-	if (!ConfMan.getBool("mousesupport")) {
-		// we effectively disable the mouse for games, that explicitly do not want mouse support to be enabled
-		_game.mouseEnabled = false;
-	}
+	_game.mouseEnabled = ConfMan.getBool("mousesupport");
+	_game.mouseHidden = !_game.mouseEnabled;
+
+	_game.predictiveDlgOnMouseClick = ConfMan.getBool("predictivedlgonmouseclick");
 
 	_game._vm = this;
 
-	_game.clockEnabled = false;
-	_game.state = STATE_INIT;
+	_game.gfxMode = true;
 
 	_keyQueueStart = 0;
 	_keyQueueEnd = 0;
 
 	_allowSynthetic = false;
 
-	_intobj = NULL;
-
-	_menu = NULL;
-	_menuSelected = false;
-
-	_lastSentence[0] = 0;
-	memset(&_stringdata, 0, sizeof(struct StringData));
-
-	_objects = NULL;
+	_intobj = nullptr;
 
 	_restartGame = false;
-
-	_oldMode = INPUT_NONE;
 
 	_firstSlot = 0;
 
 	resetControllers();
 
-	setupOpcodes();
-	_game._curLogic = NULL;
-	_timerHack = 0;
+	_game._curLogic = nullptr;
+	_veryFirstInitialCycle = true;
+	_instructionCounter = 0;
+	resetGetVarSecondsHeuristic();
 
-	_lastSaveTime = 0;
-	_lastTick = 0;
+	_setVolumeBrokenFangame = false; // for further study see AgiEngine::applyVolumeToMixer()
+
+	_playTimeInSecondsAdjust = 0;
+	_lastUsedPlayTimeInCycles = 0;
+	_lastUsedPlayTimeInSeconds = 0;
+	_passedPlayTimeCycles = 0;
 
 	memset(_keyQueue, 0, sizeof(_keyQueue));
-	memset(_predictiveResult, 0, sizeof(_predictiveResult));
 
-	_sprites = NULL;
-	_picture = NULL;
-	_loader = NULL;
-	_console = NULL;
+	_font = nullptr;
+	_gfx = nullptr;
+	_sound = nullptr;
+	_picture = nullptr;
+	_sprites = nullptr;
+	_text = nullptr;
+	_loader = nullptr;
+	_menu = nullptr;
+	_systemUI = nullptr;
+	_inventory = nullptr;
+	_logFile = nullptr;
 
-	_egoHoldKey = false;
+	_keyHoldMode = false;
+	_keyHoldModeLastKey = Common::KEYCODE_INVALID;
 
-
+	_artificialDelayCurrentRoom = 0;
+	_artificialDelayCurrentPicture = 0;
 }
 
 void AgiEngine::initialize() {
@@ -622,9 +477,11 @@ void AgiEngine::initialize() {
 	//       drivers, and I'm not sure what they are. For now, they might
 	//       as well be called "PC Speaker" and "Not PC Speaker".
 
-	// If used platform is Apple IIGS then we must use Apple IIGS sound emulation
-	// because Apple IIGS AGI games use only Apple IIGS specific sound resources.
-	if (getPlatform() == Common::kPlatformApple2GS) {
+	// If platform is Apple or CoCo3 then their sound emulation must be used.
+	// The sound resources in these games have platform-specific formats.
+	if (getPlatform() == Common::kPlatformApple2) {
+		_soundemu = SOUND_EMU_APPLE2;
+	} else if (getPlatform() == Common::kPlatformApple2GS) {
 		_soundemu = SOUND_EMU_APPLE2GS;
 	} else if (getPlatform() == Common::kPlatformCoCo3) {
 		_soundemu = SOUND_EMU_COCO3;
@@ -632,7 +489,7 @@ void AgiEngine::initialize() {
 		// Default sound is the proper PCJr emulation
 		_soundemu = SOUND_EMU_PCJR;
 	} else {
-		switch (MidiDriver::getMusicType(MidiDriver::detectDevice(MDT_PCSPK|MDT_AMIGA|MDT_ADLIB|MDT_PCJR|MDT_MIDI))) {
+		switch (MidiDriver::getMusicType(MidiDriver::detectDevice(MDT_PCSPK | MDT_AMIGA | MDT_ADLIB | MDT_PCJR | MDT_MIDI))) {
 		case MT_PCSPK:
 			_soundemu = SOUND_EMU_PC;
 			break;
@@ -646,7 +503,6 @@ void AgiEngine::initialize() {
 			_soundemu = SOUND_EMU_AMIGA;
 			break;
 		default:
-			debug(0, "DEF");
 			_soundemu = SOUND_EMU_MIDI;
 			break;
 		}
@@ -654,74 +510,85 @@ void AgiEngine::initialize() {
 
 	initRenderMode();
 
-	_buttonStyle = AgiButtonStyle(_renderMode);
-	_defaultButtonStyle = AgiButtonStyle();
-	_console = new Console(this);
-	_gfx = new GfxMgr(this);
+	setDebugger(new Console(this));
+	_words = new Words(this);
+	_font = new GfxFont(this);
+	_gfx = new GfxMgr(this, _font);
 	_sound = new SoundMgr(this, _mixer);
 	_picture = new PictureMgr(this, _gfx);
 	_sprites = new SpritesMgr(this, _gfx);
+	_text = new TextMgr(this, _words, _gfx);
+	_systemUI = new SystemUI(this, _gfx, _text);
+	_inventory = new InventoryMgr(this, _gfx, _text, _systemUI);
 
-	_gfx->initMachine();
-
-	_game.gameFlags = 0;
-
-	_game.colorFg = 15;
-	_game.colorBg = 0;
-
-	_game.name[0] = '\0';
-
-	_game.sbufOrig = (uint8 *)calloc(_WIDTH, _HEIGHT * 2); // Allocate space for two AGI screens vertically
-	_game.sbuf16c  = _game.sbufOrig + SBUF16_OFFSET; // Make sbuf16c point to the 16 color (+control line & priority info) AGI screen
-	_game.sbuf256c = _game.sbufOrig + SBUF256_OFFSET; // Make sbuf256c point to the 256 color AGI screen
-	_game.sbuf     = _game.sbuf16c; // Make sbuf point to the 16 color (+control line & priority info) AGI screen by default
-
+	_font->init();
 	_gfx->initVideo();
 
-	_lastSaveTime = 0;
+	_text->init(_systemUI);
 
-	_lastTick = _system->getMillis();
+	_text->charAttrib_Set(15, 0);
 
-	debugC(2, kDebugLevelMain, "Detect game");
-
-	if (agiDetectGame() == errOK) {
-		_game.state = STATE_LOADED;
-		debugC(2, kDebugLevelMain, "game loaded");
+	if (getGameType() == GType_GAL) {
+		if (getPlatform() == Common::kPlatformApple2) {
+			_loader = new GalLoader_A2(this);
+		} else {
+			_loader = new GalLoader(this);
+		}
+	} else if (getPlatform() == Common::kPlatformApple2) {
+		_loader = new AgiLoader_A2(this);
+	} else if (getVersion() <= 0x2001) {
+		_loader = new AgiLoader_v1(this);
+	} else if (getVersion() <= 0x2999) {
+		_loader = new AgiLoader_v2(this);
 	} else {
-		warning("Could not open AGI game");
+		_loader = new AgiLoader_v3(this);
 	}
+	_loader->init();
+	
+	// finally set up actual VM opcodes, because we should now have figured out the right AGI version
+	setupOpCodes(getVersion());
+}
 
-	debugC(2, kDebugLevelMain, "Init sound");
+bool AgiEngine::promptIsEnabled() {
+	return _text->promptIsEnabled();
+}
+
+void AgiEngine::redrawScreen() {
+	_game.gfxMode = true; // enable graphics mode
+	_gfx->setPalette(true); // set graphics mode palette
+	_text->charAttrib_Set(_text->_textAttrib.foreground, _text->_textAttrib.background);
+	_gfx->clearDisplay(0);
+	_picture->showPicture();
+	_text->statusDraw();
+	_text->promptRedraw();
 }
 
 AgiEngine::~AgiEngine() {
-	// If the engine hasn't been initialized yet via
-	// AgiEngine::initialize(), don't attempt to free any resources, as
-	// they haven't been allocated. Fixes bug #1742432 - AGI: Engine
-	// crashes if no game is detected
-	if (_game.state == STATE_INIT) {
-		return;
-	}
-
 	agiDeinit();
 	delete _loader;
-	_gfx->deinitVideo();
+	if (_gfx) {
+		_gfx->deinitVideo();
+	}
+	if (_logFile) {
+		_logFile->finalize();
+		_logFile->close();
+	}
+	delete _logFile;
+	delete _inventory;
+	delete _systemUI;
+	delete _menu;
+	delete _text;
 	delete _sprites;
 	delete _picture;
-	free(_game.sbufOrig);
-	_gfx->deinitMachine();
 	delete _gfx;
-	delete _console;
+	delete _font;
+	delete _words;
 }
 
 Common::Error AgiBase::init() {
-
-	// Initialize backend
-	initGraphics(320, 200, false);
-
 	initialize();
 
-	_gfx->gfxSetPalette();
+	_gfx->setPalette(true);
 
 	return Common::kNoError;
 }
@@ -730,87 +597,212 @@ Common::Error AgiEngine::go() {
 	if (_game.mouseEnabled) {
 		CursorMan.showMouse(true);
 	}
-	setTotalPlayTime(0);
+	inGameTimerReset();
 
-	if (_game.state < STATE_LOADED) {
-		do {
-			mainCycle();
-		} while (_game.state < STATE_RUNNING);
+	int ec = runGame();
+
+	switch (ec) {
+	case errOK:            return Common::kNoError;
+	case errFilesNotFound: return Common::kNoGameDataFoundError;
+	case errBadFileOpen:   return Common::kReadingFailed;
+	default:               return Common::kUnknownError;
 	}
-
-	runGame();
-
-	return Common::kNoError;
 }
 
-void AgiEngine::parseFeatures() {
+void AgiEngine::syncSoundSettings() {
+	Engine::syncSoundSettings();
 
-	/* FIXME: Seems this method doesn't really do anything. It might
-	   be a leftover that could be removed, except that some of its
-	   intended purpose may still need to be reimplemented.
+	applyVolumeToMixer();
+}
 
-	[0:29] <Fingolfin> can you tell me what the point behind AgiEngine::parseFeatures() is?
-	[0:30] <_sev> when games are created with WAGI studio
-	[0:31] <_sev> it creates .wag site with game-specific features such as full game title, whether to use AGIMOUSE etc
-	[0:32] <Fingolfin> ... and the "features" config key is created by our detector based on the wag file, I guess?
-	[0:33] <_sev> yes
-	[0:33] <Fingolfin> it's just that I cant seem to find a place we do that
-	[0:33] <_sev> it is used for fallback
-	[0:34] <_sev> ah, perhaps it was not updated
-	[0:34] <Fingolfin> I only see us check the value, but never set it
-	[0:34] <Fingolfin> maybe I am grepping wrong, who knows :)
-	[0:44] <Fingolfin> _sev: so, unless I miss something, it seem that function does nothing right now
-	[0:45] <_sev> Fingolfin: it could be unfinished. It was part of GSoC 3 years ago
-	[0:45] <Fingolfin> well
-	[0:45] <_sev> I just don't remember
-	[0:45] <Fingolfin> but don't we just re-parse the wag when the game is loaded anyway?
-	[0:45] <_sev> but it documents the format
-	[0:45] <Fingolfin> the advanced meta engine would re-run the detector, wouldn't it?
-	[0:45] <_sev> yep
-	[0:47] <Fingolfin> so... shouldn't we at least add a comment to the function explaining what it does and that it's unfinished etc.? maybe add a TODO to the wiki?
-	[0:47] <Fingolfin> otherwise it might stay as it is for another 3 years :)
-	*/
+// WORKAROUND:
+// Sometimes Sierra printed some text on the screen and did a room change immediately afterwards expecting the
+// interpreter to load the data for a bit of time. This of course doesn't happen in our AGI, so we try to
+// detect such situations via heuristic and then delay the game for a bit.
+// In those cases a wait mouse cursor will be shown.
+//
+// Scenes that need this:
+//
+// Gold Rush:
+//  - During Stagecoach path, after getting solving the steep hill "Congratulations!!!" (NewRoom)
+//  - when following your mule "Yet right on his tail!!!" (NewRoom/NewPicture - but room 123 stays the same)
+// Manhunter 1:
+//  - intro text screen (DrawPic)
+//  - MAD "zooming in..." during intro and other scenes, for example room 124 (NewRoom)
+//     The NewRoom call is not done during the same cycle as the "zooming in..." print call.
+// Space Quest 1:
+//  - right at the start of the game (NewRoom)
+//  - right at the end of the asteroids "That was mighty close!" (NewRoom)
+// Space Quest 2
+//  - right at the start of the game (NewRoom)
+//  - after exiting the very first room, a message pops up, that isn't readable without it (NewRoom)
+//  - Climbing into shuttle on planet Labion. "You open the hatch and head on in." (NewRoom)
 
-	if (!ConfMan.hasKey("features"))
-		return;
 
-	char *features = strdup(ConfMan.get("features").c_str());
-	const char *feature[100];
-	int numFeatures = 0;
+// Games, that must not be triggered:
+//
+// Fanmade Voodoo Girl:
+//  - waterfall (DrawPic, room 17)
+//  - inside shop (NewRoom, changes to same room every new button, room 4)
 
-	char *tok = strtok(features, " ");
-	if (tok) {
-		do {
-			feature[numFeatures++] = tok;
-		} while ((tok = strtok(NULL, " ")) != NULL);
-	} else {
-		feature[numFeatures++] = features;
+void AgiEngine::nonBlockingText_IsShown() {
+	_game.nonBlockingTextShown = true;
+	_game.nonBlockingTextCyclesLeft = 2; // 1 additional script cycle is counted too
+}
+void AgiEngine::nonBlockingText_Forget() {
+	_game.nonBlockingTextShown = false;
+	_game.nonBlockingTextCyclesLeft = 0;
+}
+
+void AgiEngine::artificialDelay_Reset() {
+	nonBlockingText_Forget();
+	_artificialDelayCurrentRoom = -1;
+	_artificialDelayCurrentPicture = -1;
+}
+
+void AgiEngine::artificialDelay_CycleDone() {
+	if (_game.nonBlockingTextCyclesLeft) {
+		_game.nonBlockingTextCyclesLeft--;
+
+		if (!_game.nonBlockingTextCyclesLeft) {
+			// cycle count expired, we assume that non-blocking text won't be a problem for room / pic change
+			_game.nonBlockingTextShown = false;
+		}
+	}
+}
+
+// WORKAROUND:
+// On Apple IIgs, there are situations like for example the Police Quest 1 intro, where music is playing
+// and then the scripts switch to a new room, expecting it to load for a bit of time. In ScummVM this results
+// in music getting cut off, because our loading is basically done in an instant. This also happens in the
+// original interpreter, when you use a faster CPU in emulation.
+//
+// That's why there is an additional table, where one can add such situations to it.
+// These issues are basically impossible to detect, because sometimes music is also supposed to play throughout
+// multiple rooms.
+//
+// Normally all text-based issues should get detected by the current heuristic. Do not add those in here.
+
+//         script, description,                                       signature                   patch
+static const AgiArtificialDelayEntry artificialDelayTable[] = {
+	{ GID_GOLDRUSH,   Common::kPlatformApple2GS, ARTIFICIALDELAYTYPE_NEWROOM,     14,  21, 2200 }, // Stagecoach path: right after getting on it in Brooklyn
+	{ GID_PQ1,        Common::kPlatformApple2GS, ARTIFICIALDELAYTYPE_NEWPICTURE,   1,   2, 2200 }, // Intro: music track is supposed to finish before credits screen. Developers must have assumed that room loading would take that long.
+	{ GID_MH1,        Common::kPlatformApple2GS, ARTIFICIALDELAYTYPE_NEWPICTURE, 155, 183, 2200 }, // Happens, when hitting fingers at bar
+	{ GID_AGIDEMO,    Common::kPlatformUnknown,  ARTIFICIALDELAYTYPE_END,         -1,  -1,    0 }
+};
+
+uint16 AgiEngine::artificialDelay_SearchTable(AgiArtificialDelayTriggerType triggerType, int16 orgNr, int16 newNr) {
+	if (getPlatform() != Common::kPlatformApple2GS) {
+		return 0;
 	}
 
-	const struct Flags {
-		const char *name;
-		uint32 flag;
-	} flags[] = {
-		{ "agimouse", GF_AGIMOUSE },
-		{ "agds", GF_AGDS },
-		{ "agi256", GF_AGI256 },
-		{ "agi256-2", GF_AGI256_2 },
-		{ "agipal", GF_AGIPAL },
-		{ 0, 0 }
-	};
+	const AgiArtificialDelayEntry *delayEntry = artificialDelayTable;
 
-	for (int i = 0; i < numFeatures; i++) {
-		for (const Flags *flag = flags; flag->name; flag++) {
-			if (!scumm_stricmp(feature[i], flag->name)) {
-				debug(2, "Added feature: %s", flag->name);
-
-				setFeature(flag->flag);
-				break;
+	while (delayEntry->triggerType != ARTIFICIALDELAYTYPE_END) {
+		if (triggerType == delayEntry->triggerType) {
+			if ((orgNr == delayEntry->orgNr) && (newNr == delayEntry->newNr)) {
+				if ((getGameID() == delayEntry->gameId) && (getPlatform() == delayEntry->platform)) {
+					warning("artificial delay forced");
+					return delayEntry->millisecondsDelay;
+				}
 			}
+		}
+
+		delayEntry++;
+	}
+	return 0;
+}
+
+void AgiEngine::artificialDelayTrigger_NewRoom(int16 newRoomNr) {
+	//warning("artificial delay trigger: room %d -> new room %d", _artificialDelayCurrentRoom, newRoomNr);
+
+	if (!_game.automaticRestoreGame) {
+		uint16 millisecondsDelay = artificialDelay_SearchTable(ARTIFICIALDELAYTYPE_NEWROOM, _artificialDelayCurrentRoom, newRoomNr);
+
+		if (_game.nonBlockingTextShown) {
+			if (newRoomNr != _artificialDelayCurrentRoom) {
+				if (millisecondsDelay < 2000) {
+					// wait a bit, we detected non-blocking text
+					millisecondsDelay = 2000; // 2 seconds
+				}
+			}
+		}
+
+		if (millisecondsDelay) {
+			wait(millisecondsDelay, true); // set busy mouse cursor
+			_game.nonBlockingTextShown = false;
 		}
 	}
 
-	free(features);
+	_artificialDelayCurrentRoom = newRoomNr;
+}
+
+void AgiEngine::artificialDelayTrigger_DrawPicture(int16 newPictureNr) {
+	//warning("artificial delay trigger: picture %d -> new picture %d", _artificialDelayCurrentPicture, newPictureNr);
+
+	if (!_game.automaticRestoreGame) {
+		uint16 millisecondsDelay = artificialDelay_SearchTable(ARTIFICIALDELAYTYPE_NEWPICTURE, _artificialDelayCurrentPicture, newPictureNr);
+
+		if (_game.nonBlockingTextShown) {
+			if (newPictureNr != _artificialDelayCurrentPicture) {
+				if (millisecondsDelay < 2000) {
+					// wait a bit, we detected non-blocking text
+					millisecondsDelay = 2000; // 2 seconds, set busy
+				}
+			}
+		}
+
+		if (millisecondsDelay) {
+			wait(millisecondsDelay, true); // set busy mouse cursor
+			_game.nonBlockingTextShown = false;
+		}
+	}
+	_artificialDelayCurrentPicture = newPictureNr;
+}
+
+const char *AgiGame::getString(int number) {
+	if (0 <= number && number <= MAX_STRINGS) {
+		return strings[number];
+	} else {
+		// WORKAROUND: Flag Quest detects the interpreter version by comparing
+		// out of bounds strings to values know to be in memory in Sierra's
+		// interpreters. The game only starts if a known value matches an
+		// allowed version. We return the value for version 2.917. Bug #15060
+		if (number == 56) {
+			return ".917";
+		}
+		warning("invalid string number: %d", number);
+		return "";
+	}
+}
+
+void AgiGame::setString(int number, const char *str) {
+	if (0 <= number && number <= MAX_STRINGS) {
+		Common::strlcpy(strings[number], str, MAX_STRINGLEN);
+	} else {
+		// Occurs in Groza, number = 150
+		warning("invalid string number: %d, '%s'", number, str);
+	}
+}
+
+void AgiGame::setSpeedLevel(byte s) {
+	speedLevel = s;
+	_vm->setVar(VM_VAR_WINDOW_AUTO_CLOSE_TIMER, 6);
+	switch (speedLevel) {
+	case 0:
+		_vm->_text->messageBox("Fastest speed.");
+		break;
+	case 1:
+		_vm->_text->messageBox("Fast speed.");
+		break;
+	case 2:
+		_vm->_text->messageBox("Normal speed.");
+		break;
+	case 3:
+	case 4:
+		_vm->_text->messageBox("Slow speed.");
+		break;
+	}
 }
 
 } // End of namespace Agi

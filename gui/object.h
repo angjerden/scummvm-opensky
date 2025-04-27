@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -65,17 +64,23 @@ protected:
 
 	int16		_x, _y;
 	uint16		_w, _h;
+	bool		_useRTL;
 	const Common::String _name;
 
 	Widget		*_firstWidget;
 
 public:
-	GuiObject(int x, int y, int w, int h) : _x(x), _y(y), _w(w), _h(h), _firstWidget(0), _textDrawableArea(Common::Rect(0, 0, 0, 0)) { }
+	GuiObject(int x, int y, int w, int h, bool scale = false);
 	GuiObject(const Common::String &name);
-	~GuiObject();
+	~GuiObject() override;
 
 	virtual void setTextDrawableArea(const Common::Rect &r) { _textDrawableArea = r; }
 
+	virtual void resize(int x, int y, int w, int h, bool scale = true);
+	virtual Widget *addChild(Widget *newChild);
+
+	virtual int16	getRelX() const		{ return _x; }
+	virtual int16	getRelY() const		{ return _y; }
 	virtual int16	getAbsX() const		{ return _x; }
 	virtual int16	getAbsY() const		{ return _y; }
 	virtual int16	getChildX() const	{ return getAbsX(); }
@@ -85,12 +90,21 @@ public:
 
 	virtual bool	isVisible() const = 0;
 
-	virtual void	draw() = 0;
-
 	virtual void	reflowLayout();
 
 	virtual void	removeWidget(Widget *widget);
 
+	virtual bool	isPointIn(int x, int y) {
+		return (x >= _x && x < (_x + _w) && (y >= _y) && (y < _y + _h));
+	}
+
+	/**
+	 * Returns the clipping rect to be used when drawing the children widgets of this object
+	 */
+	virtual Common::Rect getClipRect() const;
+
+	virtual void handleMouseWheel(int x, int y, int direction) {};
+	virtual void handleTooltipUpdate(int x, int y) {};
 protected:
 	virtual void	releaseFocus() = 0;
 };

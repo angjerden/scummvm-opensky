@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -29,6 +28,42 @@
 #include "common/textconsole.h"
 
 namespace Mohawk {
+
+LBValue &LBValue::operator=(const LBValue &other)
+{
+	if (type != other.type) {
+		switch (type) {
+		case kLBValueString:
+			string.clear();
+			break;
+		case kLBValueInteger:
+			integer = 0;
+			break;
+		case kLBValueReal:
+			real = 0.0;
+			break;
+		case kLBValuePoint:
+			point = Common::Point();
+			break;
+		case kLBValueRect:
+			rect = Common::Rect();
+			break;
+		case kLBValueItemPtr:
+			item = nullptr;
+			break;
+		case kLBValueLBX:
+			lbx.reset();
+			break;
+		case kLBValueList:
+			list.reset();
+			break;
+		default:
+			break;
+		}
+	}
+	copy(other);
+	return *this;
+}
 
 bool LBValue::operator==(const LBValue &x) const {
 	if (type != x.type) {
@@ -140,16 +175,16 @@ Common::Rect LBValue::toRect() const {
 
 LBCode::LBCode(MohawkEngine_LivingBooks *vm, uint16 baseId) : _vm(vm) {
 	if (!baseId) {
-		_data = NULL;
+		_data = nullptr;
 		_size = 0;
 		return;
 	}
 
-	Common::SeekableSubReadStreamEndian *bcodStream = _vm->wrapStreamEndian(ID_BCOD, baseId);
+	Common::SeekableReadStreamEndian *bcodStream = _vm->wrapStreamEndian(ID_BCOD, baseId);
 
 	uint32 totalSize = bcodStream->readUint32();
 	if (totalSize != (uint32)bcodStream->size())
-		error("BCOD had size %d, but claimed to be of size %d", bcodStream->size(), totalSize);
+		error("BCOD had size %d, but claimed to be of size %d", (int)bcodStream->size(), totalSize);
 	_size = bcodStream->readUint32();
 	if (_size + 8 > totalSize)
 		error("BCOD code was of size %d, beyond size %d", _size, totalSize);
@@ -221,6 +256,12 @@ void LBCode::nextToken() {
 			_currValue = READ_BE_UINT16(_data + _currOffset);
 			_currOffset += 2;
 			break;
+		case kLBCodeLiteralIntegerLE:
+			if (_currOffset + 2 > _size)
+				error("went off the end of code reading literal integer");
+			_currValue = READ_LE_UINT16(_data + _currOffset);
+			_currOffset += 2;
+			break;
 		default:
 			error("unknown kTokenLiteral type %02x", literalType);
 		}
@@ -275,12 +316,12 @@ LBValue LBCode::runCode(byte terminator) {
 		if (_stack.size())
 			result = _stack.pop();
 		if (_currToken == terminator || _currToken == kTokenEndOfFile) {
-			debugN("\n");
+			debugCN(kDebugCode, "\n");
 			break;
 		}
 		if (_currToken != kTokenEndOfStatement && _currToken != kTokenEndOfFile)
 			error("missing EOS (got %02x)", _currToken);
-		debugN("\n");
+		debugCN(kDebugCode, "\n");
 	}
 
 	return result;
@@ -292,9 +333,9 @@ void LBCode::parseStatement() {
 	while (_currToken == kTokenAnd || _currToken == kTokenOr) {
 		byte op = _currToken;
 		if (op == kTokenAnd)
-			debugN(" && ");
+			debugCN(kDebugCode, " && ");
 		else
-			debugN(" || ");
+			debugCN(kDebugCode, " || ");
 
 		nextToken();
 		parseComparisons();
@@ -307,7 +348,7 @@ void LBCode::parseStatement() {
 		else
 			result = !val1.isZero() || !val2.isZero();
 
-		debugN(" [--> %s]", result ? "true" : "false");
+		debugCN(kDebugCode, " [--> %s]", result ? "true" : "false");
 		_stack.push(result);
 	}
 }
@@ -321,22 +362,25 @@ void LBCode::parseComparisons() {
 	byte comparison = _currToken;
 	switch (comparison) {
 	case kTokenEquals:
-		debugN(" == ");
+		debugCN(kDebugCode, " == ");
 		break;
 	case kTokenLessThan:
-		debugN(" < ");
+		debugCN(kDebugCode, " < ");
 		break;
 	case kTokenGreaterThan:
-		debugN(" > ");
+		debugCN(kDebugCode, " > ");
 		break;
 	case kTokenLessThanEq:
-		debugN(" <= ");
+		debugCN(kDebugCode, " <= ");
 		break;
 	case kTokenGreaterThanEq:
-		debugN(" >= ");
+		debugCN(kDebugCode, " >= ");
 		break;
 	case kTokenNotEq:
-		debugN(" != ");
+		debugCN(kDebugCode, " != ");
+		break;
+	default:
+		debugCN(kDebugCode, " ?? ");
 		break;
 	}
 
@@ -368,9 +412,11 @@ void LBCode::parseComparisons() {
 	case kTokenNotEq:
 		result = (val1 != val2);
 		break;
+	default:
+		break;
 	}
 
-	debugN(" [--> %s]", result ? "true" : "false");
+	debugCN(kDebugCode, " [--> %s]", result ? "true" : "false");
 	_stack.push(result);
 }
 
@@ -378,14 +424,14 @@ void LBCode::parseConcat() {
 	parseArithmetic1();
 
 	while (_currToken == kTokenConcat) {
-		debugN(" & ");
+		debugCN(kDebugCode, " & ");
 		nextToken();
 		parseArithmetic1();
 
 		LBValue val2 = _stack.pop();
 		LBValue val1 = _stack.pop();
 		Common::String result = val1.toString() + val2.toString();
-		debugN(" [--> \"%s\"]", result.c_str());
+		debugCN(kDebugCode, " [--> \"%s\"]", result.c_str());
 		_stack.push(result);
 	}
 }
@@ -396,9 +442,9 @@ void LBCode::parseArithmetic1() {
 	while (_currToken == kTokenMinus || _currToken == kTokenPlus) {
 		byte op = _currToken;
 		if (op == kTokenMinus)
-			debugN(" - ");
+			debugCN(kDebugCode, " - ");
 		else if (op == kTokenPlus)
-			debugN(" + ");
+			debugCN(kDebugCode, " + ");
 
 		nextToken();
 		parseArithmetic2();
@@ -411,7 +457,7 @@ void LBCode::parseArithmetic1() {
 			result = val1.toInt() - val2.toInt();
 		else
 			result = val1.toInt() + val2.toInt();
-		debugN(" [--> %d]", result.toInt());
+		debugCN(kDebugCode, " [--> %d]", result.toInt());
 		_stack.push(result);
 	}
 }
@@ -423,16 +469,16 @@ void LBCode::parseArithmetic2() {
 		byte op = _currToken;
 		switch (op) {
 		case kTokenMultiply:
-			debugN(" * ");
+			debugCN(kDebugCode, " * ");
 			break;
 		case kTokenDivide:
-			debugN(" / ");
+			debugCN(kDebugCode, " / ");
 			break;
 		case kTokenIntDivide:
-			debugN(" div ");
+			debugCN(kDebugCode, " div ");
 			break;
 		case kTokenModulo:
-			debugN(" %% ");
+			debugCN(kDebugCode, " %% ");
 			break;
 		default:
 			return;
@@ -461,6 +507,8 @@ void LBCode::parseArithmetic2() {
 			case kTokenModulo:
 				result = val1.toInt() % val2.toInt();
 				break;
+			default:
+				break;
 			}
 		}
 
@@ -471,7 +519,7 @@ void LBCode::parseArithmetic2() {
 void LBCode::parseMain() {
 	byte prefix = 0;
 	if (_currToken == kTokenMinus || _currToken == kTokenPlus) {
-		debugN("%s", _currToken == kTokenMinus ? "-" : "+");
+		debugCN(kDebugCode, "%s", _currToken == kTokenMinus ? "-" : "+");
 		prefix = _currToken;
 		nextToken();
 	}
@@ -481,7 +529,7 @@ void LBCode::parseMain() {
 		assert(_currValue.type == kLBValueString);
 		{
 		Common::String varname = _currValue.string;
-		debugN("%s", varname.c_str());
+		debugCN(kDebugCode, "%s", varname.c_str());
 		nextToken();
 		if (varname.equalsIgnoreCase("self")) {
 			_stack.push(LBValue(_currSource));
@@ -492,12 +540,12 @@ void LBCode::parseMain() {
 		bool indexing = false;
 		Common::Array<LBValue> index;
 		while (_currToken == kTokenListStart) {
-			debugN("[");
+			debugCN(kDebugCode, "[");
 			nextToken();
 			parseStatement();
 			if (_currToken != kTokenListEnd)
 				error("expected list end");
-			debugN("]");
+			debugCN(kDebugCode, "]");
 			nextToken();
 			if (!_stack.size())
 				error("index failed");
@@ -505,7 +553,7 @@ void LBCode::parseMain() {
 			index.push_back(_stack.pop());
 		}
 		if (_currToken == kTokenAssign) {
-			debugN(" = ");
+			debugCN(kDebugCode, " = ");
 			nextToken();
 			parseStatement();
 			if (!_stack.size())
@@ -525,11 +573,11 @@ void LBCode::parseMain() {
 			// FIXME: do +=/-= belong here?
 			byte token = _currToken;
 			if (_currToken == kTokenPlusEquals)
-				debugN(" += ");
+				debugCN(kDebugCode, " += ");
 			else if (_currToken == kTokenMinusEquals)
-				debugN(" -= ");
+				debugCN(kDebugCode, " -= ");
 			else if (_currToken == kTokenAndEquals)
-				debugN(" &= ");
+				debugCN(kDebugCode, " &= ");
 			nextToken();
 			parseStatement();
 			if (!_stack.size())
@@ -568,7 +616,7 @@ void LBCode::parseMain() {
 		}
 		// FIXME: pre/postincrement for non-integers
 		if (_currToken == kTokenPlusPlus) {
-			debugN("++");
+			debugCN(kDebugCode, "++");
 			if (indexing) {
 				LBValue *val = getIndexedVar(varname, index);
 				if (val)
@@ -577,7 +625,7 @@ void LBCode::parseMain() {
 				_vm->_variables[varname].integer++;
 			nextToken();
 		} else if (_currToken == kTokenMinusMinus) {
-			debugN("--");
+			debugCN(kDebugCode, "--");
 			if (indexing) {
 				LBValue *val = getIndexedVar(varname, index);
 				if (val)
@@ -594,9 +642,9 @@ void LBCode::parseMain() {
 		{
 		byte token = _currToken;
 		if (token == kTokenPlusPlus)
-			debugN("++");
+			debugCN(kDebugCode, "++");
 		else
-			debugN("--");
+			debugCN(kDebugCode, "--");
 		nextToken();
 
 		// FIXME: do we need to handle indexing?
@@ -604,7 +652,7 @@ void LBCode::parseMain() {
 			error("expected identifier");
 		assert(_currValue.type == kLBValueString);
 		Common::String varname = _currValue.string;
-		debugN("%s", varname.c_str());
+		debugCN(kDebugCode, "%s", varname.c_str());
 		LBValue &val = _vm->_variables[varname];
 
 		// FIXME: pre/postincrement for non-integers
@@ -623,41 +671,41 @@ void LBCode::parseMain() {
 	case 0x5e: // TODO: ??
 	case kTokenKeycode:
 		assert(_currValue.type == kLBValueInteger);
-		debugN("%d", _currValue.integer);
+		debugCN(kDebugCode, "%d", _currValue.integer);
 		_stack.push(_currValue);
 		nextToken();
 		break;
 
 	case kTokenString:
 		assert(_currValue.type == kLBValueString);
-		debugN("\"%s\"", _currValue.string.c_str());
+		debugCN(kDebugCode, "\"%s\"", _currValue.string.c_str());
 		_stack.push(_currValue);
 		nextToken();
 		break;
 
 	case kTokenTrue:
-		debugN("TRUE");
+		debugCN(kDebugCode, "TRUE");
 		_stack.push(true);
 		nextToken();
 		break;
 	case kTokenFalse:
-		debugN("FALSE");
+		debugCN(kDebugCode, "FALSE");
 		_stack.push(false);
 		nextToken();
 		break;
 
 	case kTokenOpenBracket:
-		debugN("(");
+		debugCN(kDebugCode, "(");
 		nextToken();
 		parseStatement();
 		if (_currToken != kTokenCloseBracket)
 			error("no kTokenCloseBracket (%02x), multiple entries?", _currToken);
-		debugN(")");
+		debugCN(kDebugCode, ")");
 		nextToken();
 		break;
 
 	case kTokenListStart:
-		debugN("[");
+		debugCN(kDebugCode, "[");
 		nextToken();
 		{
 		Common::SharedPtr<LBList> list = Common::SharedPtr<LBList>(new LBList);
@@ -667,19 +715,19 @@ void LBCode::parseMain() {
 				error("unexpected empty stack during literal list evaluation");
 			list->array.push_back(_stack.pop());
 			if (_currToken == kTokenComma) {
-				debugN(", ");
+				debugCN(kDebugCode, ", ");
 				nextToken();
 			} else if (_currToken != kTokenListEnd)
 				error("encountered unexpected token %02x during literal list", _currToken);
 		}
-		debugN("]");
+		debugCN(kDebugCode, "]");
 		nextToken();
 		_stack.push(list);
 		}
 		break;
 
 	case kTokenNot:
-		debugN("!");
+		debugCN(kDebugCode, "!");
 		nextToken();
 		// not parseStatement, ! takes predecence over logical ops
 		parseComparisons();
@@ -690,7 +738,7 @@ void LBCode::parseMain() {
 
 	case kTokenEval:
 		// FIXME: original token?
-		debugN("..");
+		debugCN(kDebugCode, "..");
 		nextToken();
 		parseStatement();
 		if (!_stack.size())
@@ -718,6 +766,11 @@ void LBCode::parseMain() {
 		runNotifyCommand();
 		break;
 
+	case 4:
+		nextToken();
+		_stack.push(0);
+		break;
+
 	default:
 		error("unknown token %02x in code", _currToken);
 	}
@@ -742,7 +795,7 @@ LBValue *LBCode::getIndexedVar(Common::String varname, const Common::Array<LBVal
 		if (index[i].type != kLBValueInteger)
 			error("index %d wasn't an integer", i);
 		if (index[i].integer < 1 || index[i].integer > (int)var->list->array.size())
-			return NULL;
+			return nullptr;
 		var = &var->list->array[index[i].integer - 1];
 	}
 	return var;
@@ -755,7 +808,7 @@ LBItem *LBCode::resolveItem(const LBValue &value) {
 		return _vm->getItemByName(value.string);
 	if (value.type == kLBValueInteger)
 		return _vm->getItemById(value.integer);
-	return NULL;
+	return nullptr;
 }
 
 Common::Array<LBValue> LBCode::readParams() {
@@ -767,7 +820,7 @@ Common::Array<LBValue> LBCode::readParams() {
 	byte numParams = _data[_currOffset++];
 
 	if (!numParams) {
-		debugN("()");
+		debugCN(kDebugCode, "()");
 		nextToken();
 		return params;
 	}
@@ -776,13 +829,13 @@ Common::Array<LBValue> LBCode::readParams() {
 	if (_currToken != kTokenOpenBracket)
 		error("missing ( before code parameter list (got %02x)", _currToken);
 	nextToken();
-	debugN("(");
+	debugCN(kDebugCode, "(");
 
 	for (uint i = 0; i < numParams; i++) {
 		if (i != 0) {
 			if (_currToken != ',')
 				error("missing , between code parameters (got %02x)", _currToken);
-			debugN(", ");
+			debugCN(kDebugCode, ", ");
 			nextToken();
 		}
 
@@ -797,7 +850,7 @@ Common::Array<LBValue> LBCode::readParams() {
 	if (_currToken != kTokenCloseBracket)
 		error("missing ) after code parameter list (got %02x)", _currToken);
 	nextToken();
-	debugN(")");
+	debugCN(kDebugCode, ")");
 
 	return params;
 }
@@ -842,125 +895,125 @@ CodeCommandInfo generalCommandInfo[NUM_GENERAL_COMMANDS] = {
 	{ "bottom", &LBCode::cmdBottom },
 	// 0x10
 	{ "right", &LBCode::cmdRight },
-	{ "xpos", 0 },
-	{ "ypos", 0 },
-	{ "playFrom", 0 },
+	{ "xpos", &LBCode::cmdXPos },
+	{ "ypos", &LBCode::cmdYPos },
+	{ "playFrom", nullptr },
 	{ "move", &LBCode::cmdMove },
-	{ 0, 0 },
-	{ 0, 0 },
+	{ nullptr, nullptr },
+	{ nullptr, nullptr },
 	{ "setDragParams", &LBCode::cmdSetDragParams },
-	{ "resetDragParams", 0 },
+	{ "resetDragParams", nullptr },
 	{ "enableRollover", &LBCode::cmdUnimplemented /* FIXME */ },
-	{ "setCursor", 0 },
-	{ "width", 0 },
-	{ "height", 0 },
-	{ "getFrameBounds", 0 }, // also "getFrameRect"
-	{ "traceRect", 0 },
-	{ "sqrt", 0 },
+	{ "setCursor", nullptr },
+	{ "width", &LBCode::cmdWidth },
+	{ "height", &LBCode::cmdHeight },
+	{ "getFrameBounds", nullptr }, // also "getFrameRect"
+	{ "traceRect", nullptr },
+	{ "sqrt", nullptr },
 	// 0x20
-	{ "deleteVar", 0 },
-	{ "saveVars", 0 },
-	{ "scriptLink", 0 },
+	{ "deleteVar", &LBCode::cmdDeleteVar },
+	{ "saveVars", nullptr },
+	{ "scriptLink", nullptr },
 	{ "setViewOrigin", &LBCode::cmdUnimplemented },
-	{ "rectSect", 0 },
-	{ "getViewOrigin", 0 },
-	{ "getViewRect", 0 },
-	{ "getPage", 0 },
-	{ "getWorldRect", 0 },
-	{ "isWorldWrap", 0 },
+	{ "rectSect", nullptr },
+	{ "getViewOrigin", nullptr },
+	{ "getViewRect", nullptr },
+	{ "getPage", nullptr },
+	{ "getWorldRect", nullptr },
+	{ "isWorldWrap", nullptr },
 	{ "newList", &LBCode::cmdNewList },
-	{ "deleteList", 0 },
+	{ "deleteList", nullptr },
 	{ "add", &LBCode::cmdAdd },
-	{ 0, 0 },
+	{ nullptr, nullptr },
 	{ "addAt", &LBCode::cmdAddAt },
-	{ "getAt", 0 },
+	{ "getAt", nullptr },
 	// 0x30
-	{ 0, 0 },
-	{ "getIndex", 0 },
+	{ nullptr, nullptr },
+	{ "getIndex", nullptr },
 	{ "setAt", &LBCode::cmdSetAt },
 	{ "listLen", &LBCode::cmdListLen },
 	{ "deleteAt", &LBCode::cmdDeleteAt },
 	{ "clearList", &LBCode::cmdUnimplemented },
-	{ "setWorld", 0 },
+	{ "setWorld", nullptr },
 	{ "setProperty", &LBCode::cmdSetProperty },
 	{ "getProperty", &LBCode::cmdGetProperty },
-	{ "copyList", 0 },
-	{ "invoke", 0 },
+	{ "copyList", nullptr },
+	{ "invoke", nullptr },
 	{ "exec", &LBCode::cmdExec },
 	{ "return", &LBCode::cmdReturn },
-	{ "sendSync", 0 },
-	{ "moveViewOrigin", 0 },
-	{ "addToGroup", 0 },
+	{ "sendSync", nullptr },
+	{ "moveViewOrigin", nullptr },
+	{ "addToGroup", nullptr },
 	// 0x40
-	{ "removeFromGroup", 0 },
-	{ "clearGroup", 0 },
+	{ "removeFromGroup", nullptr },
+	{ "clearGroup", nullptr },
 	{ "setPlayParams", &LBCode::cmdSetPlayParams },
-	{ "autoEvent", 0 },
-	{ 0, 0 },
-	{ 0, 0 },
-	{ "getID", 0 },
-	{ "setCursorPosition", 0 },
-	{ "getTime", 0 },
-	{ "logWriteLn", 0 },
-	{ "logWrite", 0 },
-	{ "getLanguage", 0 },
-	{ "setLanguage", 0 },
-	{ "getSequence", 0 },
-	{ "setSequence", 0 },
-	{ "getFileSpec", 0 },
+	{ "autoEvent", nullptr },
+	{ nullptr, nullptr },
+	{ nullptr, nullptr },
+	{ "getID", nullptr },
+	{ "setCursorPosition", nullptr },
+	{ "getTime", nullptr },
+	{ "logWriteLn", nullptr },
+	{ "logWrite", nullptr },
+	{ "getLanguage", nullptr },
+	{ "setLanguage", nullptr },
+	{ "getSequence", nullptr },
+	{ "setSequence", nullptr },
+	{ "getFileSpec", nullptr },
 	// 0x50
 	{ "setKeyEvent", &LBCode::cmdSetKeyEvent },
 	{ "setHitTest", &LBCode::cmdSetHitTest },
 	{ "key", &LBCode::cmdKey },
-	{ "deleteKeyEvent", 0 },
+	{ "deleteKeyEvent", nullptr },
 	{ "setDisplay", &LBCode::cmdUnimplemented },
-	{ "getDisplay", 0 },
-	{ 0, 0 },
+	{ "getDisplay", nullptr },
+	{ nullptr, nullptr },
 	{ "lbxCreate", &LBCode::cmdLBXCreate },
 	{ "lbxFunc", &LBCode::cmdLBXFunc },
-	{ "waitCursor", 0 },
-	{ "debugBreak", 0 },
-	{ "menuItemEnable", 0 },
-	{ "showChannel", 0 },
-	{ "hideChannel", 0 },
-	{ "setPageFade", 0 },
-	{ "normalize", 0 },
+	{ "waitCursor", nullptr },
+	{ "debugBreak", nullptr },
+	{ "menuItemEnable", nullptr },
+	{ "showChannel", nullptr },
+	{ "hideChannel", nullptr },
+	{ "setPageFade", nullptr },
+	{ "normalize", nullptr },
 	// 0x60 (v5+)
-	{ "addEvent", 0 },
-	{ "setCueEvent", 0 },
-	{ 0, 0 },
-	{ 0, 0 },
-	{ "getName", 0 },
-	{ "getProperties", 0 },
-	{ "createItem", 0 },
-	{ "setProperties", 0 },
-	{ "alert", 0 },
-	{ "getUniqueID", 0 },
-	{ "isNumeric", 0 },
-	{ "setKeyFocus", 0 },
-	{ "getKeyFocus", 0 },
-	{ "isItem", 0 },
-	{ "itemHit", 0 },
-	{ "getItem ", 0 },
+	{ "addEvent", nullptr },
+	{ "setCueEvent", nullptr },
+	{ nullptr, nullptr },
+	{ nullptr, nullptr },
+	{ "getName", nullptr },
+	{ "getProperties", nullptr },
+	{ "createItem", nullptr },
+	{ "setProperties", nullptr },
+	{ "alert", nullptr },
+	{ "getUniqueID", nullptr },
+	{ "isNumeric", nullptr },
+	{ "setKeyFocus", nullptr },
+	{ "getKeyFocus", nullptr },
+	{ "isItem", nullptr },
+	{ "itemHit", nullptr },
+	{ "getItem ", nullptr },
 	// 0x70
-	{ 0, 0 },
-	{ "setCascade", 0 },
-	{ "getCascade", 0 },
-	{ "getRes", 0 },
-	{ "setRes", 0 },
-	{ "getFilename", 0 },
-	{ "resEnumNames", 0 },
-	{ "isList", 0 },
-	{ "resetRect", 0 },
-	{ "setVolume", 0 },
-	{ "getVolume", 0 },
-	{ "pause", 0 },
-	{ "getTextWidth", 0 },
-	{ "setItemVolume", 0 },
-	{ "setSoundLoop", 0 },
+	{ nullptr, nullptr },
+	{ "setCascade", nullptr },
+	{ "getCascade", nullptr },
+	{ "getRes", nullptr },
+	{ "setRes", nullptr },
+	{ "getFilename", nullptr },
+	{ "resEnumNames", nullptr },
+	{ "isList", nullptr },
+	{ "resetRect", nullptr },
+	{ "setVolume", nullptr },
+	{ "getVolume", nullptr },
+	{ "pause", nullptr },
+	{ "getTextWidth", nullptr },
+	{ "setItemVolume", nullptr },
+	{ "setSoundLoop", nullptr },
 	// 0x80
-	{ "setClipboard", 0 },
-	{ "getResDuration", 0 }
+	{ "setClipboard", nullptr },
+	{ "getResDuration", nullptr }
 };
 
 void LBCode::runGeneralCommand() {
@@ -970,7 +1023,7 @@ void LBCode::runGeneralCommand() {
 		error("bad command type 0x%02x in runGeneralCommand", commandType);
 
 	CodeCommandInfo &info = generalCommandInfo[commandType - 1];
-	debugN("%s", info.name);
+	debugCN(kDebugCode, "%s", info.name);
 	Common::Array<LBValue> params = readParams();
 
 	if (!info.func)
@@ -1131,6 +1184,38 @@ void LBCode::cmdRight(const Common::Array<LBValue> &params) {
 	_stack.push(rect.right);
 }
 
+void LBCode::cmdXPos(const Common::Array<LBValue> &params) {
+	if (params.size() != 1)
+		error("too many parameters (%d) to xpos", params.size());
+
+	Common::Point point = params[0].toPoint();
+	_stack.push(point.x);
+}
+
+void LBCode::cmdYPos(const Common::Array<LBValue> &params) {
+	if (params.size() != 1)
+		error("too many parameters (%d) to ypos", params.size());
+
+	Common::Point point = params[0].toPoint();
+	_stack.push(point.y);
+}
+
+void LBCode::cmdWidth(const Common::Array<LBValue> &params) {
+	if (params.size() > 1)
+		error("too many parameters (%d) to width", params.size());
+
+	Common::Rect rect = getRectFromParams(params);
+	_stack.push(rect.width());
+}
+
+void LBCode::cmdHeight(const Common::Array<LBValue> &params) {
+	if (params.size() > 1)
+		error("too many parameters (%d) to height", params.size());
+
+	Common::Rect rect = getRectFromParams(params);
+	_stack.push(rect.height());
+}
+
 void LBCode::cmdMove(const Common::Array<LBValue> &params) {
 	if (params.size() != 1 && params.size() != 2)
 		error("incorrect number of parameters (%d) to move", params.size());
@@ -1263,6 +1348,14 @@ void LBCode::cmdGetProperty(const Common::Array<LBValue> &params) {
 	_stack.push(target->_variables[name]);
 }
 
+void LBCode::cmdDeleteVar(const Common::Array<LBValue> &params) {
+	if (params.size() != 1)
+		error("incorrect number of parameters (%d) to deleteVar", params.size());
+
+	const Common::String &string = params[0].toString();
+	_vm->_variables.erase(string);
+}
+
 void LBCode::cmdExec(const Common::Array<LBValue> &params) {
 	if (params.size() != 1)
 		error("incorrect number of parameters (%d) to exec", params.size());
@@ -1309,18 +1402,24 @@ void LBCode::cmdSetPlayParams(const Common::Array<LBValue> &params) {
 	switch (params.size()) {
 	case 8:
 		target->_soundMode = params[7].integer;
+		// fall through
 	case 7:
 		target->_controlMode = params[6].integer;
+		// fall through
 	case 6:
 		// TODO: _relocPoint?
 	case 5:
 		// TODO: _periodMin/Max
 	case 4:
 		target->_timingMode = params[3].integer;
+		// fall through
 	case 3:
 		// TODO: _delayMin/Max
 	case 2:
 		target->_loopMode = params[1].integer;
+		break;
+	default:
+		break;
 	}
 }
 
@@ -1372,41 +1471,41 @@ void LBCode::cmdKey(const Common::Array<LBValue> &params) {
 #define NUM_ITEM_COMMANDS 34
 CodeCommandInfo itemCommandInfo[NUM_ITEM_COMMANDS] = {
 	{ "clone", &LBCode::itemClone },
-	{ "destroy", 0 },
-	{ "dragBeginFrom", 0 },
-	{ "dragEnd", 0 },
-	{ "enableLocal", 0 },
-	{ "enable", 0 },
-	{ "showLocal", 0 },
-	{ "show", 0 },
-	{ "getFrame", 0 },
-	{ "getParent", 0 },
-	{ "getPosition" , 0 },
-	{ "getText", 0 },
-	{ "getZNext", 0 },
-	{ "getZPrev", 0 },
-	{ "hitTest", 0 },
+	{ "destroy", nullptr },
+	{ "dragBeginFrom", nullptr },
+	{ "dragEnd", nullptr },
+	{ "enableLocal", nullptr },
+	{ "enable", nullptr },
+	{ "showLocal", nullptr },
+	{ "show", nullptr },
+	{ "getFrame", nullptr },
+	{ "getParent", nullptr },
+	{ "getPosition" , nullptr },
+	{ "getText", nullptr },
+	{ "getZNext", nullptr },
+	{ "getZPrev", nullptr },
+	{ "hitTest", nullptr },
 	// 0x10
-	{ "isAmbient", 0 },
-	{ "isEnabled", 0 },
-	{ "isMuted", 0 },
+	{ "isAmbient", nullptr },
+	{ "isEnabled", nullptr },
+	{ "isMuted", nullptr },
 	{ "isPlaying", &LBCode::itemIsPlaying },
-	{ "isVisible", 0 },
+	{ "isVisible", nullptr },
 	{ "isLoaded", &LBCode::itemIsLoaded },
-	{ "isDragging", 0 },
-	{ "load", 0 },
+	{ "isDragging", nullptr },
+	{ "load", nullptr },
 	{ "moveTo", &LBCode::itemMoveTo },
-	{ "mute", 0 },
-	{ "play", 0 },
+	{ "mute", nullptr },
+	{ "play", nullptr },
 	{ "seek", &LBCode::itemSeek },
 	{ "seekToFrame", &LBCode::itemSeekToFrame },
 	{ "setParent", &LBCode::itemSetParent },
-	{ "setZOrder", 0 },
-	{ "setText", 0 },
+	{ "setZOrder", nullptr },
+	{ "setText", nullptr },
 	// 0x20
-	{ "stop", 0 },
-	{ "unload", 0 },
-	{ "unloadSync", 0}
+	{ "stop", nullptr },
+	{ "unload", nullptr },
+	{ "unloadSync", nullptr}
 };
 
 void LBCode::runItemCommand() {
@@ -1416,7 +1515,7 @@ void LBCode::runItemCommand() {
 		error("bad command type 0x%02x in runItemCommand", commandType);
 
 	CodeCommandInfo &info = itemCommandInfo[commandType - 1];
-	debugN("%s", info.name);
+	debugCN(kDebugCode, "%s", info.name);
 	Common::Array<LBValue> params = readParams();
 
 	if (!info.func)
@@ -1505,7 +1604,7 @@ void LBCode::runNotifyCommand() {
 	switch (commandType) {
 	case kLBNotifyChangePage:
 		{
-		debugN("goto");
+		debugCN(kDebugCode, "goto");
 		Common::Array<LBValue> params = readParams();
 		// TODO: type-checking
 		NotifyEvent notifyEvent(kLBNotifyChangePage, 1);
@@ -1553,7 +1652,7 @@ void LBCode::runNotifyCommand() {
 
 	case kLBNotifyIntroDone:
 		{
-		debugN("startphasemain");
+		debugCN(kDebugCode, "startphasemain");
 		Common::Array<LBValue> params = readParams();
 		if (params.size() != 0)
 			error("incorrect number of parameters (%d) to startphasemain", params.size());
@@ -1563,7 +1662,7 @@ void LBCode::runNotifyCommand() {
 
 	case kLBNotifyQuit:
 		{
-		debugN("quit");
+		debugCN(kDebugCode, "quit");
 		Common::Array<LBValue> params = readParams();
 		if (params.size() != 0)
 			error("incorrect number of parameters (%d) to quit", params.size());
@@ -1618,7 +1717,7 @@ bool LBCode::parseCodeSymbol(Common::String name, uint &pos, Common::Array<byte>
 	// first, check whether the name matches a known function
 	for (uint i = 0; i < 2; i++) {
 		byte cmdToken;
-		CodeCommandInfo *cmdInfo = NULL;
+		CodeCommandInfo *cmdInfo = nullptr;
 		uint cmdCount = 0;
 
 		switch (i) {
@@ -1631,6 +1730,8 @@ bool LBCode::parseCodeSymbol(Common::String name, uint &pos, Common::Array<byte>
 			cmdInfo = itemCommandInfo;
 			cmdToken = kTokenItemCommand;
 			cmdCount = NUM_ITEM_COMMANDS;
+			break;
+		default:
 			break;
 		}
 
@@ -1706,6 +1807,10 @@ uint LBCode::parseCode(const Common::String &source) {
 		if (token != ' ' && token != '(' && wasFunction)
 			error("while parsing script '%s', encountered incomplete function call", source.c_str());
 
+		// Skip C++-style comments
+		if (token == '/' && lookahead == '/')
+			break;
+
 		// First, we check for simple operators.
 		for (uint i = 0; i < NUM_LB_OPERATORS; i++) {
 			if (token != operators[i].token)
@@ -1736,6 +1841,7 @@ uint LBCode::parseCode(const Common::String &source) {
 		switch (token) {
 		// whitespace
 		case ' ':
+		case '\t':
 			// ignore
 			break;
 		// literal string
@@ -1804,7 +1910,7 @@ uint LBCode::parseCode(const Common::String &source) {
 				code.push_back(kTokenCloseBracket);
 			counterPositions.pop_back();
 			break;
-		// comma (seperating function params)
+		// comma (separating function params)
 		case ',':
 			{
 			if (counterPositions.empty())
@@ -1851,7 +1957,7 @@ uint LBCode::parseCode(const Common::String &source) {
 				Common::String tempString;
 				tempString += token;
 				while (pos < source.size()) {
-					if (!Common::isAlpha(source[pos]) && !Common::isDigit(source[pos]))
+					if (!Common::isAlpha(source[pos]) && !Common::isDigit(source[pos]) && source[pos] != '_') // Wanderful sampler uses _ in variables
 						break;
 					tempString += source[pos++];
 				}

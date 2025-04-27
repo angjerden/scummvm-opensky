@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -42,8 +41,9 @@ struct SaveGameHeader {
 	byte version;
 	Common::String saveName;
 	Graphics::Surface *thumbnail;
-	int saveYear, saveMonth, saveDay;
-	int saveHour, saveMinutes;
+	int16 saveYear, saveMonth, saveDay;
+	int16 saveHour, saveMinutes;
+	uint32 playTime;
 };
 
 class SaveManager {
@@ -64,18 +64,13 @@ private:
 
 	enum {
 		SAVE_ORIGINAL = 0,
-		SAVE_VERSION = 1
+		SAVE_VERSION  = 2
 	};
 
 	Common::MemoryWriteStreamDynamic *_tempThumbnail;
 	Common::MemoryWriteStreamDynamic *_tempSave;
 
 public:
-	/**
-	 * Called every room change. Saves the state of the room just before
-	 * the room changes.
-	 */
-	void autoSave();
 	/**
 	 * Copies the data from the last auto-save into a new save file. We
 	 * can't use the current state data because the save menu *IS* a room.
@@ -94,7 +89,7 @@ public:
 	Common::Error loadGame(int slot);
 
 	Common::SeekableReadStream *getSlotFile(uint slot);
-	bool readSaveGameHeader(Common::SeekableReadStream *in, SaveGameHeader &header);
+	bool readSaveGameHeader(Common::SeekableReadStream *in, SaveGameHeader &header, bool skipThumbnail = true);
 
 	void prepareSaveBuffer();
 	void flushSaveBuffer();

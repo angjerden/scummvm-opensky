@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -25,19 +24,17 @@
 
 namespace Agi {
 
-#define ip	(_game.logics[lognum].cIP)
-#define code	(_game.logics[lognum].data)
+#define ip   (_game.logics[lognum].cIP)
+#define code (_game.logics[lognum].data)
 
-AgiInstruction logicNamesIf[] = {
-    { "OR", "", NULL },
-    { "NOT", "", NULL },
-    { "ELSE", "", NULL },
-    { "IF", "", NULL }
+const char *logicNamesIf[] = {
+	"OR", "NOT", "ELSE", "IF"
 };
 
 void AgiEngine::debugConsole(int lognum, int mode, const char *str) {
-	AgiInstruction *x;
-	uint8 a, z;
+	AgiOpCodeEntry *curOpCodeTable;
+	uint8 parametersLeft, z;
+	uint8 logicNameIdx;
 	const char *c;
 
 	if (str) {
@@ -52,52 +49,51 @@ void AgiEngine::debugConsole(int lognum, int mode, const char *str) {
 	case 0xFD:
 	case 0xFE:
 	case 0xFF:
-		x = logicNamesIf;
-
 		if (_debug.opcodes) {
 			debugN(0, "%02X %02X %02X %02X %02X %02X %02X %02X %02X\n"
-			    "         ",
-			    (uint8)*(code + (0 + ip)) & 0xFF,
-			    (uint8)*(code + (1 + ip)) & 0xFF,
-			    (uint8)*(code + (2 + ip)) & 0xFF,
-			    (uint8)*(code + (3 + ip)) & 0xFF,
-			    (uint8)*(code + (4 + ip)) & 0xFF,
-			    (uint8)*(code + (5 + ip)) & 0xFF,
-			    (uint8)*(code + (6 + ip)) & 0xFF,
-			    (uint8)*(code + (7 + ip)) & 0xFF,
-			    (uint8)*(code + (8 + ip)) & 0xFF);
+			       "         ",
+			       (uint8) * (code + (0 + ip)) & 0xFF,
+			       (uint8) * (code + (1 + ip)) & 0xFF,
+			       (uint8) * (code + (2 + ip)) & 0xFF,
+			       (uint8) * (code + (3 + ip)) & 0xFF,
+			       (uint8) * (code + (4 + ip)) & 0xFF,
+			       (uint8) * (code + (5 + ip)) & 0xFF,
+			       (uint8) * (code + (6 + ip)) & 0xFF,
+			       (uint8) * (code + (7 + ip)) & 0xFF,
+			       (uint8) * (code + (8 + ip)) & 0xFF);
 		}
-		debugN(0, "%s ", (x + *(code + ip) - 0xFC)->name);
+		logicNameIdx = (*(code + ip)) - 0xFC;
+		debugN(0, "%s ", logicNamesIf[logicNameIdx]);
 		break;
 	default:
-		x = mode == lCOMMAND_MODE ? logicNamesCmd : logicNamesTest;
-		a = x[*(code + ip)].argumentsLength();
-		c = x[*(code + ip)].args;
+		curOpCodeTable = mode == lCOMMAND_MODE ? _opCodes : _opCodesCond;
+		parametersLeft = curOpCodeTable[*(code + ip)].parameterSize;
+		c = curOpCodeTable[*(code + ip)].parameters;
 
 		if (_debug.opcodes) {
 			debugN(0, "%02X %02X %02X %02X %02X %02X %02X %02X %02X\n"
-			    "         ",
-			    (uint8)*(code + (0 + ip)) & 0xFF,
-			    (uint8)*(code + (1 + ip)) & 0xFF,
-			    (uint8)*(code + (2 + ip)) & 0xFF,
-			    (uint8)*(code + (3 + ip)) & 0xFF,
-			    (uint8)*(code + (4 + ip)) & 0xFF,
-			    (uint8)*(code + (5 + ip)) & 0xFF,
-			    (uint8)*(code + (6 + ip)) & 0xFF,
-			    (uint8)*(code + (7 + ip)) & 0xFF,
-			    (uint8)*(code + (8 + ip)) & 0xFF);
+			       "         ",
+			       (uint8) * (code + (0 + ip)) & 0xFF,
+			       (uint8) * (code + (1 + ip)) & 0xFF,
+			       (uint8) * (code + (2 + ip)) & 0xFF,
+			       (uint8) * (code + (3 + ip)) & 0xFF,
+			       (uint8) * (code + (4 + ip)) & 0xFF,
+			       (uint8) * (code + (5 + ip)) & 0xFF,
+			       (uint8) * (code + (6 + ip)) & 0xFF,
+			       (uint8) * (code + (7 + ip)) & 0xFF,
+			       (uint8) * (code + (8 + ip)) & 0xFF);
 		}
-		debugN(0, "%s ", (x + *(code + ip))->name);
+		debugN(0, "%s ", (curOpCodeTable + * (code + ip))->name);
 
-		for (z = 1; a > 0;) {
+		for (z = 1; parametersLeft > 0;) {
 			if (*c == 'n') {
 				debugN(0, "%d", *(code + (ip + z)));
 			} else {
-				debugN(0, "v%d[%d]", *(code + (ip + z)), getvar(*(code + (ip + z))));
+				debugN(0, "v%d[%d]", *(code + (ip + z)), getVar(*(code + (ip + z))));
 			}
 			c++;
 			z++;
-			if (--a > 0)
+			if (--parametersLeft > 0)
 				debugN(0, ",");
 		}
 		break;

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -32,14 +31,14 @@ namespace Mohawk {
 // Base Archive code
 
 Archive::Archive() {
-	_stream = 0;
+	_stream = nullptr;
 }
 
 Archive::~Archive() {
 	close();
 }
 
-bool Archive::openFile(const Common::String &fileName) {
+bool Archive::openFile(const Common::Path &fileName) {
 	Common::File *file = new Common::File();
 
 	if (!file->open(fileName)) {
@@ -48,6 +47,7 @@ bool Archive::openFile(const Common::String &fileName) {
 	}
 
 	if (!openStream(file)) {
+		delete file;
 		close();
 		return false;
 	}
@@ -57,7 +57,7 @@ bool Archive::openFile(const Common::String &fileName) {
 
 void Archive::close() {
 	_types.clear();
-	delete _stream; _stream = 0;
+	delete _stream; _stream = nullptr;
 }
 
 bool Archive::hasResource(uint32 tag, uint16 id) const {
@@ -74,7 +74,7 @@ bool Archive::hasResource(uint32 tag, const Common::String &resName) const {
 	const ResourceMap &resMap = _types[tag];
 
 	for (ResourceMap::const_iterator it = resMap.begin(); it != resMap.end(); it++)
-		if (it->_value.name.matchString(resName))
+		if (it->_value.name.equalsIgnoreCase(resName))
 			return true;
 
 	return false;
@@ -113,7 +113,7 @@ uint16 Archive::findResourceID(uint32 tag, const Common::String &resName) const 
 	const ResourceMap &resMap = _types[tag];
 
 	for (ResourceMap::const_iterator it = resMap.begin(); it != resMap.end(); it++)
-		if (it->_value.name.matchString(resName))
+		if (it->_value.name.equalsIgnoreCase(resName))
 			return it->_key;
 
 	return 0xFFFF;
@@ -154,6 +154,25 @@ Common::Array<uint16> Archive::getResourceIDList(uint32 type) const {
 	return idList;
 }
 
+void Archive::offsetResourceIDs(uint32 type, uint16 startId, int16 increment) {
+	if (!_types.contains(type)) {
+		return;
+	}
+
+	const ResourceMap &oldResMap = _types[type];
+	ResourceMap newResMap;
+
+	for (ResourceMap::const_iterator it = oldResMap.begin(); it != oldResMap.end(); it++) {
+		if (it->_key >= startId) {
+			newResMap[it->_key + increment] = it->_value;
+		} else {
+			newResMap[it->_key] = it->_value;
+		}
+	}
+
+	_types[type] = newResMap;
+}
+
 // Mohawk Archive code
 
 struct FileTableEntry {
@@ -164,6 +183,7 @@ struct FileTableEntry {
 };
 
 struct NameTableEntry {
+	uint16 offset;
 	uint16 index;
 	Common::String name;
 };
@@ -218,7 +238,7 @@ bool MohawkArchive::openStream(Common::SeekableReadStream *stream) {
 		debug(4, "File[%02x]: Offset = %08x  Size = %07x  Flags = %02x  Unknown = %04x", i, fileTable[i].offset, fileTable[i].size, fileTable[i].flags, fileTable[i].unknown);
 	}
 
-	// Now go in an read in each of the types
+	// Now go in and read in each of the types
 	stream->seek(absOffset);
 	uint16 stringTableOffset = stream->readUint16BE();
 	uint16 typeCount = stream->readUint16BE();
@@ -244,14 +264,15 @@ bool MohawkArchive::openStream(Common::SeekableReadStream *stream) {
 		debug(3, "Names = %04x", nameTable.size());
 
 		for (uint16 j = 0; j < nameTable.size(); j++) {
-			uint16 offset = stream->readUint16BE();
-			nameTable[j].index = stream->readUint16BE();
+			nameTable[j].offset = stream->readUint16BE();
+			nameTable[j].index  = stream->readUint16BE();
 
-			debug(4, "Entry[%02x]: Name List Offset = %04x  Index = %04x", j, offset, nameTable[j].index);
+			debug(4, "Entry[%02x]: Name List Offset = %04x  Index = %04x", j, nameTable[j].offset, nameTable[j].index);
+		}
 
+		for (uint16 j = 0; j < nameTable.size(); j++) {
 			// Name List
-			uint32 pos = stream->pos();
-			stream->seek(absOffset + stringTableOffset + offset);
+			stream->seek(absOffset + stringTableOffset + nameTable[j].offset);
 			char c = (char)stream->readByte();
 			while (c != 0) {
 				nameTable[j].name += c;
@@ -259,9 +280,6 @@ bool MohawkArchive::openStream(Common::SeekableReadStream *stream) {
 			}
 
 			debug(3, "Name = \'%s\'", nameTable[j].name.c_str());
-
-			// Get back to next entry
-			stream->seek(pos);
 		}
 
 		// Resource Table
@@ -291,13 +309,23 @@ bool MohawkArchive::openStream(Common::SeekableReadStream *stream) {
 
 			// WORKAROUND: tMOV resources pretty much ignore the size part of the file table,
 			// as the original just passed the full Mohawk file to QuickTime and the offset.
+			// We set the resource size to the number of bytes till the beginning of the next
+			// resource in the archive.
 			// We need to do this because of the way Mohawk is set up (this is much more "proper"
 			// than passing _stream at the right offset). We may want to do that in the future, though.
 			if (tag == ID_TMOV) {
-				if (index == fileTable.size())
-					res.size = stream->size() - fileTable[index - 1].offset;
-				else
-					res.size = fileTable[index].offset - fileTable[index - 1].offset;
+				uint16 nextFileIndex = index;
+				res.size = 0;
+				while (res.size == 0) {
+					if (nextFileIndex == fileTable.size())
+						res.size = stream->size() - fileTable[index - 1].offset;
+					else
+						res.size = fileTable[nextFileIndex].offset - fileTable[index - 1].offset;
+
+					// Loop because two entries in the file table may point to the same data
+					// in the archive.
+					nextFileIndex++;
+				}
 			} else
 				res.size = fileTable[index - 1].size;
 

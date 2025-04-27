@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,18 +15,18 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+
+#ifdef ENABLE_MADSV2
 
 #ifndef MADS_GAME_DRAGONSPHERE_H
 #define MADS_GAME_DRAGONSPHERE_H
 
-#include "common/scummsys.h"
 #include "mads/game.h"
 #include "mads/globals.h"
-//#include "mads/nebular/globals_nebular.h"
+#include "mads/dragonsphere/globals_dragonsphere.h"
 
 namespace MADS {
 
@@ -80,7 +80,7 @@ enum InventoryObject {
 	OBJ_DIAMOND_DUST = 40,
 	OBJ_RUBY_RING = 41,
 	OBJ_GOLD_NUGGET = 42,
-	OBJ_MUSIC_BOX = 43,
+	OBJ_MAGIC_MUSIC_BOX = 43,
 	OBJ_EMERALD = 44,
 	OBJ_PARCHMENT = 45,
 	OBJ_GAME = 46,
@@ -88,40 +88,31 @@ enum InventoryObject {
 	OBJ_NEW_BUNDLE = 48
 };
 
-// HACK: A stub for now, remove from here once it's implemented properly
-class DragonsphereGlobals : public Globals {
-public:
-	DragonsphereGlobals() {
-		resize(210);	// Rex has 210 globals
-	}
-	virtual ~DragonsphereGlobals() {}
-};
-
 class GameDragonsphere : public Game {
 	friend class Game;
 protected:
 	GameDragonsphere(MADSEngine *vm);
 
-	virtual void startGame();
+	void startGame() override;
 
-	virtual void initializeGlobals();
+	void initializeGlobals() override;
 
-	virtual void setSectionHandler();
+	void setSectionHandler() override;
 
-	virtual void checkShowDialog();
+	void checkShowDialog() override;
 public:
 	DragonsphereGlobals _globals;
 	StoryMode _storyMode;
 
-	virtual Globals &globals() { return _globals; }
+	Globals &globals() override { return _globals; }
 
-	virtual void doObjectAction();
+	void doObjectAction() override;
 
-	virtual void unhandledAction();
+	void unhandledAction() override;
 
-	virtual void step();
+	void step() override;
 
-	virtual void synchronize(Common::Serializer &s, bool phase1);
+	void synchronize(Common::Serializer &s, bool phase1) override;
 };
 
 
@@ -130,9 +121,9 @@ public:
 	Section1Handler(MADSEngine *vm) : SectionHandler(vm) {}
 
 	// TODO: Properly implement handler methods
-	virtual void preLoadSection() {}
-	virtual void sectionPtr2() {}
-	virtual void postLoadSection() {}
+	void preLoadSection() override {}
+	void sectionPtr2() override {}
+	void postLoadSection() override {}
 };
 
 // TODO: Properly implement handler classes
@@ -144,8 +135,10 @@ typedef Section1Handler Section6Handler;
 typedef Section1Handler Section7Handler;
 typedef Section1Handler Section8Handler;
 
-} // End of namespace Nebular
+} // End of namespace Dragonsphere
 
 } // End of namespace MADS
 
 #endif /* MADS_GAME_DRAGONSPHERE_H */
+
+#endif

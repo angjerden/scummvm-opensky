@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,13 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ *
+ * This file is dual-licensed.
+ * In addition to the GPLv3 license mentioned above, this code is also
+ * licensed under LGPL 2.1. See LICENSES/COPYING.LGPL file for the
+ * full text of the license.
  *
  */
 
@@ -25,7 +30,6 @@
 
 #include "common/mutex.h"
 
-#include "audio/audiostream.h"
 #include "audio/mixer.h"
 
 namespace OPL {
@@ -35,9 +39,9 @@ namespace OPL {
 namespace Gob {
 
 /** Base class for a player of an AdLib music format. */
-class AdLib : public Audio::AudioStream {
+class AdLib {
 public:
-	AdLib(Audio::Mixer &mixer);
+	AdLib(int callbackFrequency);
 	virtual ~AdLib();
 
 	bool isPlaying() const;    ///< Are we currently playing?
@@ -53,13 +57,7 @@ public:
 
 	void startPlay();
 	void stopPlay();
-
-// AudioStream API
-	int  readBuffer(int16 *buffer, const int numSamples);
-	bool isStereo()    const;
-	bool endOfData()   const;
-	bool endOfStream() const;
-	int  getRate()     const;
+	void syncVolume();
 
 protected:
 	enum kVoice {
@@ -120,8 +118,6 @@ protected:
 	static const int kOPLMidC      = 48; ///< A mid C for the OPL.
 
 
-	/** Return the number of samples per second. */
-	uint32 getSamplesPerSecond() const;
 
 	/** Write a value into an OPL register. */
 	void writeOPL(byte reg, byte val);
@@ -135,7 +131,7 @@ protected:
 	/** The callback function that's called for polling more AdLib commands.
 	 *
 	 *  @param  first Is this the first poll since the start of the song?
-	 *  @return The number of samples until the next poll.
+	 *  @return The number of ticks until the next poll.
 	 */
 	virtual uint32 pollMusic(bool first) = 0;
 
@@ -207,7 +203,14 @@ protected:
 	/** Switch a voice off. */
 	void noteOff(uint8 voice);
 
+	/**
+	 * Set the OPL timer frequency
+	 */
+	void setTimerFrequency(int timerFrequency);
+
 private:
+	static const uint8 kVolumeTable[Audio::Mixer::kMaxMixerVolume + 1];
+
 	static const uint8 kOperatorType  [kOperatorCount];
 	static const uint8 kOperatorOffset[kOperatorCount];
 	static const uint8 kOperatorVoice [kOperatorCount];
@@ -226,13 +229,11 @@ private:
 	static const uint16 kHihatParams    [kParamCount];
 
 
-	Audio::Mixer *_mixer;
-	Audio::SoundHandle _handle;
 	OPL::OPL *_opl;
 
 	Common::Mutex _mutex;
 
-	uint32 _rate;
+	int _volume;
 
 	uint32 _toPoll;
 
@@ -300,6 +301,11 @@ private:
 	void changePitch(uint8 voice, uint16 pitchBend);
 
 	void setFreq(uint8 voice, uint16 note, bool on);
+
+	/**
+	 * Callback function for OPL
+	 */
+	void onTimer();
 };
 
 } // End of namespace Gob

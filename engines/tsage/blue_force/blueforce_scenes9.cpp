@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -266,7 +265,7 @@ void Scene900::Action1::signal() {
 		}
 	case 6:
 		_actionIndex = 0;
-		// No break on purpose
+		// fall through
 	case 4:
 		setDelay(30);
 		break;
@@ -1629,7 +1628,7 @@ bool Scene910::BlackPlug::startAction(CursorType action, Event &event) {
 				SET_EXT_FGCOLOR, 13, LIST_END);
 			return true;
 		}
-	// no break on purpose
+		// fall through
 	case INV_YELLOW_CORD:
 		if (BF_GLOBALS._v4CECC == 0) {
 			BF_GLOBALS._v4CECC = 1;
@@ -1664,7 +1663,7 @@ bool Scene910::BlackPlug::startAction(CursorType action, Event &event) {
 				SET_EXT_FGCOLOR, 13, LIST_END);
 			return true;
 		}
-	//No break on purpose
+		// fall through
 	case INV_BLACK_CORD:
 		if (BF_GLOBALS._v4CECA == 0) {
 			if (_state == 1) {
@@ -2305,7 +2304,7 @@ void Scene910::signal() {
 		BF_GLOBALS._player.disableControl();
 		BF_GLOBALS._player.setAction(&_sequenceManager2, NULL, 9117, &_nico, NULL);
 		BF_GLOBALS._nico910State = 2;
-	// No break on purpose
+		// fall through
 	case 15:
 		_stuart.postInit();
 		_stuart.setDetails(910, 66, 67, 68, 5, &_nico);
@@ -3165,7 +3164,7 @@ bool Scene930::Object4::startAction(CursorType action, Event &event) {
 		if (BF_GLOBALS._bookmark >= bFlashBackTwo) {
 			_lookLineNum = 71;
 			NamedObject::startAction(action, event);
-			scene->ShowSoleInset();
+			scene->showSoleInset();
 			remove();
 		} else
 			NamedObject::startAction(action, event);
@@ -3304,7 +3303,7 @@ void Scene930::Action2::signal() {
 				SET_Y, GLOBALS._sceneManager._scene->_sceneBounds.top + UI_INTERFACE_Y + 2,
 				SET_FONT, 4, SET_BG_COLOR, 1, SET_FG_COLOR, 19, SET_EXT_BGCOLOR, 9,
 				SET_EXT_FGCOLOR, 13, LIST_END);
-		scene->ShowBoxInset();
+		scene->showBoxInset();
 		BF_GLOBALS._player.enableControl();
 		remove();
 		break;
@@ -3460,7 +3459,7 @@ void Scene930::showBootInset() {
 	_bootsInset.setDetails(930, 69, 70, 93);
 }
 
-void Scene930::ShowBoxInset() {
+void Scene930::showBoxInset() {
 	_boxInset.postInit();
 	_boxInset.setVisage(930);
 	_boxInset.setStrip(1);
@@ -3470,7 +3469,7 @@ void Scene930::ShowBoxInset() {
 	_boxInset.setDetails(930, 73, 74, 75);
 }
 
-void Scene930::ShowSoleInset() {
+void Scene930::showSoleInset() {
 	_soleInset.postInit();
 	_soleInset.setVisage(930);
 	_soleInset.setStrip(3);
@@ -3509,7 +3508,11 @@ void Scene935::Action1::signal() {
 		scene->addFader((const byte *)&v50ECC, 100, this);
 		break;
 	case 1:
-		scene->_visualSpeaker.setText("Jake! Hide in the closet!");
+		if (g_vm->getLanguage() == Common::RU_RUS) {
+			scene->_visualSpeaker.setText("\x84\xA6\xA5\xA9\xAA! \x8F\xE0\xEF\xE7\xEC\xE1\xEF \xA2 \xE8\xAA\xA0\xE4!"); // Джейк! Прячься в шкаф!
+		} else {
+			scene->_visualSpeaker.setText("Jake! Hide in the closet!");
+		}
 		for (int i = 1; i < 21; i++)
 			scene->transition((const byte *)&v50EEA, 5 * i, 935, NULL, 0, 255, 249, 255, 1);
 		setDelay(3);
@@ -3522,11 +3525,19 @@ void Scene935::Action1::signal() {
 		scene->_visualSpeaker._textPos.y = scene->_sceneBounds.top + 80;
 		scene->_visualSpeaker._color1 = 252;
 		scene->_visualSpeaker._color2 = 251;
-		scene->_visualSpeaker.setText("Jake! Hide in the closet!");
+		if (g_vm->getLanguage() == Common::RU_RUS) {
+			scene->_visualSpeaker.setText("\x84\xA6\xA5\xA9\xAA! \x8F\xE0\xEF\xE7\xEC\xE1\xEF \xA2 \xE8\xAA\xA0\xE4!"); // Джейк! Прячься в шкаф!
+		} else {
+			scene->_visualSpeaker.setText("Jake! Hide in the closet!");
+		}
 		setDelay(3);
 		break;
 	case 4:
-		scene->_visualSpeaker.setText("Jake! Hide in the closet!");
+		if (g_vm->getLanguage() == Common::RU_RUS) {
+			scene->_visualSpeaker.setText("\x84\xA6\xA5\xA9\xAA! \x8F\xE0\xEF\xE7\xEC\xE1\xEF \xA2 \xE8\xAA\xA0\xE4!"); // Джейк! Прячься в шкаф!
+		} else {
+			scene->_visualSpeaker.setText("Jake! Hide in the closet!");
+		}
 		for (int i = 1; i < 21; i++)
 			scene->transition((const byte *)&v50F26, 5 * i, 935, NULL, 0, 255, 249, 255, 1);
 		setDelay(3);
@@ -3539,11 +3550,19 @@ void Scene935::Action1::signal() {
 		scene->_visualSpeaker._textPos.y = scene->_sceneBounds.top + 150;
 		scene->_visualSpeaker._color1 = 250;
 		scene->_visualSpeaker._color2 = 249;
-		scene->_visualSpeaker.setText("Jake! Hide in the closet!");
+		if (g_vm->getLanguage() == Common::RU_RUS) {
+			scene->_visualSpeaker.setText("\x84\xA6\xA5\xA9\xAA! \x8F\xE0\xEF\xE7\xEC\xE1\xEF \xA2 \xE8\xAA\xA0\xE4!"); // Джейк! Прячься в шкаф!
+		} else {
+			scene->_visualSpeaker.setText("Jake! Hide in the closet!");
+		}
 		setDelay(3);
 		break;
 	case 7:
-		scene->_visualSpeaker.setText("Jake! Hide in the closet!");
+		if (g_vm->getLanguage() == Common::RU_RUS) {
+			scene->_visualSpeaker.setText("\x84\xA6\xA5\xA9\xAA! \x8F\xE0\xEF\xE7\xEC\xE1\xEF \xA2 \xE8\xAA\xA0\xE4!"); // Джейк! Прячься в шкаф!
+		} else {
+			scene->_visualSpeaker.setText("Jake! Hide in the closet!");
+		}
 		for (int i = 1; i < 21; i++)
 			scene->transition((const byte *)&v50F62, 5 * i, 935, NULL, 0, 255, 249, 255, 1);
 		setDelay(3);

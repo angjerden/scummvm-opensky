@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,10 +15,13 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+
+// Allow use of stuff in <nds.h>
+#define FORBIDDEN_SYMBOL_EXCEPTION_printf
+#define FORBIDDEN_SYMBOL_EXCEPTION_unistd_h
 
 #include "common/scummsys.h"
 
@@ -30,6 +33,16 @@
 #include "backends/plugins/ds/ds-provider.h"
 #include "backends/plugins/elf/arm-loader.h"
 
+// HACK: This is needed so that standard library functions that are only
+// used in plugins can be found in the main executable.
+void pluginHack() {
+	volatile double d = 0.0;
+	double d1 = 0.0;
+
+	d = atan2(d, d);
+	d = modf(d, &d1);
+}
+
 class DSDLObject : public ARMDLObject {
 protected:
 	virtual void flushDataCache(void *ptr, uint32 len) const {
@@ -40,6 +53,10 @@ protected:
 
 Plugin *DSPluginProvider::createPlugin(const Common::FSNode &node) const {
 	return new TemplatedELFPlugin<DSDLObject>(node.getPath());
+}
+
+void DSPluginProvider::addCustomDirectories(Common::FSList &dirs) const {
+	dirs.push_back(Common::FSNode("nitro:/plugins"));
 }
 
 #endif // defined(DYNAMIC_MODULES) && defined(__DS__)

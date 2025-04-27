@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -48,14 +47,13 @@ static Common::Rect readRect(Common::SeekableReadStream &stream) {
 	return rect;
 }
 
-CDToonsDecoder::CDToonsDecoder(uint16 width, uint16 height) {
+CDToonsDecoder::CDToonsDecoder(uint16 width, uint16 height) : _palette(256) {
 	debugN(5, "CDToons: width %d, height %d\n", width, height);
 
 	_surface = new Graphics::Surface();
 	_surface->create(width, height, Graphics::PixelFormat::createFormatCLUT8());
 
 	_currentPaletteId = 0;
-	memset(_palette, 0, 256 * 3);
 	_dirtyPalette = false;
 }
 
@@ -63,8 +61,8 @@ CDToonsDecoder::~CDToonsDecoder() {
 	_surface->free();
 	delete _surface;
 
-	for (Common::HashMap<uint16, CDToonsBlock>::iterator i = _blocks.begin(); i != _blocks.end(); i++)
-		delete[] i->_value.data;
+	for (auto &block : _blocks)
+		delete[] block._value.data;
 }
 
 Graphics::Surface *CDToonsDecoder::decodeFrame(Common::SeekableReadStream &stream) {
@@ -74,7 +72,7 @@ Graphics::Surface *CDToonsDecoder::decodeFrame(Common::SeekableReadStream &strea
 	byte u6 = stream.readByte();
 	byte backgroundColor = stream.readByte();
 	debugN(5, "CDToons frame %d, size %d, unknown %04x (at 0), blocks valid until %d, unknown 6 is %02x, bkg color is %02x\n",
-		frameId, stream.size(), u0, blocksValidUntil, u6, backgroundColor);
+		frameId, (int)stream.size(), u0, blocksValidUntil, u6, backgroundColor);
 
 	Common::Rect clipRect = readRect(stream);
 	debugN(9, "CDToons clipRect: (%d, %d) to (%d, %d)\n",
@@ -125,10 +123,10 @@ Graphics::Surface *CDToonsDecoder::decodeFrame(Common::SeekableReadStream &strea
 
 	if (stream.pos() > blockOffset)
 		error("CDToons header ended at 0x%08x, but blocks should have started at 0x%08x",
-			stream.pos(), blockOffset);
+			(int)stream.pos(), blockOffset);
 
 	if (stream.pos() != blockOffset)
-		error("CDToons had %d unknown bytes after header", blockOffset - stream.pos());
+		error("CDToons had %d unknown bytes after header", blockOffset - (int)stream.pos());
 
 	for (uint i = 0; i < blockCount; i++) {
 		uint16 blockId = stream.readUint16BE();
@@ -278,9 +276,9 @@ Graphics::Surface *CDToonsDecoder::decodeFrame(Common::SeekableReadStream &strea
 
 		if (stream.pos() > nextPos)
 			error("CDToons ran off the end of a block while reading it (at %d, next block at %d)",
-				stream.pos(), nextPos);
+				(int)stream.pos(), nextPos);
 		if (stream.pos() != nextPos) {
-			warning("CDToons had %d unknown bytes after block", nextPos - stream.pos());
+			warning("CDToons had %d unknown bytes after block", nextPos - (int32)stream.pos());
 			stream.seek(nextPos);
 		}
 
@@ -334,9 +332,9 @@ void CDToonsDecoder::renderBlock(byte *data, uint dataSize, int destX, int destY
 	debugN(9, "CDToons renderBlock at (%d, %d), width %d, height %d\n",
 		destX, destY, width, height);
 
-	if (destX + width > _surface->w)
+	if (destX + (int)width > _surface->w)
 		width = _surface->w - destX;
-	if (destY + height > _surface->h)
+	if (destY + (int)height > _surface->h)
 		height = _surface->h - destY;
 
 	uint skip = 0;
@@ -436,13 +434,11 @@ void CDToonsDecoder::setPalette(byte *data) {
 
 	// A lovely QuickTime palette
 	for (uint i = 0; i < 256; i++) {
-		_palette[i * 3]     = *data;
-		_palette[i * 3 + 1] = *(data + 2);
-		_palette[i * 3 + 2] = *(data + 4);
+		_palette.set(i, *data, *(data + 2), *(data + 4));
 		data += 6;
 	}
 
-	_palette[0] = _palette[1] = _palette[2] = 0;
+	_palette.set(0, 0, 0, 0);
 }
 
 } // End of namespace Image

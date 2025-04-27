@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -29,18 +28,22 @@
 #include "common/file.h"
 #include "common/fs.h"
 #include "common/tokenizer.h"
+#include "common/translation.h"
 
-#include "engines/util.h"
 #include "engines/wintermute/ad/ad_game.h"
 #include "engines/wintermute/wintermute.h"
 #include "engines/wintermute/debugger.h"
 #include "engines/wintermute/platform_osystem.h"
 #include "engines/wintermute/base/base_engine.h"
+#include "engines/wintermute/detection.h"
 
 #include "engines/wintermute/base/sound/base_sound_manager.h"
 #include "engines/wintermute/base/base_file_manager.h"
 #include "engines/wintermute/base/gfx/base_renderer.h"
 #include "engines/wintermute/base/scriptables/script_engine.h"
+#include "engines/wintermute/debugger/debugger_controller.h"
+
+#include "gui/message.h"
 
 namespace Wintermute {
 
@@ -49,7 +52,7 @@ namespace Wintermute {
 WintermuteEngine::WintermuteEngine() : Engine(g_system) {
 	_game = new AdGame("");
 	_debugger = nullptr;
-	_trigDebug = false;
+	_dbgController = nullptr;
 	_gameDescription = nullptr;
 }
 
@@ -58,45 +61,38 @@ WintermuteEngine::WintermuteEngine(OSystem *syst, const WMEGameDescription *desc
 	// Put your engine in a sane state, but do nothing big yet;
 	// in particular, do not load data from files; rather, if you
 	// need to do such things, do them from init().
-	ConfMan.registerDefault("show_fps","false");
+	ConfMan.registerDefault("show_fps", "false");
 
 	// Do not initialize graphics here
 
 	// However this is the place to specify all default directories
-	const Common::FSNode gameDataDir(ConfMan.get("path"));
+	const Common::FSNode gameDataDir(ConfMan.getPath("path"));
 	//SearchMan.addSubDirectoryMatching(gameDataDir, "sound");
-
-	// Here is the right place to set up the engine specific debug channels
-	DebugMan.addDebugChannel(kWintermuteDebugLog, "enginelog", "Covers the same output as the log-file in WME");
-	DebugMan.addDebugChannel(kWintermuteDebugSaveGame, "savegame", "Savegames");
-	DebugMan.addDebugChannel(kWintermuteDebugFont, "font", "Text-drawing-related messages");
-	DebugMan.addDebugChannel(kWintermuteDebugFileAccess, "file-access", "Non-critical problems like missing files");
-	DebugMan.addDebugChannel(kWintermuteDebugAudio, "audio", "audio-playback-related issues");
-	DebugMan.addDebugChannel(kWintermuteDebugGeneral, "general", "various issues not covered by any of the above");
 
 	_game = nullptr;
 	_debugger = nullptr;
-	_trigDebug = false;
+	_dbgController = nullptr;
 }
 
 WintermuteEngine::~WintermuteEngine() {
 	// Dispose your resources here
 	deinit();
 	delete _game;
-	delete _debugger;
-
-	// Remove all of our debug levels here
-	DebugMan.clearAllDebugChannels();
+	//_debugger deleted by Engine
 }
 
 bool WintermuteEngine::hasFeature(EngineFeature f) const {
 	switch (f) {
-	case kSupportsRTL:
+	case kSupportsReturnToLauncher:
 		return true;
 	case kSupportsLoadingDuringRuntime:
 		return true;
 	case kSupportsSavingDuringRuntime:
 		return true;
+#ifdef ENABLE_WME3D
+	case kSupportsArbitraryResolutions:
+		return /*true*/false; // opengl renderers doesn't support it yet
+#endif
 	default:
 		return false;
 	}
@@ -104,15 +100,12 @@ bool WintermuteEngine::hasFeature(EngineFeature f) const {
 }
 
 Common::Error WintermuteEngine::run() {
-	// Initialize graphics using following:
-	Graphics::PixelFormat format(4, 8, 8, 8, 8, 24, 16, 8, 0);
-	initGraphics(800, 600, true, &format);
-	if (g_system->getScreenFormat() != format) {
-		error("Wintermute currently REQUIRES 32bpp");
-	}
-
 	// Create debugger console. It requires GFX to be initialized
+	_dbgController = new DebuggerController(this);
 	_debugger = new Console(this);
+	setDebugger(_debugger);
+
+	_savingEnabled = true;
 
 //	DebugMan.enableDebugChannel("enginelog");
 	debugC(1, kWintermuteDebugLog, "Engine Debug-LOG enabled");
@@ -133,12 +126,81 @@ Common::Error WintermuteEngine::run() {
 }
 
 int WintermuteEngine::init() {
-	BaseEngine::createInstance(_targetName, _gameDescription->adDesc.gameid, _gameDescription->adDesc.language, _gameDescription->targetExecutable);
+	BaseEngine::createInstance(_targetName, _gameDescription->adDesc.gameId, _gameDescription->adDesc.language, _gameDescription->targetExecutable, _gameDescription->adDesc.flags);
+	BaseEngine &instance = BaseEngine::instance();
+
+	// check if unknown target is a 2.5D game
+	if (instance.getFlags() & ADGF_AUTOGENTARGET) {
+		Common::ArchiveMemberList actors3d;
+		if (instance.getFileManager()->listMatchingPackageMembers(actors3d, "*.act3d")) {
+			warning("Unknown 2.5D game detected");
+			instance.addFlags(GF_3D);
+		}
+	}
+
+	#ifdef ENABLE_WME3D
+	if (instance.getFlags() & GF_3D) {
+		instance.getClassRegistry()->register3DClasses();
+	}
+	#endif
+
+	// check dependencies for games with high resolution assets
+	#if !defined(USE_PNG) || !defined(USE_JPEG) || !defined(USE_VORBIS)
+		if (!(instance.getFlags() & GF_LOWSPEC_ASSETS)) {
+			GUI::MessageDialog dialog(_("This game requires PNG, JPEG and Vorbis support."));
+			dialog.runModal();
+			delete _game;
+			_game = nullptr;
+			return false;
+		}
+	#endif
+
+	// check dependencies for games with FoxTail subengine
+	#if !defined(ENABLE_FOXTAIL)
+		if (BaseEngine::isFoxTailCheck(instance.getTargetExecutable())) {
+			GUI::MessageDialog dialog(_("This game requires the FoxTail subengine, which is not compiled in."));
+			dialog.runModal();
+			delete _game;
+			_game = nullptr;
+			return false;
+		}
+	#endif
+
+	// check dependencies for games with HeroCraft subengine
+	#if !defined(ENABLE_HEROCRAFT)
+		if (instance.getTargetExecutable() == WME_HEROCRAFT) {
+			GUI::MessageDialog dialog(_("This game requires the HeroCraft subengine, which is not compiled in."));
+			dialog.runModal();
+			delete _game;
+			_game = nullptr;
+			return false;
+		}
+	#endif
+
+	#ifndef ENABLE_WME3D
+	// check if game require 3D capabilities
+	if (instance.getFlags() & GF_3D) {
+		GUI::MessageDialog dialog(_("This game requires 3D capabilities, which is not compiled in. As such, it"
+			" is likely to be unplayable totally or partially."), _("Start anyway"), _("Cancel"));
+		if (dialog.runModal() != GUI::kMessageOK) {
+			delete _game;
+			_game = nullptr;
+			return false;
+		}
+	}
+	#endif
+
 	_game = new AdGame(_targetName);
 	if (!_game) {
 		return 1;
 	}
-	BaseEngine::instance().setGameRef(_game);
+
+	#ifdef ENABLE_WME3D
+	Common::ArchiveMemberList actors3d;
+	_game->_playing3DGame = instance.getFlags() & GF_3D;
+	_game->_playing3DGame |= (BaseEngine::instance().getFileManager()->listMatchingPackageMembers(actors3d, "*.act3d") != 0);
+	#endif
+	instance.setGameRef(_game);
 	BasePlatform::initialize(this, _game, 0, nullptr);
 
 	_game->initConfManSettings();
@@ -158,7 +220,13 @@ int WintermuteEngine::init() {
 		return 2;
 	}
 
-	_game->initialize2();
+	if (!_game->initialize2()) {
+		_game->LOG(0, "Error initializing renderer. Exiting.");
+
+		delete _game;
+		_game = nullptr;
+		return 3;
+	}
 
 	bool ret = _game->initRenderer();
 
@@ -171,7 +239,6 @@ int WintermuteEngine::init() {
 	}
 
 	_game->initialize3();
-
 	// initialize sound manager (non-fatal if we fail)
 	ret = _game->_soundMgr->initialize();
 	if (DID_FAIL(ret)) {
@@ -200,6 +267,8 @@ int WintermuteEngine::init() {
 		_game->loadGame(slot);
 	}
 
+	_game->_scEngine->attachMonitor(_dbgController);
+
 	// all set, ready to go
 	return 0;
 }
@@ -217,16 +286,10 @@ int WintermuteEngine::messageLoop() {
 		if (!_game) {
 			break;
 		}
-		_debugger->onFrame();
 
 		Common::Event event;
 		while (_system->getEventManager()->pollEvent(event)) {
 			BasePlatform::handleEvent(&event);
-		}
-
-		if (_trigDebug) {
-			_debugger->attach();
-			_trigDebug = false;
 		}
 
 		if (_game && _game->_renderer->_active && _game->_renderer->isReady()) {
@@ -275,17 +338,25 @@ Common::Error WintermuteEngine::loadGameState(int slot) {
 	return Common::kNoError;
 }
 
-Common::Error WintermuteEngine::saveGameState(int slot, const Common::String &desc) {
+Common::Error WintermuteEngine::saveGameState(int slot, const Common::String &desc, bool isAutosave) {
 	BaseEngine::instance().getGameRef()->saveGame(slot, desc.c_str(), false);
 	return Common::kNoError;
 }
 
-bool WintermuteEngine::canSaveGameStateCurrently() {
+bool WintermuteEngine::canSaveGameStateCurrently(Common::U32String *msg) {
+	return _savingEnabled;
+}
+
+bool WintermuteEngine::canLoadGameStateCurrently(Common::U32String *msg) {
 	return true;
 }
 
-bool WintermuteEngine::canLoadGameStateCurrently() {
-	return true;
+bool WintermuteEngine::canSaveAutosaveCurrently() {
+	return _savingEnabled;
+}
+
+void WintermuteEngine::savingEnable(bool enable) {
+	_savingEnabled = enable;
 }
 
 bool WintermuteEngine::getGameInfo(const Common::FSList &fslist, Common::String &name, Common::String &caption) {
@@ -377,6 +448,12 @@ bool WintermuteEngine::getGameInfo(const Common::FSList &fslist, Common::String 
 						}
 					}
 					caption = value;
+
+					for (uint i = 0; i< value.size(); i++) {
+						if ( int(value[i]) < 16 || int(value[i]) >= 127 ) {
+							caption = "(invalid)";
+						}
+					}
 				}
 			}
 		}

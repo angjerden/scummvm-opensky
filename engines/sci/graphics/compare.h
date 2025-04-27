@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,13 +15,12 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
-#ifndef SCI_GRAPHICS_GFX_H
-#define SCI_GRAPHICS_GFX_H
+#ifndef SCI_GRAPHICS_COMPARE_H
+#define SCI_GRAPHICS_COMPARE_H
 
 #include "common/hashmap.h"
 
@@ -34,12 +33,13 @@ class Screen;
  */
 class GfxCompare {
 public:
-	GfxCompare(SegManager *segMan, GfxCache *cache, GfxScreen *screen, GfxCoordAdjuster *coordAdjuster);
+	GfxCompare(SegManager *segMan, GfxCache *cache, GfxScreen *screen, GfxCoordAdjuster16 *coordAdjuster);
 	~GfxCompare();
 
 	uint16 kernelOnControl(byte screenMask, const Common::Rect &rect);
 	void kernelSetNowSeen(reg_t objectReference);
 	reg_t kernelCanBeHere(reg_t curObject, reg_t listReference);
+	reg_t kernelCantBeHere32(const reg_t curObject, const reg_t listReference) const;
 	bool kernelIsItSkip(GuiResourceId viewId, int16 loopNo, int16 celNo, Common::Point position);
 	void kernelBaseSetter(reg_t object);
 	Common::Rect getNSRect(reg_t object);
@@ -49,7 +49,7 @@ private:
 	SegManager *_segMan;
 	GfxCache *_cache;
 	GfxScreen *_screen;
-	GfxCoordAdjuster *_coordAdjuster;
+	GfxCoordAdjuster16 *_coordAdjuster;
 
 	uint16 isOnControl(uint16 screenMask, const Common::Rect &rect);
 
@@ -58,9 +58,9 @@ private:
 	 * *different* from checkObject, has a brRect which is contained inside
 	 * checkRect.
 	 */
-	reg_t canBeHereCheckRectList(reg_t checkObject, const Common::Rect &checkRect, List *list);
+	reg_t canBeHereCheckRectList(const reg_t checkObject, const Common::Rect &checkRect, const List *list, const uint16 signalFlags) const;
 };
 
 } // End of namespace Sci
 
-#endif
+#endif // SCI_GRAPHICS_COMPARE_H

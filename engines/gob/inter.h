@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,13 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ *
+ * This file is dual-licensed.
+ * In addition to the GPLv3 license mentioned above, this code is also
+ * licensed under LGPL 2.1. See LICENSES/COPYING.LGPL file for the
+ * full text of the license.
  *
  */
 
@@ -32,7 +37,7 @@
 #include "gob/databases.h"
 
 namespace Common {
-	class PEResources;
+	class WinResources;
 }
 
 namespace Gob {
@@ -180,17 +185,17 @@ protected:
 class Inter_v1 : public Inter {
 public:
 	Inter_v1(GobEngine *vm);
-	virtual ~Inter_v1() {}
+	~Inter_v1() override {}
 
-	virtual int16 loadSound(int16 slot);
-	virtual void animPalette();
+	int16 loadSound(int16 slot) override;
+	void animPalette() override;
 
 protected:
-	virtual void setupOpcodesDraw();
-	virtual void setupOpcodesFunc();
-	virtual void setupOpcodesGob();
+	void setupOpcodesDraw() override;
+	void setupOpcodesFunc() override;
+	void setupOpcodesGob() override;
 
-	virtual void checkSwitchTable(uint32 &offset);
+	void checkSwitchTable(uint32 &offset) override;
 
 	void o1_loadMult();
 	void o1_playMult();
@@ -346,17 +351,20 @@ protected:
 	void o1_initGoblin(OpGobParams &params);
 
 	void manipulateMap(int16 xPos, int16 yPos, int16 item);
+
+private:
+	bool _ignoreSpeakerOff = false;
 };
 
 class Inter_Geisha : public Inter_v1 {
 public:
 	Inter_Geisha(GobEngine *vm);
-	virtual ~Inter_Geisha();
+	~Inter_Geisha() override;
 
 protected:
-	virtual void setupOpcodesDraw();
-	virtual void setupOpcodesFunc();
-	virtual void setupOpcodesGob();
+	void setupOpcodesDraw() override;
+	void setupOpcodesFunc() override;
+	void setupOpcodesGob() override;
 
 	void oGeisha_loadCursor(OpFuncParams &params);
 	void oGeisha_loadTot(OpFuncParams &params);
@@ -375,7 +383,7 @@ protected:
 	void oGeisha_caress1(OpGobParams &params);
 	void oGeisha_caress2(OpGobParams &params);
 
-	int16 loadSound(int16 slot);
+	int16 loadSound(int16 slot) override;
 
 private:
 	Geisha::Diving      *_diving;
@@ -387,17 +395,17 @@ private:
 class Inter_v2 : public Inter_v1 {
 public:
 	Inter_v2(GobEngine *vm);
-	virtual ~Inter_v2() {}
+	~Inter_v2() override {}
 
-	virtual int16 loadSound(int16 search);
-	virtual void animPalette();
+	int16 loadSound(int16 search) override;
+	void animPalette() override;
 
 protected:
-	virtual void setupOpcodesDraw();
-	virtual void setupOpcodesFunc();
-	virtual void setupOpcodesGob();
+	void setupOpcodesDraw() override;
+	void setupOpcodesFunc() override;
+	void setupOpcodesGob() override;
 
-	virtual void checkSwitchTable(uint32 &offset);
+	void checkSwitchTable(uint32 &offset) override;
 
 	void o2_playMult();
 	void o2_freeMultKeys();
@@ -459,12 +467,12 @@ protected:
 class Inter_Bargon : public Inter_v2 {
 public:
 	Inter_Bargon(GobEngine *vm);
-	virtual ~Inter_Bargon() {}
+	~Inter_Bargon() override {}
 
 protected:
-	virtual void setupOpcodesDraw();
-	virtual void setupOpcodesFunc();
-	virtual void setupOpcodesGob();
+	void setupOpcodesDraw() override;
+	void setupOpcodesFunc() override;
+	void setupOpcodesGob() override;
 
 	void oBargon_intro0(OpGobParams &params);
 	void oBargon_intro1(OpGobParams &params);
@@ -481,12 +489,12 @@ protected:
 class Inter_Fascination : public Inter_v2 {
 public:
 	Inter_Fascination(GobEngine *vm);
-	virtual ~Inter_Fascination() {}
+	~Inter_Fascination() override {}
 
 protected:
-	virtual void setupOpcodesDraw();
-	virtual void setupOpcodesFunc();
-	virtual void setupOpcodesGob();
+	void setupOpcodesDraw() override;
+	void setupOpcodesFunc() override;
+	void setupOpcodesGob() override;
 
 	void oFascin_playProtracker(OpGobParams &params);
 
@@ -520,26 +528,43 @@ protected:
 class Inter_LittleRed : public Inter_v2 {
 public:
 	Inter_LittleRed(GobEngine *vm);
-	virtual ~Inter_LittleRed() {}
+	~Inter_LittleRed() override {}
 
 protected:
-	virtual void setupOpcodesDraw();
-	virtual void setupOpcodesFunc();
-	virtual void setupOpcodesGob();
+	void setupOpcodesDraw() override;
+	void setupOpcodesFunc() override;
+	void setupOpcodesGob() override;
 
 	void oLittleRed_keyFunc(OpFuncParams &params);
 	void oLittleRed_playComposition(OpFuncParams &params);
 };
 
+class Inter_Adibou1 : public Inter_v2 {
+public:
+	Inter_Adibou1(GobEngine *vm);
+	~Inter_Adibou1() override {}
+
+protected:
+	void setupOpcodesDraw() override;
+	void setupOpcodesFunc() override;
+	void setupOpcodesGob() override;
+
+	void oAdibou1_writeSprite(OpGobParams &params);
+	void oAdibou1_readSprite(OpGobParams &params);
+	void oAdibou1_fillAreaAtPoint(OpGobParams &params);
+	void oAdibou1_getAppliNameFromId(OpGobParams &params);
+	void oAdibou1_listApplications(OpGobParams &params);
+};
+
 class Inter_v3 : public Inter_v2 {
 public:
 	Inter_v3(GobEngine *vm);
-	virtual ~Inter_v3() {}
+	~Inter_v3() override {}
 
 protected:
-	virtual void setupOpcodesDraw();
-	virtual void setupOpcodesFunc();
-	virtual void setupOpcodesGob();
+	void setupOpcodesDraw() override;
+	void setupOpcodesFunc() override;
+	void setupOpcodesGob() override;
 
 	void o3_speakerOn(OpFuncParams &params);
 	void o3_speakerOff(OpFuncParams &params);
@@ -554,25 +579,26 @@ private:
 class Inter_Inca2 : public Inter_v3 {
 public:
 	Inter_Inca2(GobEngine *vm);
-	virtual ~Inter_Inca2() {}
+	~Inter_Inca2() override {}
 
 protected:
-	virtual void setupOpcodesDraw();
-	virtual void setupOpcodesFunc();
-	virtual void setupOpcodesGob();
+	void setupOpcodesDraw() override;
+	void setupOpcodesFunc() override;
+	void setupOpcodesGob() override;
 
 	void oInca2_spaceShooter(OpFuncParams &params);
+	void oInca2_goblinFunc(OpFuncParams &params);
 };
 
 class Inter_v4 : public Inter_v3 {
 public:
 	Inter_v4(GobEngine *vm);
-	virtual ~Inter_v4() {}
+	~Inter_v4() override {}
 
 protected:
-	virtual void setupOpcodesDraw();
-	virtual void setupOpcodesFunc();
-	virtual void setupOpcodesGob();
+	void setupOpcodesDraw() override;
+	void setupOpcodesFunc() override;
+	void setupOpcodesGob() override;
 
 	void o4_initScreen();
 	void o4_playVmdOrMusic();
@@ -581,14 +607,14 @@ protected:
 class Inter_v5 : public Inter_v4 {
 public:
 	Inter_v5(GobEngine *vm);
-	virtual ~Inter_v5() {}
+	~Inter_v5() override {}
 
 protected:
 	byte _gob_97_98_val;
 
-	virtual void setupOpcodesDraw();
-	virtual void setupOpcodesFunc();
-	virtual void setupOpcodesGob();
+	void setupOpcodesDraw() override;
+	void setupOpcodesFunc() override;
+	void setupOpcodesGob() override;
 
 	void o5_deleteFile();
 	void o5_initScreen();
@@ -616,14 +642,14 @@ protected:
 class Inter_v6 : public Inter_v5 {
 public:
 	Inter_v6(GobEngine *vm);
-	virtual ~Inter_v6() {}
+	~Inter_v6() override {}
 
 protected:
 	bool _gotFirstPalette;
 
-	virtual void setupOpcodesDraw();
-	virtual void setupOpcodesFunc();
-	virtual void setupOpcodesGob();
+	void setupOpcodesDraw() override;
+	void setupOpcodesFunc() override;
+	void setupOpcodesGob() override;
 
 	void o6_totSub();
 	void o6_playVmdOrMusic();
@@ -639,12 +665,12 @@ protected:
 class Inter_Playtoons : public Inter_v6 {
 public:
 	Inter_Playtoons(GobEngine *vm);
-	virtual ~Inter_Playtoons() {}
+	~Inter_Playtoons() override {}
 
 protected:
-	virtual void setupOpcodesDraw();
-	virtual void setupOpcodesFunc();
-	virtual void setupOpcodesGob();
+	void setupOpcodesDraw() override;
+	void setupOpcodesFunc() override;
+	void setupOpcodesGob() override;
 
 	void oPlaytoons_printText(OpFuncParams &params);
 	void oPlaytoons_F_1B(OpFuncParams &params);
@@ -660,33 +686,41 @@ protected:
 	void oPlaytoons_copyFile();
 	void oPlaytoons_openItk();
 
-	Common::String getFile(const char *path);
+	Common::String getFile(const char *path, bool stripPath = true);
 
-private:
 	bool readSprite(Common::String file, int32 dataVar, int32 size, int32 offset);
 };
 
 class Inter_v7 : public Inter_Playtoons {
 public:
 	Inter_v7(GobEngine *vm);
-	virtual ~Inter_v7();
+	~Inter_v7() override {};
 
 protected:
-	virtual void setupOpcodesDraw();
-	virtual void setupOpcodesFunc();
-	virtual void setupOpcodesGob();
+	void setupOpcodesDraw() override;
+	void setupOpcodesFunc() override;
+	void setupOpcodesGob() override;
 
 	void o7_draw0x0C();
-	void o7_loadCursor();
+	void o7_setCursorToLoadFromExec();
+	void o7_freeMult();
+	void o7_loadMultObject();
+	void o7_getFreeMem(OpFuncParams &params);
 	void o7_displayWarning();
 	void o7_logString();
+	void o7_moveGoblin();
+	void o7_setGoblinState();
 	void o7_intToString();
 	void o7_callFunction();
 	void o7_loadFunctions();
+	void o7_moveFile();
+	void o7_copyFile();
+	void o7_deleteFile();
 	void o7_playVmdOrMusic();
-	void o7_draw0x89();
+	void o7_initScreen();
+	void o7_setActiveCD();
 	void o7_findFile();
-	void o7_findCDFile();
+	void o7_findNextFile();
 	void o7_getSystemProperty();
 	void o7_loadImage();
 	void o7_setVolume();
@@ -698,6 +732,15 @@ protected:
 	void o7_closedBase();
 	void o7_getDBString();
 
+	void o7_loadCursor(OpFuncParams &params);
+	void o7_printText(OpFuncParams &params);
+	void o7_fillRect(OpFuncParams &params);
+	void o7_drawLine(OpFuncParams &params);
+	void o7_invalidate(OpFuncParams &params);
+	void o7_checkData(OpFuncParams &params);
+	void o7_readData(OpFuncParams &params);
+	void o7_writeData(OpFuncParams &params);
+
 	void o7_oemToANSI(OpGobParams &params);
 	void o7_gob0x201(OpGobParams &params);
 
@@ -705,12 +748,14 @@ private:
 	INIConfig _inis;
 	Databases _databases;
 
-	Common::PEResources *_cursors;
+	Common::ArchiveMemberList _remainingFilesFromPreviousSearch;
+	Common::String _currentCDPath;
 
-	Common::String findFile(const Common::String &mask);
+	Common::String findFile(const Common::String &mask, const Common::String &previousFile);
+	void copyFile(const Common::String &sourceFile, const Common::String &destFile);
 
-	bool loadCursorFile();
-	void resizeCursors(int16 width, int16 height, int16 count, bool transparency);
+	bool setCurrentCDPath(const Common::String &dir);
+	Common::Array<uint32> getAdibou2InstalledApplications();
 };
 
 } // End of namespace Gob

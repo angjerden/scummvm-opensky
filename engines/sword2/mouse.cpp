@@ -7,10 +7,10 @@
  * Additional copyright for this file:
  * Copyright (C) 1994-1998 Revolution Software Ltd.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -18,8 +18,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 
@@ -87,8 +86,8 @@ Mouse::Mouse(Sword2Engine *vm) {
 	_playerActivityDelay = 0;
 	_realLuggageItem = 0;
 
-	_mouseAnim.data = NULL;
-	_luggageAnim.data = NULL;
+	_mouseAnim.data = nullptr;
+	_luggageAnim.data = nullptr;
 
 	// For the menus
 	_totalTemp = 0;
@@ -96,7 +95,9 @@ Mouse::Mouse(Sword2Engine *vm) {
 
 	_totalMasters = 0;
 	memset(_masterMenuList, 0, sizeof(_masterMenuList));
-	memset(_mouseList, 0, sizeof(_mouseList));
+	for (uint i = 0; i < ARRAYSIZE(_mouseList); i++) {
+		_mouseList[i].clear();
+	}
 	memset(_subjectList, 0, sizeof(_subjectList));
 
 	_defaultResponseId = 0;
@@ -106,7 +107,7 @@ Mouse::Mouse(Sword2Engine *vm) {
 
 	for (int i = 0; i < 2; i++) {
 		for (int j = 0; j < RDMENU_MAXPOCKETS; j++) {
-			_icons[i][j] = NULL;
+			_icons[i][j] = nullptr;
 			_pocketStatus[i][j] = 0;
 		}
 
@@ -408,6 +409,8 @@ void Mouse::systemMenuMouse() {
 			dialog.runModal();
 		}
 		break;
+	default:
+		break;
 	}
 
 	// Menu stays open on death screen. Otherwise it's closed.
@@ -449,7 +452,7 @@ void Mouse::systemMenuMouse() {
 		pars[1] = FX_LOOP;
 		_vm->_logic->fnPlayMusic(pars);
 	} else
-		_vm->_logic->fnStopMusic(NULL);
+		_vm->_logic->fnStopMusic(nullptr);
 }
 
 void Mouse::dragMouse() {
@@ -820,13 +823,13 @@ void Mouse::normalMouse() {
 	_vm->_logic->writeVar(MOUSE_X, x + screenInfo->scroll_offset_x);
 	_vm->_logic->writeVar(MOUSE_Y, y + screenInfo->scroll_offset_y);
 
-	if (_mouseTouching == _vm->_logic->readVar(EXIT_CLICK_ID) && (me->buttons & RD_LEFTBUTTONDOWN)) {
+	if (_mouseTouching == _vm->_logic->readVar(EXIT_CLICK_ID) && (me->buttons & RD_LEFTBUTTONDOWN) && _oldButton == _buttonClick) {
 		// It's the exit double click situation. Let the existing
 		// interaction continue and start fading down. Switch the human
 		// off too
 
 		noHuman();
-		_vm->_logic->fnFadeDown(NULL);
+		_vm->_logic->fnFadeDown(nullptr);
 
 		// Tell the walker
 
@@ -939,7 +942,7 @@ uint32 Mouse::chooseMouse() {
 		}
 
 		for (; i < 15; i++)
-			setMenuIcon(RDMENU_BOTTOM, (uint8) i, NULL);
+			setMenuIcon(RDMENU_BOTTOM, (uint8) i, nullptr);
 
 		showMenu(RDMENU_BOTTOM);
 		setMouse(NORMAL_MOUSE_ID);
@@ -1104,7 +1107,7 @@ void Mouse::setMouse(uint32 res) {
 		_vm->_resman->closeResource(res);
 	} else {
 		// blank cursor
-		setMouseAnim(NULL, 0, 0);
+		setMouseAnim(nullptr, 0, 0);
 	}
 }
 
@@ -1118,7 +1121,7 @@ void Mouse::setLuggage(uint32 res) {
 		setLuggageAnim(icon, len);
 		_vm->_resman->closeResource(res);
 	} else
-		setLuggageAnim(NULL, 0);
+		setLuggageAnim(nullptr, 0);
 }
 
 void Mouse::setObjectHeld(uint32 res) {
@@ -1292,8 +1295,8 @@ void Mouse::createPointerText(uint32 text_id, uint32 pointer_res) {
 			// Center right
 			justification = POSITION_AT_LEFT_OF_CENTER;
 		} else {
-			// Center center - shouldn't happen anyway!
-			justification = POSITION_AT_LEFT_OF_CENTER;
+			// Center center (shouldn't happen)
+			justification = POSITION_AT_CENTER_OF_CENTER;
 		}
 	}
 
@@ -1489,7 +1492,7 @@ void Mouse::pauseEngine(bool pause) {
 		// we are allowed to clear the luggage this way.
 
 		clearPointerText();
-		setLuggageAnim(NULL, 0);
+		setLuggageAnim(nullptr, 0);
 		setMouse(0);
 		setMouseTouching(1);
 	} else {
@@ -1647,7 +1650,7 @@ int32 Mouse::animateMouse() {
 
 int32 Mouse::setMouseAnim(byte *ma, int32 size, int32 mouseFlash) {
 	free(_mouseAnim.data);
-	_mouseAnim.data = NULL;
+	_mouseAnim.data = nullptr;
 
 	if (ma)	{
 		if (mouseFlash == RDMOUSE_FLASH)
@@ -1693,7 +1696,7 @@ int32 Mouse::setMouseAnim(byte *ma, int32 size, int32 mouseFlash) {
 
 int32 Mouse::setLuggageAnim(byte *ma, int32 size) {
 	free(_luggageAnim.data);
-	_luggageAnim.data = NULL;
+	_luggageAnim.data = nullptr;
 
 	if (ma)	{
 		Common::MemoryReadStream readS(ma, size);

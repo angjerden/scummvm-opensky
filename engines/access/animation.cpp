@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -53,6 +52,18 @@ Animation::Animation(AccessEngine *vm, Common::SeekableReadStream *stream) : Man
 	uint32 startOfs = stream->pos();
 
 	_type = stream->readByte();
+
+	// WORKAROUND: In Amazon floppy English, there's an animation associated with
+	// the librarian that isn't used, and has junk data. Luckily, it's animation
+	// type is also invalid, so if the _type isn't in range, exit immediately
+	if (_type < 0 || _type > 7) {
+		_scaling = -1;
+		_frameNumber = -1;
+		_initialTicks = _countdownTicks = 0;
+		_loopCount = _currentLoopCount = 0;
+		return;
+	}
+
 	_scaling = stream->readSByte();
 	stream->readByte(); // unk
 	_frameNumber = stream->readByte();

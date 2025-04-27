@@ -31,9 +31,9 @@ Selectlocation	proc	near
 	call	clearbeforeload
 	mov	getback,0
 	mov	pointerframe,22
-	
+
 	call	readcitypic
-	call	showcity       
+	call	showcity
 	call	getridoftemp
 	call	readdesticon
 	call	loadtraveltext
@@ -123,9 +123,9 @@ Showcity	proc	near
 	endp
 
 
-	
-	
-	
+
+
+
 Lookatplace	proc	near
 
 	cmp	commandtype,224
@@ -184,7 +184,7 @@ $2:
 	mov	dl,191
 	mov	al,0
 	mov	ah,0
-	call	printdirect 
+	call	printdirect
 	call	worktoscreenm
 
 	mov	cx,500
@@ -485,7 +485,7 @@ Getlocation	proc	near
 	endp
 
 
-Setlocation	proc	near		;makes a location accessable
+Setlocation	proc	near		;makes a location accessible
 
 	mov	ah,0
 	mov	bx,ax
@@ -500,7 +500,7 @@ Setlocation	proc	near		;makes a location accessable
 
 
 
-Resetlocation	proc	near		;makes a location inaccessable
+Resetlocation	proc	near		;makes a location inaccessible
 
 	push	ax
 	cmp	al,5
@@ -560,7 +560,7 @@ Readdesticon	proc	near
 
 	mov	dx,offset cs:travelgraphic2
 	call	loadintotemp2
-	
+
 	mov	dx,offset cs:icongraphics8
 	call	loadintotemp3
 	ret

@@ -7,10 +7,10 @@
  * Additional copyright for this file:
  * Copyright (C) 1994-1998 Revolution Software Ltd.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -18,8 +18,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 
@@ -396,7 +395,7 @@ int Logic::runScript2(byte *scriptData, byte *objectData, byte *offsetPtr) {
 
 			if (checkElevatorBug && readVar(RIGHT_BUTTON)) {
 				warning("Working around elevator bug: Restoring mouse pointer");
-				fnAddHuman(NULL);
+				fnAddHuman(nullptr);
 			}
 
 			debug(9, "CP_END_SCRIPT");
@@ -449,7 +448,7 @@ int Logic::runScript2(byte *scriptData, byte *objectData, byte *offsetPtr) {
 
 			Read16ip(parameter);
 			stack.push(_vm->_memory->encodePtr(localVars + parameter));
-			debug(9, "CP_PUSH_LOCAL_ADDR: &localVars[%d] => %p", parameter / 4, localVars + parameter);
+			debug(9, "CP_PUSH_LOCAL_ADDR: &localVars[%d] => %p", parameter / 4, (void *)(localVars + parameter));
 			break;
 		case CP_PUSH_STRING:
 			// Push the address of a string on to the stack
@@ -467,7 +466,7 @@ int Logic::runScript2(byte *scriptData, byte *objectData, byte *offsetPtr) {
 			Read32ip(parameter);
 			ptr = objectData + 4 + ResHeader::size() + ObjectHub::size() + parameter;
 			stack.push(_vm->_memory->encodePtr(ptr));
-			debug(9, "CP_PUSH_DEREFERENCED_STRUCTURE: %d => %p", parameter, ptr);
+			debug(9, "CP_PUSH_DEREFERENCED_STRUCTURE: %d => %p", parameter, (void *)ptr);
 			break;
 		case CP_POP_LOCAL_VAR32:
 			// Pop a value into a local word variable
@@ -481,7 +480,7 @@ int Logic::runScript2(byte *scriptData, byte *objectData, byte *offsetPtr) {
 			Read16ip(parameter);
 			value = stack.pop();
 
-			// WORKAROUND for bug #1214168: The not-at-all dreaded
+			// WORKAROUND for bug #2058: The not-at-all dreaded
 			// mop bug.
 			//
 			// At the London Docks, global variable 1003 keeps

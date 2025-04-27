@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -103,7 +102,7 @@ void Scene9100::signal() {
 		break;
 	case 9105:
 		_hotspotCleanedClothes.remove();
-	// No break on purpose
+		// fall through
 	case 9103:
 	case 9104:
 	case 9107:
@@ -336,7 +335,7 @@ void Scene9200::signal() {
 		break;
 	case 9210:
 		_hotspot1.remove();
-	// No break on purpose
+		// fall through
 	case 9201:
 	case 9202:
 	case 9203:
@@ -480,7 +479,7 @@ void Scene9300::signal() {
 	switch (_sceneMode++) {
 	case 9301:
 		g_globals->setFlag(84);
-		// No break on purpose
+		// fall through
 	case 9303:
 		g_globals->_soundHandler.play(295);
 		g_globals->_sceneManager.changeScene(9350);
@@ -938,7 +937,7 @@ void Scene9450::signal() {
 		break;
 	case 1006:
 		g_globals->setFlag(87);
-		// No break on purpose
+		// fall through
 	default:
 		g_globals->_player.enableControl();
 		break;
@@ -1240,10 +1239,16 @@ void Scene9700::signal() {
 	switch (_sceneMode ++) {
 	case 9703:
 		g_globals->setFlag(88);
-		// No break on purpose
+		// fall through
 	case 9701:
 	case 9702:
-		_gfxButton1.setText(EXIT_MSG);
+		if (g_vm->getLanguage() == Common::ES_ESP) {
+			_gfxButton1.setText(ESP_EXIT_MSG);
+		} else if (g_vm->getLanguage() == Common::RU_RUS) {
+			_gfxButton1.setText(RUS_EXIT_MSG);
+		} else {
+			_gfxButton1.setText(EXIT_MSG);
+		}
 		_gfxButton1._bounds.center(50, 190);
 		_gfxButton1.draw();
 		_gfxButton1._bounds.expandPanes();
@@ -1254,6 +1259,8 @@ void Scene9700::signal() {
 	case 9704:
 		g_globals->_soundHandler.play(323);
 		g_globals->_sceneManager.changeScene(9750);
+		break;
+	default:
 		break;
 	}
 }
@@ -1700,7 +1707,7 @@ void Scene9900::strAction2::signal() {
 		_txtArray2[0]._position.y = 400;
 		_txtArray2[1]._position.y = 500;
 		_var3 = 0;
-		// No break on purpose
+		// fall through
 	case 1: {
 		Common::String msg = g_resourceManager->getMessage(8030, _lineNum++);
 		if (msg.compareTo("LASTCREDIT")) {

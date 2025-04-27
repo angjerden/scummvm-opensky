@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -66,7 +65,9 @@ public:
 	 * @param numColors Number of colors
 	 * @note For the default constructed object (i.e. no parameters given) this will hold: empty() && !isValid()
 	 */
-	Palette(const Graphics::PixelFormat format = Graphics::PixelFormat(), const uint numColors = 0);
+	Palette(const Graphics::PixelFormat &format = Graphics::PixelFormat(), const uint numColors = 0);
+	Palette(const Palette& other);
+	Palette& operator=(const Palette& other);
 
 	/**
 	 * Clear the palette (Set color count to zero, release memory, overwrite color format with default value).
@@ -82,7 +83,7 @@ public:
 	 * @param numColors Number of colors to load
 	 * @param endian The endianness of the colors in the input buffer
 	 */
-	Palette &load(const byte *buf, const uint size, const Graphics::PixelFormat format, const uint numColors, const EndianType endian);
+	Palette &load(const byte *buf, const uint size, const Graphics::PixelFormat &format, const uint numColors, const EndianType endian);
 
 	/**
 	 * Save the whole palette to buffer in original color format using defined endianness.
@@ -99,7 +100,7 @@ public:
 	 * @param format Output color format
 	 * @param endian The endian type to use
 	 */
-	byte *save(byte *buf, const uint size, const Graphics::PixelFormat format, const EndianType endian) const;
+	byte *save(byte *buf, const uint size, const Graphics::PixelFormat &format, const EndianType endian) const;
 
 	/**
 	 * Save (partial) palette to buffer in given color format using defined endianness.
@@ -110,13 +111,13 @@ public:
 	 * @param endian The endian type to use
 	 * @param firstIndex Starting color index (from which onwards to save the colors)
 	 */
-	byte *save(byte *buf, const uint size, const Graphics::PixelFormat format, const uint numColors, const EndianType endian, const byte firstIndex = 0) const;
+	byte *save(byte *buf, const uint size, const Graphics::PixelFormat &format, const uint numColors, const EndianType endian, const byte firstIndex = 0) const;
 
 	/**
-	 * Rotate the palette in color range [firstIndex, lastIndex] to the right by the specified rotation amount.
-	 * @param rotationAmount Amount to rotate the sub-palette to the right. Only values 0 and 1 are currently supported!
+	 * Rotate the palette in color range [firstIndex, lastIndex] to the right by one.
 	 */
-	Palette &rotateRight(byte firstIndex, byte lastIndex, signed rotationAmount = 1);
+	Palette &rotateRight(byte firstIndex, byte lastIndex);
+	Palette &rotateLeft(byte firstIndex, byte lastIndex);
 	Palette &saturatedAddColor(Palette &output, byte firstIndex, byte lastIndex, signed r, signed g, signed b) const;
 
 	/**
@@ -147,7 +148,6 @@ public:
 
 	bool empty() const;
 	uint colorCount() const;
-
 	Palette &fillWithBlack();
 
 	/** Is the palette valid? (Mostly just checks the color format for correctness) */
@@ -171,13 +171,13 @@ public:
 	/** Get the blue color component of the color at the given palette index. */
 	uint8 getB(byte index) const;
 
-private:
-	void setColorFormat(const Graphics::PixelFormat format);
+	bool ensureContrast(byte &minBrightnessColorIndex);
+	bool isEqual(byte index1, byte index2);
 
-	// WORKAROUND: Using a reference to a result here instead of returning an Color object.
-	// This is needed because when using a Color as return value, this would crash Chrilith's
-	// compiler for PalmOS.
-	// TODO: Add more information about the compiler.
+private:
+	int findMinBrightnessColorIndex(uint minColorIndex = 1);
+	byte brightness(byte colorIndex);
+	void setColorFormat(const Graphics::PixelFormat &format);
 	void saturatedAddColor(Color &result, const Color &baseColor, signed r, signed g, signed b) const;
 
 private:

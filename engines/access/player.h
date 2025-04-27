@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -30,8 +29,6 @@
 #include "access/data.h"
 
 namespace Access {
-
-#define PLAYER_DATA_COUNT 8
 
 enum Direction {
 	NONE = 0,
@@ -58,11 +55,11 @@ protected:
 	int _diagUpWalkMin, _diagUpWalkMax;
 	int _diagDownWalkMin, _diagDownWalkMax;
 	SpriteResource *_playerSprites1;
-	byte *_manPal1;
 	int _scrollEnd;
 	int _inactiveYOff;
 
 	void plotCom(int v1);
+	void plotCom0();
 	void plotCom1();
 	void plotCom2();
 	void plotCom3();
@@ -76,22 +73,19 @@ protected:
 	void walkUpRight();
 	void walkDownRight();
 	void checkScrollUp();
-	bool scrollUp();
-	bool scrollDown();
-	bool scrollLeft();
-	bool scrollRight();
 public:
 	Direction _playerDirection;
 	SpriteResource *_playerSprites;
 	// Fields in original Player structure
-	int _walkOffRight[PLAYER_DATA_COUNT];
-	int _walkOffLeft[PLAYER_DATA_COUNT];
-	int _walkOffUp[PLAYER_DATA_COUNT];
-	int _walkOffDown[PLAYER_DATA_COUNT];
-	Common::Point _walkOffUR[PLAYER_DATA_COUNT];
-	Common::Point _walkOffDR[PLAYER_DATA_COUNT];
-	Common::Point _walkOffUL[PLAYER_DATA_COUNT];
-	Common::Point _walkOffDL[PLAYER_DATA_COUNT];
+	byte *_manPal1;
+	int *_walkOffRight;
+	int *_walkOffLeft;
+	int *_walkOffUp;
+	int *_walkOffDown;
+	Common::Point *_walkOffUR;
+	Common::Point *_walkOffDR;
+	Common::Point *_walkOffUL;
+	Common::Point *_walkOffDL;
 	byte _rawTempL;
 	int _rawXTemp;
 	byte _rawYTempL;
@@ -125,7 +119,9 @@ public:
 
 	virtual void load();
 
-	void loadSprites(const Common::String &name);
+	void loadTexPalette();
+
+	void loadSprites(const Common::Path &name);
 
 	void freeSprites();
 
@@ -137,6 +133,10 @@ public:
 
 	void calcPlayer();
 
+	bool scrollUp(int forcedAmount = -1);
+	bool scrollDown(int forcedAmount = -1);
+	bool scrollLeft(int forcedAmount = -1);
+	bool scrollRight(int forcedAmount = -1);
 	void checkScroll();
 
 	void checkMove();

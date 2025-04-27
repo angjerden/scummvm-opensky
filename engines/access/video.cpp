@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -48,16 +47,12 @@ VideoPlayer::~VideoPlayer() {
 	closeVideo();
 }
 
-
-void VideoPlayer::setVideo(ASurface *vidSurface, const Common::Point &pt, const FileIdent &videoFile, int rate) {
+void VideoPlayer::setVideo(BaseSurface *vidSurface, const Common::Point &pt, int rate) {
 	_vidSurface = vidSurface;
 	vidSurface->_orgX1 = pt.x;
 	vidSurface->_orgY1 = pt.y;
 	_vm->_timers[31]._timer = rate;
 	_vm->_timers[31]._initTm = rate;
-
-	// Open up video stream
-	_videoData = _vm->_files->loadFile(videoFile);
 
 	// Load in header
 	_header._frameCount = _videoData->_stream->readUint16LE();
@@ -89,6 +84,20 @@ void VideoPlayer::setVideo(ASurface *vidSurface, const Common::Point &pt, const 
 	}
 
 	_videoEnd = false;
+}
+
+void VideoPlayer::setVideo(BaseSurface *vidSurface, const Common::Point &pt, const Common::Path &filename, int rate) {
+	// Open up video stream
+	_videoData = _vm->_files->loadFile(filename);
+
+	setVideo(vidSurface, pt, rate);
+}
+
+void VideoPlayer::setVideo(BaseSurface *vidSurface, const Common::Point &pt, const FileIdent &videoFile, int rate) {
+	// Open up video stream
+	_videoData = _vm->_files->loadFile(videoFile);
+
+	setVideo(vidSurface, pt, rate);
 }
 
 void VideoPlayer::closeVideo() {
@@ -147,7 +156,7 @@ void VideoPlayer::playVideo() {
 
 	// If the video is playing on the screen surface, add a dirty rect
 	if (_vidSurface == _vm->_screen)
-		_vm->_screen->addDirtyRect(_videoBounds);
+		_vm->_screen->markAllDirty();
 
 	getFrame();
 	if (++_videoFrame == _frameCount) {

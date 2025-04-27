@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,10 +15,11 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+
+#define FORBIDDEN_SYMBOL_ALLOW_ALL
 
 #include "common/scummsys.h"
 
@@ -28,14 +29,11 @@
 #include "common/fs.h"
 
 #include "dcloader.h"
-
-extern void draw_solid_quad(float x1, float y1, float x2, float y2,
-			    int c0, int c1, int c2, int c3);
+#include "dcutils.h"
 
 static void drawPluginProgress(const Common::String &filename)
 {
-  ta_sync();
-  void *mark = ta_txmark();
+  TextureStack txstack;
   const char *fn = filename.c_str();
   Label lab1, lab2, lab3;
   char buf[32];
@@ -60,19 +58,17 @@ static void drawPluginProgress(const Common::String &filename)
   lab2.draw(100.0, 190.0, 0xffaaffaa);
   lab3.draw(100.0, 230.0, 0xffffffff);
   ta_commit_frame();
-  ta_sync();
-  ta_txrelease(mark);
 }
-
 
 class OSystem_Dreamcast::DCPlugin : public DynamicPlugin {
 protected:
 	void *_dlHandle;
+	DiscLabel _label;
 
 	virtual VoidFunc findSymbol(const char *symbol) {
 		void *func = dlsym(_dlHandle, symbol);
 		if (!func)
-			warning("Failed loading symbol '%s' from plugin '%s' (%s)", symbol, _filename.c_str(), dlerror());
+			warning("Failed loading symbol '%s' from plugin '%s' (%s)", symbol, _filename.toString(Common::Path::kNativeSeparator).c_str(), dlerror());
 
 		// FIXME HACK: This is a HACK to circumvent a clash between the ISO C++
 		// standard and POSIX: ISO C++ disallows casting between function pointers
@@ -84,17 +80,22 @@ protected:
 		return tmp;
 	}
 
+	void checkDisc(const DiscLabel &);
+
 public:
-	DCPlugin(const Common::String &filename)
+	DCPlugin(const Common::Path &filename)
 		: DynamicPlugin(filename), _dlHandle(0) {}
 
 	bool loadPlugin() {
 		assert(!_dlHandle);
-		drawPluginProgress(_filename);
-		_dlHandle = dlopen(_filename.c_str(), RTLD_LAZY);
+		DiscLabel original;
+		checkDisc(_label);
+		drawPluginProgress(_filename.toString(Common::Path::kNativeSeparator));
+		_dlHandle = dlopen(_filename.toString(Common::Path::kNativeSeparator).c_str(), RTLD_LAZY);
 
 		if (!_dlHandle) {
-			warning("Failed loading plugin '%s' (%s)", _filename.c_str(), dlerror());
+			checkDisc(original);
+			warning("Failed loading plugin '%s' (%s)", _filename.toString(Common::Path::kNativeSeparator).c_str(), dlerror());
 			return false;
 		}
 
@@ -103,6 +104,7 @@ public:
 		if (ret)
 			dlforgetsyms(_dlHandle);
 
+		checkDisc(original);
 		return ret;
 	}
 
@@ -110,12 +112,26 @@ public:
 		DynamicPlugin::unloadPlugin();
 		if (_dlHandle) {
 			if (dlclose(_dlHandle) != 0)
-				warning("Failed unloading plugin '%s' (%s)", _filename.c_str(), dlerror());
+				warning("Failed unloading plugin '%s' (%s)", _filename.toString(Common::Path::kNativeSeparator).c_str(), dlerror());
 			_dlHandle = 0;
 		}
 	}
 };
 
+void OSystem_Dreamcast::DCPlugin::checkDisc(const DiscLabel &target)
+{
+  for (;;) {
+    DiscLabel current;
+    if (current == target)
+	return;
+
+    char buf[32+24];
+    Common::strcpy_s(buf, "Please insert disc '");
+    target.get(buf+strlen(buf));
+    Common::strcat_s(buf, "'");
+    DiscSwap(buf, 0xffffffff).run();
+  }
+}
 
 Plugin* OSystem_Dreamcast::createPlugin(const Common::FSNode &node) const {
 	return new DCPlugin(node.getPath());
@@ -129,5 +145,28 @@ bool OSystem_Dreamcast::isPluginFilename(const Common::FSNode &node) const {
 
 	return true;
 }
+
+void OSystem_Dreamcast::addCustomDirectories(Common::FSList &dirs) const
+{
+  FilePluginProvider::addCustomDirectories(dirs);
+  if (pluginCustomDirectory != NULL)
+	dirs.push_back(Common::FSNode(pluginCustomDirectory));
+}
+
+PluginList OSystem_Dreamcast::getPlugins()
+{
+  pluginCustomDirectory = NULL;
+  PluginList list = FilePluginProvider::getPlugins();
+  if (list.empty()) {
+	Common::String selection;
+	if (selectPluginDir(selection, Common::FSNode("plugins"))) {
+	  pluginCustomDirectory = selection.c_str();
+	  list = FilePluginProvider::getPlugins();
+	  pluginCustomDirectory = NULL;
+	}
+  }
+  return list;
+}
+
 
 #endif // defined(DYNAMIC_MODULES)

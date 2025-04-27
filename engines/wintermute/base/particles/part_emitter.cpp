@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -39,7 +38,7 @@
 #include "engines/wintermute/base/gfx/base_renderer.h"
 #include "engines/wintermute/utils/utils.h"
 #include "common/str.h"
-#include "common/math.h"
+#include "math/utils.h"
 
 namespace Wintermute {
 
@@ -94,7 +93,7 @@ PartEmitter::PartEmitter(BaseGame *inGame, BaseScriptHolder *owner) : BaseObject
 
 
 //////////////////////////////////////////////////////////////////////////
-PartEmitter::~PartEmitter(void) {
+PartEmitter::~PartEmitter() {
 	for (uint32 i = 0; i < _particles.size(); i++) {
 		delete _particles[i];
 	}
@@ -137,8 +136,9 @@ bool PartEmitter::addSprite(const char *filename) {
 		BaseFileManager::getEngineInstance()->closeFile(File);
 	}
 
-	char *str = new char[strlen(filename) + 1];
-	strcpy(str, filename);
+	size_t filenameSize = strlen(filename) + 1;
+	char *str = new char[filenameSize];
+	Common::strcpy_s(str, filenameSize, filename);
 	_sprites.add(str);
 
 	return STATUS_OK;
@@ -214,7 +214,8 @@ bool PartEmitter::initParticle(PartParticle *particle, uint32 currentTime, uint3
 	Vector2 vecVel(0, velocity);
 
 	Matrix4 matRot;
-	matRot.rotationZ(Common::deg2rad(BaseUtils::normalizeAngle(angle - 180)));
+	float radZrot = Math::deg2rad<float>(BaseUtils::normalizeAngle(angle - 180.0));
+	matRot.rotationZ(radZrot);
 	matRot.transformVector2(vecVel);
 
 	if (_alphaTimeBased) {
@@ -368,19 +369,23 @@ bool PartEmitter::start() {
 //////////////////////////////////////////////////////////////////////////
 bool PartEmitter::sortParticlesByZ() {
 	// sort particles by _posY
-	Common::sort(_particles.begin(), _particles.end(), PartEmitter::compareZ);
+	qsort(_particles.data(), _particles.size(), sizeof(PartParticle *), PartEmitter::compareZ);
 	return STATUS_OK;
 }
 
 //////////////////////////////////////////////////////////////////////////
-bool PartEmitter::compareZ(const PartParticle *p1, const PartParticle *p2) {
-	if (p1->_posZ < p2->_posZ) {
-		return true;
-	} else if (p1->_posZ > p2->_posZ) {
-		return false;
-	} else {
-		return false;
-	}
+int PartEmitter::compareZ(const void *obj1, const void *obj2) {
+	void *o1 = const_cast<void *>(obj1);
+	void *o2 = const_cast<void *>(obj2);
+	PartParticle *p1 = *(PartParticle **)o1;
+	PartParticle *p2 = *(PartParticle **)o2;
+
+	if (p1->_posZ < p2->_posZ)
+		return -1;
+	else if (p1->_posZ > p2->_posZ)
+		return 1;
+	else
+		return 0;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -433,7 +438,8 @@ bool PartEmitter::addForce(const Common::String &name, PartForce::TForceType typ
 
 	force->_direction = Vector2(0, strength);
 	Matrix4 matRot;
-	matRot.rotationZ(Common::deg2rad(BaseUtils::normalizeAngle(angle - 180)));
+	float radZrot = Math::deg2rad<float>(BaseUtils::normalizeAngle(angle - 180.0));
+	matRot.rotationZ(radZrot);
 	matRot.transformVector2(force->_direction);
 
 	return STATUS_OK;

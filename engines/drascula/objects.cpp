@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -57,12 +56,12 @@ void DrasculaEngine::chooseObject(int object) {
 	pickedObject = object;
 }
 
-void DrasculaEngine::gotoObject(int pointX, int pointY) {
+void DrasculaEngine::walkToPoint(Common::Point pos) {
 	bool cursorVisible = isCursorVisible();
 	hideCursor();
 
 	if (currentChapter == 5 || currentChapter == 6) {
-		if (hare_se_ve == 0) {
+		if (!_characterVisible) {
 			curX = roomX;
 			curY = roomY;
 			updateRoom();
@@ -70,22 +69,22 @@ void DrasculaEngine::gotoObject(int pointX, int pointY) {
 			return;
 		}
 	}
-	roomX = pointX;
-	roomY = pointY;
+	roomX = pos.x;
+	roomY = pos.y;
 	startWalking();
 
 	while (!shouldQuit()) {
 		updateRoom();
 		updateScreen();
 		updateEvents();
-		if (characterMoved == 0)
+		if (!_characterMoved)
 			break;
 
 		pause(3);
 	}
 
-	if (walkToObject == 1) {
-		walkToObject = 0;
+	if (_walkToObject) {
+		_walkToObject = false;
 		trackProtagonist = trackFinal;
 	}
 	updateRoom();
@@ -97,29 +96,24 @@ void DrasculaEngine::gotoObject(int pointX, int pointY) {
 }
 
 void DrasculaEngine::checkObjects() {
-	int l, veo = 0;
+	int l;
+
+	_hasName = false;
 
 	for (l = 0; l < numRoomObjs; l++) {
-		if (_mouseX > _objectX1[l] && _mouseY > _objectY1[l]
-				&& _mouseX < _objectX2[l] && _mouseY < _objectY2[l]
-				&& visible[l] == 1 && isDoor[l] == 0) {
-			strcpy(textName, objName[l]);
+		if (_objectRect[l].contains(Common::Point(_mouseX, _mouseY)) && visible[l] == 1 && isDoor[l] == 0) {
+			Common::strcpy_s(textName, objName[l]);
 			_hasName = true;
-			veo = 1;
 		}
 	}
 
 	if (_mouseX > curX + 2 && _mouseY > curY + 2
 			&& _mouseX < curX + curWidth - 2 && _mouseY < curY + curHeight - 2) {
-		if (currentChapter == 2 || veo == 0) {
-			strcpy(textName, "hacker");
+		if (currentChapter == 2 || !_hasName) {
+			Common::strcpy_s(textName, _textmisc[3]); // "hacker"
 			_hasName = true;
-			veo = 1;
 		}
 	}
-
-	if (veo == 0)
-		_hasName = false;
 }
 
 /**
@@ -265,12 +259,13 @@ void DrasculaEngine::updateVisible() {
 		}
 		if (_roomNumber == 22 && flags[27] == 1)
 			visible[3] = 0;
-		if (_roomNumber == 26 && flags[21] == 0) {
+		if (_roomNumber == 26 && flags[21] == 0)
 			Common::strlcpy(objName[2], _textmisc[0], 20);
-		}
 		if (_roomNumber == 26 && flags[18] == 1)
 			visible[2] = 0;
 		if (_roomNumber == 26 && flags[12] == 1)
+			visible[1] = 0;
+		if (_roomNumber == 31 && flags[13] == 1)
 			visible[1] = 0;
 		if (_roomNumber == 35 && flags[14] == 1)
 			visible[2] = 0;

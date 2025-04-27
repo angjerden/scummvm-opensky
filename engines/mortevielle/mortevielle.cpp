@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -37,9 +36,9 @@
 #include "common/system.h"
 #include "common/config-manager.h"
 #include "common/debug-channels.h"
+#include "common/translation.h"
 #include "engines/util.h"
 #include "engines/engine.h"
-#include "graphics/palette.h"
 #include "graphics/pixelformat.h"
 
 namespace Mortevielle {
@@ -48,8 +47,9 @@ MortevielleEngine *g_vm;
 
 MortevielleEngine::MortevielleEngine(OSystem *system, const MortevielleGameDescription *gameDesc):
 		Engine(system), _gameDescription(gameDesc), _randomSource("mortevielle") {
+
 	g_vm = this;
-	_debugger = new Debugger(this);
+	setDebugger(new Debugger(this));
 	_dialogManager = new DialogManager(this);
 	_screenSurface = new ScreenSurface(this);
 	_mouse = new MouseHandler(this);
@@ -145,6 +145,7 @@ MortevielleEngine::MortevielleEngine(OSystem *system, const MortevielleGameDescr
 	_endGame = false;
 	_loseGame = false;
 	_txxFileFl = false;
+	_is = 0;
 }
 
 MortevielleEngine::~MortevielleEngine() {
@@ -155,7 +156,6 @@ MortevielleEngine::~MortevielleEngine() {
 	delete _mouse;
 	delete _screenSurface;
 	delete _dialogManager;
-	delete _debugger;
 
 	free(_curPict);
 	free(_curAnim);
@@ -167,7 +167,7 @@ MortevielleEngine::~MortevielleEngine() {
  */
 bool MortevielleEngine::hasFeature(EngineFeature f) const {
 	return
-		(f == kSupportsRTL) ||
+		(f == kSupportsReturnToLauncher) ||
 		(f == kSupportsLoadingDuringRuntime) ||
 		(f == kSupportsSavingDuringRuntime);
 }
@@ -175,7 +175,7 @@ bool MortevielleEngine::hasFeature(EngineFeature f) const {
 /**
  * Return true if a game can currently be loaded
  */
-bool MortevielleEngine::canLoadGameStateCurrently() {
+bool MortevielleEngine::canLoadGameStateCurrently(Common::U32String *msg) {
 	// Saving is only allowed in the main game event loop
 	return _inMainGameLoop;
 }
@@ -183,7 +183,7 @@ bool MortevielleEngine::canLoadGameStateCurrently() {
 /**
  * Return true if a game can currently be saved
  */
-bool MortevielleEngine::canSaveGameStateCurrently() {
+bool MortevielleEngine::canSaveGameStateCurrently(Common::U32String *msg) {
 	// Loading is only allowed in the main game event loop
 	return _inMainGameLoop;
 }
@@ -198,7 +198,7 @@ Common::Error MortevielleEngine::loadGameState(int slot) {
 /**
  * Save the current game
  */
-Common::Error MortevielleEngine::saveGameState(int slot, const Common::String &desc) {
+Common::Error MortevielleEngine::saveGameState(int slot, const Common::String &desc, bool isAutosave) {
 	if (slot == 0)
 		return Common::kWritingFailed;
 
@@ -241,11 +241,7 @@ void MortevielleEngine::pauseEngineIntern(bool pause) {
  */
 Common::ErrorCode MortevielleEngine::initialize() {
 	// Initialize graphics mode
-	initGraphics(SCREEN_WIDTH, SCREEN_HEIGHT, true);
-
-	// Set debug channels
-	DebugMan.addDebugChannel(kMortevielleCore, "core", "Core debugging");
-	DebugMan.addDebugChannel(kMortevielleGraphics, "graphics", "Graphics debugging");
+	initGraphics(SCREEN_WIDTH, SCREEN_HEIGHT);
 
 	// Set up an intermediate screen surface
 	_screenSurface->create(SCREEN_WIDTH, SCREEN_HEIGHT, Graphics::PixelFormat::createFormatCLUT8());
@@ -301,7 +297,7 @@ Common::ErrorCode MortevielleEngine::loadMortDat() {
 
 	// Open the mort.dat file
 	if (!f.open(MORT_DAT)) {
-		GUIErrorMessage("Could not locate 'mort.dat'.");
+		GUIErrorMessageFormat(_("Unable to locate the '%s' engine data file."), MORT_DAT);
 		return Common::kReadingFailed;
 	}
 
@@ -309,16 +305,20 @@ Common::ErrorCode MortevielleEngine::loadMortDat() {
 	char fileId[4];
 	f.read(fileId, 4);
 	if (strncmp(fileId, "MORT", 4) != 0) {
-		GUIErrorMessage("The located mort.dat data file is invalid");
+		GUIErrorMessageFormat(_("The '%s' engine data file is corrupt."), MORT_DAT);
 		return Common::kReadingFailed;
 	}
 
 	// Check the version
-	if (f.readByte() < MORT_DAT_REQUIRED_VERSION) {
-		GUIErrorMessage("The located mort.dat data file is too old, please download an updated version on scummvm.org");
+	int majVer = f.readByte();
+	int minVer = f.readByte();
+
+	if (majVer < MORT_DAT_REQUIRED_VERSION) {
+		GUIErrorMessageFormat(
+			_("Incorrect version of the '%s' engine data file found. Expected %d.%d but got %d.%d."),
+			MORT_DAT, MORT_DAT_REQUIRED_VERSION, 0, majVer, minVer);
 		return Common::kReadingFailed;
 	}
-	f.readByte();		// Minor version
 
 	// Loop to load resources from the data file
 	while (f.pos() < f.size()) {
@@ -428,7 +428,7 @@ Common::Error MortevielleEngine::run() {
 	adzon();
 	resetVariables();
 	if (loadSlot != 0)
-		_savegameManager->loadSavegame(generateSaveFilename(loadSlot));
+		_savegameManager->loadSavegame(getSaveStateName(loadSlot));
 
 	// Run the main game loop
 	mainGame();

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -35,9 +34,8 @@ namespace Draci {
 
 static const char *const draciIdentString = "DRACI";
 
-bool readSavegameHeader(Common::InSaveFile *in, DraciSavegameHeader &header) {
+WARN_UNUSED_RESULT bool readSavegameHeader(Common::InSaveFile *in, DraciSavegameHeader &header, bool skipThumbnail) {
 	char saveIdentBuffer[6];
-	header.thumbnail = NULL;
 
 	// Validate the header Id
 	in->read(saveIdentBuffer, 6);
@@ -59,9 +57,9 @@ bool readSavegameHeader(Common::InSaveFile *in, DraciSavegameHeader &header) {
 	header.playtime = in->readUint32LE();
 
 	// Get the thumbnail
-	header.thumbnail = Graphics::loadThumbnail(*in);
-	if (!header.thumbnail)
+	if (!Graphics::loadThumbnail(*in, header.thumbnail, skipThumbnail)) {
 		return false;
+	}
 
 	return true;
 }
@@ -86,7 +84,7 @@ Common::Error saveSavegameData(int saveGameIdx, const Common::String &saveName, 
 	Common::String filename = vm.getSavegameFile(saveGameIdx);
 	Common::SaveFileManager *saveMan = g_system->getSavefileManager();
 	Common::OutSaveFile *f = saveMan->openForSaving(filename);
-	if (f == NULL)
+	if (f == nullptr)
 		return Common::kNoGameDataFoundError;
 
 	TimeDate curTime;
@@ -106,8 +104,8 @@ Common::Error saveSavegameData(int saveGameIdx, const Common::String &saveName, 
 		return Common::kWritingFailed;
 	} else {
 		// Create the remainder of the savegame
-		Common::Serializer s(NULL, f);
-		vm._game->DoSync(s, header.version);
+		Common::Serializer s(nullptr, f);
+		vm._game->synchronize(s, header.version);
 
 		f->finalize();
 		delete f;
@@ -121,7 +119,7 @@ Common::Error loadSavegameData(int saveGameIdx, DraciEngine *vm) {
 	Common::SaveFileManager *saveMan = g_system->getSavefileManager();
 	Common::InSaveFile *f = saveMan->openForLoading(vm->getSavegameFile(saveGameIdx));
 
-	if (f == NULL) {
+	if (f == nullptr) {
 		return Common::kNoGameDataFoundError;
 	}
 
@@ -130,18 +128,14 @@ Common::Error loadSavegameData(int saveGameIdx, DraciEngine *vm) {
 	if (!readSavegameHeader(f, header)) {
 		return Common::kNoGameDataFoundError;
 	}
-	if (header.thumbnail) {
-		header.thumbnail->free();
-		delete header.thumbnail;
-	}
 
 	// Pre-processing
 	vm->_game->rememberRoomNumAsPrevious();
 	vm->_game->deleteObjectAnimations();
 
 	// Synchronise the remaining data of the savegame
-	Common::Serializer s(f, NULL);
-	vm->_game->DoSync(s, header.version);
+	Common::Serializer s(f, nullptr);
+	vm->_game->synchronize(s, header.version);
 	delete f;
 
 	// Post-processing

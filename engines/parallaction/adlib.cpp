@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -25,7 +24,7 @@
 
 #include "audio/fmopl.h"
 #include "audio/mpu401.h"
-#include "audio/softsynth/emumidi.h"
+#include "audio/mididrv.h"
 
 namespace Parallaction {
 
@@ -270,23 +269,36 @@ struct MelodicVoice {
 	int8 _octave;
 };
 
-class AdLibDriver : public MidiDriver_Emulated {
+class AdLibDriver : public MidiDriver {
 public:
-	AdLibDriver(Audio::Mixer *mixer) : MidiDriver_Emulated(mixer) {
+	AdLibDriver(Audio::Mixer *mixer) {
 		for (uint i = 0; i < 16; ++i)
 			_channels[i].init(this, i);
+
+		_isOpen = false;
+
+		_opl = nullptr;
+		memset(_voices, 0, sizeof(_voices));
+
+		_lastVoice = 0;
+		_percussionMask = 0;
+
+		_adlibTimerProc = nullptr;
+		_adlibTimerParam = nullptr;
 	}
 
-	int open();
-	void close();
-	void send(uint32 b);
-	MidiChannel *allocateChannel();
-	MidiChannel *getPercussionChannel() { return &_channels[9]; }
+	int open() override;
+	void close() override;
+	void send(uint32 b) override;
+	MidiChannel *allocateChannel() override;
+	MidiChannel *getPercussionChannel() override { return &_channels[9]; }
+	bool isOpen() const override { return _isOpen; }
+	uint32 getBaseTempo() override { return 1000000 / OPL::OPL::kDefaultCallbackFrequency; }
 
-	bool isStereo() const { return false; }
-	int getRate() const { return _mixer->getOutputRate(); }
-
-	void generateSamples(int16 *buf, int len);
+	void setTimerCallback(void *timerParam, Common::TimerManager::TimerProc timerProc) override {
+		_adlibTimerProc = timerProc;
+		_adlibTimerParam = timerParam;
+	}
 
 protected:
 	OPL::OPL *_opl;
@@ -320,6 +332,13 @@ protected:
 	void muteMelodicVoice(uint8 voice);
 
 	void initVoices();
+
+private:
+	void onTimer();
+
+	Common::TimerManager::TimerProc _adlibTimerProc;
+	void *_adlibTimerParam;
+	bool _isOpen;
 };
 
 MidiDriver *createAdLibDriver() {
@@ -348,10 +367,10 @@ int AdLibDriver::open() {
 	if (_isOpen)
 		return MERR_ALREADY_OPEN;
 
-	MidiDriver_Emulated::open();
+	_isOpen = true;
 
 	_opl = OPL::Config::create();
-	_opl->init(getRate());
+	_opl->init();
 	_opl->writeReg(0x1, 0x20); // set bit 5 (enable all waveforms)
 
 	// Reset the OPL registers.
@@ -364,7 +383,7 @@ int AdLibDriver::open() {
 
 	initVoices();
 
-	_mixer->playStream(Audio::Mixer::kMusicSoundType, &_mixerSoundHandle, this, -1, Audio::Mixer::kMaxChannelVolume, 0, DisposeAfterUse::NO, true);
+	_opl->start(new Common::Functor0Mem<void, AdLibDriver>(this, &AdLibDriver::onTimer));
 	return 0;
 }
 
@@ -373,7 +392,6 @@ void AdLibDriver::close() {
 		return;
 
 	_isOpen = false;
-	_mixer->stopHandle(_mixerSoundHandle);
 
 	delete _opl;
 }
@@ -408,6 +426,8 @@ void AdLibDriver::send(uint32 b) {
 			// all notes off
 			allNotesOff();
 			break;
+		default:
+			break;
 		}
 		break;
 	case 12:
@@ -416,6 +436,8 @@ void AdLibDriver::send(uint32 b) {
 		break;
 	case 14:
 		setPitchBend(channel, (param1 | (param2 << 7)) - 0x2000);
+		break;
+	default:
 		break;
 	}
 }
@@ -774,12 +796,12 @@ MidiChannel *AdLibDriver::allocateChannel() {
 			return &_channels[i];
 	}
 
-	return NULL;
+	return nullptr;
 }
 
-void AdLibDriver::generateSamples(int16 *buf, int len) {
-	memset(buf, 0, sizeof(int16) * len);
-	_opl->readBuffer(buf, len);
+void AdLibDriver::onTimer() {
+	if (_adlibTimerProc)
+		(*_adlibTimerProc)(_adlibTimerParam);
 }
 
 void AdLibDriver::initVoices() {

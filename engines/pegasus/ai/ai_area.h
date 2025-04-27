@@ -7,19 +7,18 @@
  * Additional copyright for this file:
  * Copyright (C) 1995-1997 Presto Studios, Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
-
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -83,7 +82,7 @@ namespace Pegasus {
 class AIArea : public Surface, public Idler, public InputHandler {
 public:
 	AIArea(InputHandler *);
-	virtual ~AIArea();
+	~AIArea() override;
 
 	void writeAIRules(Common::WriteStream *stream);
 	void readAIRules(Common::ReadStream *stream);
@@ -93,9 +92,9 @@ public:
 	void saveAIState();
 	void restoreAIState();
 
-	void handleInput(const Input &, const Hotspot *);
-	void activateHotspots();
-	void clickInHotspot(const Input &, const Hotspot *);
+	void handleInput(const Input &, const Hotspot *) override;
+	void activateHotspots() override;
+	void clickInHotspot(const Input &, const Hotspot *) override;
 
 	void setAIVolume(const uint16);
 
@@ -116,7 +115,7 @@ public:
 	// For PlayAIMovie, it is assumed that the client is the AI itself.
 	// This is used to play AI messages as well as Optical Memory video.
 	// Returns true if the movie played all the way through, false if it was interrupted.
-	bool playAIMovie(const LowerAreaSignature, const Common::String &movieName, bool keepLastFrame, const InputBits);
+	bool playAIMovie(const LowerAreaSignature, const Common::Path &movieName, bool keepLastFrame, const InputBits);
 
 	// Loop the requested sequence indefinitely.
 	void loopAIAreaSequence(const LowerClientSignature, const LowerAreaSignature, const TimeValue, const TimeValue);
@@ -140,7 +139,7 @@ public:
 	void getSmallInfoSegment(TimeValue &, TimeValue &);
 
 protected:
-	void useIdleTime();
+	void useIdleTime() override;
 
 	void setLeftMovieTime(const TimeValue);
 	void setMiddleMovieTime(const LowerClientSignature, const TimeValue);

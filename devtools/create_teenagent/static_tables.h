@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -12848,7 +12847,7 @@ const static char* dialog_28[] = {
 	DISPLAY_MESSAGE,
 	"I know...",
 	DISPLAY_MESSAGE,
-	"I have similiar",
+	"I have similar",
 	NEW_LINE,
 	"feelings myself...",
 	DISPLAY_MESSAGE,
@@ -13653,6 +13652,7 @@ const static char* dialog_82[] = {
 	DISPLAY_MESSAGE,
 	"No police...",
 	DISPLAY_MESSAGE,
+	// FIXME: Spelling incorrect. noone should be no one. Fixing changes game data and thus may cause issues
 	"Noone will hear their screams...",
 	DISPLAY_MESSAGE,
 	ANIM_WAIT,
@@ -13783,6 +13783,7 @@ const static char* dialog_88[] = {
 	NEW_LINE,
 	"and pick up the banknote.",
 	DISPLAY_MESSAGE,
+	// FIXME: Spelling incorrect. noone should be no one. Fixing changes game data and thus may cause issues
 	"Noone has to know...",
 	DISPLAY_MESSAGE,
 	"Good bye, my friend.",
@@ -14671,7 +14672,7 @@ const static char* dialog_129[] = {
 	CHANGE_CHARACTER,
 	"You have seen when I?...",
 	CHANGE_CHARACTER,
-	"I don't want to embarass you.",
+	"I don't want to embarrass you.",
 	DISPLAY_MESSAGE,
 	"You did a good job for the RGB.",
 	CHANGE_CHARACTER,
@@ -15953,7 +15954,7 @@ const static char* dialog_204[] = {
 	CHANGE_CHARACTER,
 	"I guess grandma was involved too?",
 	CHANGE_CHARACTER,
-	"No, she's from here. We payed her.",
+	"No, she's from here. We paid her.",
 	CHANGE_CHARACTER,
 	"Now that's interesting.",
 	DISPLAY_MESSAGE,

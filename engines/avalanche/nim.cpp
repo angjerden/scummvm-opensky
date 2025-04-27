@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -27,6 +26,8 @@
 
 #include "avalanche/avalanche.h"
 #include "avalanche/nim.h"
+
+#include "common/system.h"
 
 namespace Avalanche {
 
@@ -52,7 +53,7 @@ void Nim::resetVariables() {
 	for (int i = 0; i < 3; i++) {
 		_old[i] = 0;
 		_stones[i] = 0;
-		_inAp[i] = 0;
+		_inAp[i] = false;
 		_r[i] = 0;
 	}
 }
@@ -279,6 +280,7 @@ bool Nim::checkInput() {
 					if (_number > 1)
 						_number--;
 					return false;
+				case Common::KEYCODE_END:
 				case Common::KEYCODE_1:
 					_number = 1;
 					return false;
@@ -306,9 +308,6 @@ bool Nim::checkInput() {
 					return false;
 				case Common::KEYCODE_HOME:
 					_number = _stones[_row];
-					return false;
-				case Common::KEYCODE_END:
-					_number = 1;
 					return false;
 				case Common::KEYCODE_UP:
 					_row--;
@@ -524,7 +523,7 @@ void Nim::dogFood() {
 		// 1) Look for 2 equal lines, then take the odd one out.
 		// 2) Look for A.P.s, and capitalise on them.
 		// 3) Go any old where.
-		const byte other[3][2] = { { 2, 3 }, { 1, 3 }, { 1, 2 } };
+		const byte other[3][2] = { { 1, 2 }, { 0, 2 }, { 0, 1 } };
 
 		for (int i = 0; i < 3; i++) { // Look for 2 equal lines.
 			if (_stones[other[i][0]] == _stones[other[i][1]]) {

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -25,268 +24,50 @@
 #include "common/memorypool.h"
 #include "common/str.h"
 #include "common/util.h"
+#include "common/mutex.h"
 
 namespace Common {
 
-MemoryPool *g_refCountPool = 0; // FIXME: This is never freed right now
-
-static uint32 computeCapacity(uint32 len) {
-	// By default, for the capacity we use the next multiple of 32
-	return ((len + 32 - 1) & ~0x1F);
-}
-
-String::String(const char *str) : _size(0), _str(_storage) {
-	if (str == 0) {
-		_storage[0] = 0;
-		_size = 0;
-	} else
-		initWithCStr(str, strlen(str));
-}
-
-String::String(const char *str, uint32 len) : _size(0), _str(_storage) {
-	initWithCStr(str, len);
-}
-
-String::String(const char *beginP, const char *endP) : _size(0), _str(_storage) {
-	assert(endP >= beginP);
-	initWithCStr(beginP, endP - beginP);
-}
-
-void String::initWithCStr(const char *str, uint32 len) {
-	assert(str);
-
-	// Init _storage member explicitly (ie. without calling its constructor)
-	// for GCC 2.95.x compatibility (see also tracker item #1602879).
+#ifndef SCUMMVM_UTIL
+String::String(const U32String &str, Common::CodePage page)
+	: BaseString<char>() {
 	_storage[0] = 0;
-
-	_size = len;
-
-	if (len >= _builtinCapacity) {
-		// Not enough internal storage, so allocate more
-		_extern._capacity = computeCapacity(len+1);
-		_extern._refCount = 0;
-		_str = new char[_extern._capacity];
-		assert(_str != 0);
-	}
-
-	// Copy the string into the storage area
-	memmove(_str, str, len);
-	_str[len] = 0;
+	*this = String(str.encode(page));
 }
-
-String::String(const String &str)
-    : _size(str._size) {
-	if (str.isStorageIntern()) {
-		// String in internal storage: just copy it
-		memcpy(_storage, str._storage, _builtinCapacity);
-		_str = _storage;
-	} else {
-		// String in external storage: use refcount mechanism
-		str.incRefCount();
-		_extern._refCount = str._extern._refCount;
-		_extern._capacity = str._extern._capacity;
-		_str = str._str;
-	}
-	assert(_str != 0);
-}
-
-String::String(char c)
-    : _size(0), _str(_storage) {
-
-	_storage[0] = c;
-	_storage[1] = 0;
-
-	_size = (c == 0) ? 0 : 1;
-}
-
-String::~String() {
-	decRefCount(_extern._refCount);
-}
-
-void String::makeUnique() {
-	ensureCapacity(_size, true);
-}
-
-/**
- * Ensure that enough storage is available to store at least new_size
- * characters plus a null byte. In addition, if we currently share
- * the storage with another string, unshare it, so that we can safely
- * write to the storage.
- */
-void String::ensureCapacity(uint32 new_size, bool keep_old) {
-	bool isShared;
-	uint32 curCapacity, newCapacity;
-	char *newStorage;
-	int *oldRefCount = _extern._refCount;
-
-	if (isStorageIntern()) {
-		isShared = false;
-		curCapacity = _builtinCapacity;
-	} else {
-		isShared = (oldRefCount && *oldRefCount > 1);
-		curCapacity = _extern._capacity;
-	}
-
-	// Special case: If there is enough space, and we do not share
-	// the storage, then there is nothing to do.
-	if (!isShared && new_size < curCapacity)
-		return;
-
-	if (isShared && new_size < _builtinCapacity) {
-		// We share the storage, but there is enough internal storage: Use that.
-		newStorage = _storage;
-		newCapacity = _builtinCapacity;
-	} else {
-		// We need to allocate storage on the heap!
-
-		// Compute a suitable new capacity limit
-		// If the current capacity is sufficient we use the same capacity
-		if (new_size < curCapacity)
-			newCapacity = curCapacity;
-		else
-			newCapacity = MAX(curCapacity * 2, computeCapacity(new_size+1));
-
-		// Allocate new storage
-		newStorage = new char[newCapacity];
-		assert(newStorage);
-	}
-
-	// Copy old data if needed, elsewise reset the new storage.
-	if (keep_old) {
-		assert(_size < newCapacity);
-		memcpy(newStorage, _str, _size + 1);
-	} else {
-		_size = 0;
-		newStorage[0] = 0;
-	}
-
-	// Release hold on the old storage ...
-	decRefCount(oldRefCount);
-
-	// ... in favor of the new storage
-	_str = newStorage;
-
-	if (!isStorageIntern()) {
-		// Set the ref count & capacity if we use an external storage.
-		// It is important to do this *after* copying any old content,
-		// else we would override data that has not yet been copied!
-		_extern._refCount = 0;
-		_extern._capacity = newCapacity;
-	}
-}
-
-void String::incRefCount() const {
-	assert(!isStorageIntern());
-	if (_extern._refCount == 0) {
-		if (g_refCountPool == 0) {
-			g_refCountPool = new MemoryPool(sizeof(int));
-			assert(g_refCountPool);
-		}
-
-		_extern._refCount = (int *)g_refCountPool->allocChunk();
-		*_extern._refCount = 2;
-	} else {
-		++(*_extern._refCount);
-	}
-}
-
-void String::decRefCount(int *oldRefCount) {
-	if (isStorageIntern())
-		return;
-
-	if (oldRefCount) {
-		--(*oldRefCount);
-	}
-	if (!oldRefCount || *oldRefCount <= 0) {
-		// The ref count reached zero, so we free the string storage
-		// and the ref count storage.
-		if (oldRefCount) {
-			assert(g_refCountPool);
-			g_refCountPool->freeChunk(oldRefCount);
-		}
-		delete[] _str;
-
-		// Even though _str points to a freed memory block now,
-		// we do not change its value, because any code that calls
-		// decRefCount will have to do this afterwards anyway.
-	}
-}
+#endif
 
 String &String::operator=(const char *str) {
-	uint32 len = strlen(str);
-	ensureCapacity(len, false);
-	_size = len;
-	memmove(_str, str, len + 1);
+	assign(str);
 	return *this;
 }
 
 String &String::operator=(const String &str) {
-	if (&str == this)
-		return *this;
+	assign(str);
+	return *this;
+}
 
-	if (str.isStorageIntern()) {
-		decRefCount(_extern._refCount);
-		_size = str._size;
-		_str = _storage;
-		memcpy(_str, str._str, _size + 1);
-	} else {
-		str.incRefCount();
-		decRefCount(_extern._refCount);
-
-		_extern._refCount = str._extern._refCount;
-		_extern._capacity = str._extern._capacity;
-		_size = str._size;
-		_str = str._str;
-	}
-
+String &String::operator=(String &&str) {
+	assign(static_cast<String &&>(str));
 	return *this;
 }
 
 String &String::operator=(char c) {
-	decRefCount(_extern._refCount);
-	_str = _storage;
-
-	_str[0] = c;
-	_str[1] = 0;
-
-	_size = (c == 0) ? 0 : 1;
+	assign(c);
 	return *this;
 }
 
 String &String::operator+=(const char *str) {
-	if (_str <= str && str <= _str + _size)
-		return operator+=(String(str));
-
-	int len = strlen(str);
-	if (len > 0) {
-		ensureCapacity(_size + len, true);
-
-		memcpy(_str + _size, str, len + 1);
-		_size += len;
-	}
+	assignAppend(str);
 	return *this;
 }
 
 String &String::operator+=(const String &str) {
-	if (&str == this)
-		return operator+=(String(str));
-
-	int len = str._size;
-	if (len > 0) {
-		ensureCapacity(_size + len, true);
-
-		memcpy(_str + _size, str._str, len + 1);
-		_size += len;
-	}
+	assignAppend(str);
 	return *this;
 }
 
 String &String::operator+=(char c) {
-	ensureCapacity(_size + 1, true);
-
-	_str[_size++] = c;
-	_str[_size] = 0;
-
+	assignAppend(c);
 	return *this;
 }
 
@@ -295,10 +76,27 @@ bool String::hasPrefix(const String &x) const {
 }
 
 bool String::hasPrefix(const char *x) const {
-	assert(x != 0);
+	assert(x != nullptr);
 	// Compare x with the start of _str.
 	const char *y = c_str();
 	while (*x && *x == *y) {
+		++x;
+		++y;
+	}
+	// It's a prefix, if and only if all letters in x are 'used up' before
+	// _str ends.
+	return *x == 0;
+}
+
+bool String::hasPrefixIgnoreCase(const String &x) const {
+	return hasPrefixIgnoreCase(x.c_str());
+}
+
+bool String::hasPrefixIgnoreCase(const char *x) const {
+	assert(x != nullptr);
+	// Compare x with the start of _str.
+	const char *y = c_str();
+	while (*x && tolower(*x) == tolower(*y)) {
 		++x;
 		++y;
 	}
@@ -312,9 +110,9 @@ bool String::hasSuffix(const String &x) const {
 }
 
 bool String::hasSuffix(const char *x) const {
-	assert(x != 0);
+	assert(x != nullptr);
 	// Compare x with the end of _str.
-	const uint32 x_size = strlen(x);
+	const uint32 x_size = cStrLen(x);
 	if (x_size > _size)
 		return false;
 	const char *y = c_str() + _size - x_size;
@@ -327,122 +125,46 @@ bool String::hasSuffix(const char *x) const {
 	return *x == 0;
 }
 
+bool String::hasSuffixIgnoreCase(const String &x) const {
+	return hasSuffixIgnoreCase(x.c_str());
+}
+
+bool String::hasSuffixIgnoreCase(const char *x) const {
+	assert(x != nullptr);
+	// Compare x with the end of _str.
+	const uint32 x_size = cStrLen(x);
+	if (x_size > _size)
+		return false;
+	const char *y = c_str() + _size - x_size;
+	while (*x && tolower(*x) == tolower(*y)) {
+		++x;
+		++y;
+	}
+	// It's a suffix, if and only if all letters in x are 'used up' before
+	// _str ends.
+	return *x == 0;
+}
+
 bool String::contains(const String &x) const {
-	return strstr(c_str(), x.c_str()) != NULL;
+	return strstr(c_str(), x.c_str()) != nullptr;
 }
 
 bool String::contains(const char *x) const {
-	assert(x != 0);
-	return strstr(c_str(), x) != NULL;
+	assert(x != nullptr);
+	return strstr(c_str(), x) != nullptr;
 }
 
-bool String::contains(char x) const {
-	return strchr(c_str(), x) != NULL;
+#ifndef SCUMMVM_UTIL
+
+bool String::matchString(const char *pat, bool ignoreCase, const char *wildcardExclusions) const {
+	return Common::matchString(c_str(), pat, ignoreCase, wildcardExclusions);
 }
 
-bool String::matchString(const char *pat, bool ignoreCase, bool pathMode) const {
-	return Common::matchString(c_str(), pat, ignoreCase, pathMode);
+bool String::matchString(const String &pat, bool ignoreCase, const char *wildcardExclusions) const {
+	return Common::matchString(c_str(), pat.c_str(), ignoreCase, wildcardExclusions);
 }
 
-bool String::matchString(const String &pat, bool ignoreCase, bool pathMode) const {
-	return Common::matchString(c_str(), pat.c_str(), ignoreCase, pathMode);
-}
-
-void String::deleteLastChar() {
-	if (_size > 0)
-		deleteChar(_size - 1);
-}
-
-void String::deleteChar(uint32 p) {
-	assert(p < _size);
-
-	makeUnique();
-	while (p++ < _size)
-		_str[p - 1] = _str[p];
-	_size--;
-}
-
-void String::erase(uint32 p, uint32 len) {
-	assert(p < _size);
-
-	makeUnique();
-	// If len == npos or p + len is over the end, remove all the way to the end
-	if (len == npos || p + len >= _size) {
-		// Delete char at p as well. So _size = (p - 1) + 1
-		_size = p;
-		// Null terminate
-		_str[_size] = 0;
-		return;
-	}
-
-	for ( ; p + len <= _size; p++) {
-		_str[p] = _str[p + len];
-	}
-	_size -= len;
-}
-
-void String::clear() {
-	decRefCount(_extern._refCount);
-
-	_size = 0;
-	_str = _storage;
-	_storage[0] = 0;
-}
-
-void String::setChar(char c, uint32 p) {
-	assert(p < _size);
-
-	makeUnique();
-	_str[p] = c;
-}
-
-void String::insertChar(char c, uint32 p) {
-	assert(p <= _size);
-
-	ensureCapacity(_size + 1, true);
-	_size++;
-	for (uint32 i = _size; i > p; --i)
-		_str[i] = _str[i - 1];
-	_str[p] = c;
-}
-
-void String::toLowercase() {
-	makeUnique();
-	for (uint32 i = 0; i < _size; ++i)
-		_str[i] = tolower(_str[i]);
-}
-
-void String::toUppercase() {
-	makeUnique();
-	for (uint32 i = 0; i < _size; ++i)
-		_str[i] = toupper(_str[i]);
-}
-
-void String::trim() {
-	if (_size == 0)
-		return;
-
-	makeUnique();
-
-	// Trim trailing whitespace
-	while (_size >= 1 && isSpace(_str[_size - 1]))
-		--_size;
-	_str[_size] = 0;
-
-	// Trim leading whitespace
-	char *t = _str;
-	while (isSpace(*t))
-		t++;
-
-	if (t != _str) {
-		_size -= t - _str;
-		memmove(_str, t, _size + 1);
-	}
-}
-
-uint String::hash() const {
-	return hashit(c_str());
-}
+#endif
 
 // static
 String String::format(const char *fmt, ...) {
@@ -499,7 +221,7 @@ String String::vformat(const char *fmt, va_list args) {
 		// vsnprintf didn't have enough space, so grow buffer
 		output.ensureCapacity(len, false);
 		scumm_va_copy(va, args);
-		int len2 = vsnprintf(output._str, len+1, fmt, va);
+		int len2 = vsnprintf(output._str, len + 1, fmt, va);
 		va_end(va);
 		assert(len == len2);
 		output._size = len2;
@@ -508,41 +230,34 @@ String String::vformat(const char *fmt, va_list args) {
 	return output;
 }
 
-
-#pragma mark -
-
-bool String::operator==(const String &x) const {
-	return equals(x);
+String String::substr(size_t pos, size_t len) const {
+	if (pos >= _size)
+		return String();
+	else if (len == npos)
+		return String(_str + pos);
+	else
+		return String(_str + pos, MIN((size_t)_size - pos, len));
 }
 
-bool String::operator==(const char *x) const {
-	assert(x != 0);
-	return equals(x);
-}
+String String::forEachLine(String(*func)(const String, va_list args), ...) const {
+	String result = "";
+	size_t index = findFirstOf('\n', 0);
+	size_t prev_index = 0;
+	va_list args;
+	va_start(args, func);
+	while (index != npos) {
+		String textLine = substr(prev_index, index - prev_index);
+		textLine = (*func)(textLine, args);
+		result = result + textLine + '\n';
+		prev_index = index + 1;
+		index = findFirstOf('\n', index + 1);
+	}
 
-bool String::operator!=(const String &x) const {
-	return !equals(x);
-}
-
-bool String::operator !=(const char *x) const {
-	assert(x != 0);
-	return !equals(x);
-}
-
-bool String::operator<(const String &x) const {
-	return compareTo(x) < 0;
-}
-
-bool String::operator<=(const String &x) const {
-	return compareTo(x) <= 0;
-}
-
-bool String::operator>(const String &x) const {
-	return compareTo(x) > 0;
-}
-
-bool String::operator>=(const String &x) const {
-	return compareTo(x) >= 0;
+	String textLine = substr(prev_index);
+	textLine = (*func)(textLine, args);
+	result = result + textLine;
+	va_end(args);
+	return result;
 }
 
 #pragma mark -
@@ -557,31 +272,13 @@ bool operator!=(const char* y, const String &x) {
 
 #pragma mark -
 
-bool String::equals(const String &x) const {
-	return (0 == compareTo(x));
-}
-
-bool String::equals(const char *x) const {
-	assert(x != 0);
-	return (0 == compareTo(x));
-}
-
 bool String::equalsIgnoreCase(const String &x) const {
 	return (0 == compareToIgnoreCase(x));
 }
 
 bool String::equalsIgnoreCase(const char *x) const {
-	assert(x != 0);
+	assert(x != nullptr);
 	return (0 == compareToIgnoreCase(x));
-}
-
-int String::compareTo(const String &x) const {
-	return compareTo(x.c_str());
-}
-
-int String::compareTo(const char *x) const {
-	assert(x != 0);
-	return strcmp(c_str(), x);
 }
 
 int String::compareToIgnoreCase(const String &x) const {
@@ -589,8 +286,17 @@ int String::compareToIgnoreCase(const String &x) const {
 }
 
 int String::compareToIgnoreCase(const char *x) const {
-	assert(x != 0);
+	assert(x != nullptr);
 	return scumm_stricmp(c_str(), x);
+}
+
+int String::compareDictionary(const String &x) const {
+	return compareDictionary(x.c_str());
+}
+
+int String::compareDictionary(const char *x) const {
+	assert(x != nullptr);
+	return scumm_compareDictionary(c_str(), x);
 }
 
 #pragma mark -
@@ -625,6 +331,8 @@ String operator+(const String &x, char y) {
 	return temp;
 }
 
+#ifndef SCUMMVM_UTIL
+
 char *ltrim(char *t) {
 	while (isSpace(*t))
 		t++;
@@ -642,12 +350,14 @@ char *trim(char *t) {
 	return rtrim(ltrim(t));
 }
 
+#endif
+
 String lastPathComponent(const String &path, const char sep) {
 	const char *str = path.c_str();
 	const char *last = str + path.size();
 
 	// Skip over trailing slashes
-	while (last > str && *(last-1) == sep)
+	while (last > str && *(last - 1) == sep)
 		--last;
 
 	// Path consisted of only slashes -> return empty string
@@ -663,6 +373,29 @@ String lastPathComponent(const String &path, const char sep) {
 		first++;
 
 	return String(first, last);
+}
+
+String firstPathComponents(const String &path, const char sep) {
+	const char *str = path.c_str();
+	const char *last = str + path.size();
+
+	// Skip over trailing slashes
+	while (last > str && *(last - 1) == sep)
+		--last;
+
+	// Path consisted of only slashes -> return empty string
+	if (last == str)
+		return String();
+
+	// Now scan the whole component
+	const char *first = last - 1;
+	while (first > str && *first != sep)
+		--first;
+
+	if (*first == sep)
+		first++;
+
+	return String(str, first);
 }
 
 String normalizePath(const String &path, const char sep) {
@@ -717,21 +450,26 @@ String normalizePath(const String &path, const char sep) {
 	return result;
 }
 
-bool matchString(const char *str, const char *pat, bool ignoreCase, bool pathMode) {
+#ifndef SCUMMVM_UTIL
+
+bool matchString(const char *str, const char *pat, bool ignoreCase, const char *wildcardExclusions) {
 	assert(str);
 	assert(pat);
 
-	const char *p = 0;
-	const char *q = 0;
+	const char *p = nullptr;
+	const char *q = nullptr;
+	bool escaped = false;
+	bool noExclusions = (wildcardExclusions == nullptr || !*wildcardExclusions);
 
 	for (;;) {
-		if (pathMode && *str == '/') {
-			p = 0;
-			q = 0;
+		if (wildcardExclusions && strchr(wildcardExclusions, *str)) {
+			p = nullptr;
+			q = nullptr;
 			if (*pat == '?')
 				return false;
 		}
 
+		const char curPat = *pat;
 		switch (*pat) {
 		case '*':
 			if (*str) {
@@ -743,13 +481,31 @@ bool matchString(const char *str, const char *pat, bool ignoreCase, bool pathMod
 				// NB: We can't simply check if pat also ended here, because
 				// the pattern might end with any number of *s.
 				++pat;
-				p = 0;
-				q = 0;
+				p = nullptr;
+				q = nullptr;
 			}
-			// If pattern ended with * -> match
-			if (!*pat)
+			// If pattern ended with * and there are no exclusions -> match
+			if (!*pat && noExclusions)
 				return true;
 			break;
+
+		case '\\':
+			if (!escaped) {
+				pat++;
+				break;
+			}
+			// fallthrough
+
+		case '#':
+			// treat # as a wildcard for digits unless escaped
+			if (!escaped) {
+				if (!isDigit(*str))
+					return false;
+				pat++;
+				str++;
+				break;
+			}
+			// fallthrough
 
 		default:
 			if ((!ignoreCase && *pat != *str) ||
@@ -772,28 +528,174 @@ bool matchString(const char *str, const char *pat, bool ignoreCase, bool pathMod
 			pat++;
 			str++;
 		}
+
+		escaped = !escaped && (curPat == '\\');
 	}
 }
 
-String tag2string(uint32 tag) {
-	char str[5];
-	str[0] = (char)(tag >> 24);
-	str[1] = (char)(tag >> 16);
-	str[2] = (char)(tag >> 8);
-	str[3] = (char)tag;
-	str[4] = '\0';
-	// Replace non-printable chars by dot
-	for (int i = 0; i < 4; ++i) {
-		if (!Common::isPrint(str[i]))
-			str[i] = '.';
+void replace(Common::String &source, const Common::String &what, const Common::String &with) {
+	const char *cstr = source.c_str();
+	const char *position = strstr(cstr, what.c_str());
+	if (position) {
+		uint32 index = position - cstr;
+		source.replace(index, what.size(), with);
 	}
-	return String(str);
+}
+
+String tag2string(uint32 tag, bool nonPrintable) {
+	Common::String res;
+
+	for (int i = 3; i >= 0; i--) {
+		byte b = (tag >> (8 * i)) & 0xff;
+
+		if (!Common::isPrint(b)) {
+			if (nonPrintable) {
+				res += Common::String::format("\\%03o", b);
+			} else {
+				res += '.';
+			}
+		} else {
+			res += b;
+		}
+	}
+
+	return res;
+}
+
+#endif
+
+// When str.cpp is used in devtools warning is not defined
+#ifdef SCUMMVM_UTIL
+#define warning(msg, ...)
+#endif
+
+// Our simple implementation of strcpy_s and strcat_s
+// We don't check for overlapping strings and we issue warnings instead of erroring out
+void strcpy_s(char *dst, size_t size, const char *src) {
+	if (!dst) {
+		warning("%s: dst is nullptr", __func__);
+		return;
+	}
+	if (!src) {
+		warning("%s: src is nullptr", __func__);
+		return;
+	}
+	if (!size) {
+		warning("%s: size is zero", __func__);
+		return;
+	}
+
+	if (dst == src) {
+		// Nothing to do
+		return;
+	}
+
+	// Copy over (size - 1) bytes at max.
+	while (size != 0) {
+		*dst = *src;
+		if (*dst == '\0') {
+			return;
+		}
+		++dst;
+		++src;
+		--size;
+	}
+
+	warning("%s: truncating string", __func__);
+	dst[-1] = '\0';
+}
+
+void strcat_s(char *dst, size_t size, const char *src) {
+	if (!dst) {
+		warning("%s: dst is nullptr", __func__);
+		return;
+	}
+	if (!src) {
+		warning("%s: src is nullptr", __func__);
+		return;
+	}
+	if (!size) {
+		warning("%s: size is zero", __func__);
+		return;
+	}
+
+	// Search the end of the destination, but do not
+	// move past the terminating zero.
+	while(*dst != '\0') {
+		++dst;
+		--size;
+		if (!size) {
+			warning("%s: dst is unterminated", __func__);
+			return;
+		}
+	}
+
+	// Copy over all of the source that fits
+	// the destination buffer.
+	while (size != 0) {
+		*dst = *src;
+		if (*dst == '\0') {
+			return;
+		}
+		++dst;
+		++src;
+		--size;
+	}
+
+	warning("%s: truncating string", __func__);
+	dst[-1] = '\0';
+}
+
+int vsprintf_s(char *dst, size_t size, const char *format, va_list ap) {
+	if (!dst) {
+		warning("%s: dst is nullptr", __func__);
+		return 0;
+	}
+	if (!size) {
+		warning("%s: size is zero", __func__);
+		return 0;
+	}
+	if (!format) {
+		warning("%s: format is nullptr", __func__);
+		dst[0] = '\0';
+		return 0;
+	}
+
+	int ret = vsnprintf(dst, size, format, ap);
+
+	if ((size_t)ret < size
+#if defined(_MSC_VER) && _MSC_VER <= 1800
+		&& ret != -1
+#endif
+		) {
+		// Nominal case: no truncation
+		return ret;
+	}
+
+	warning("%s: truncating string", __func__);
+	dst[size - 1] = '\0';
+	return size - 1;
+}
+
+int sprintf_s(char *dst, size_t size, const char *format, ...) {
+	int ret;
+	va_list ap;
+	va_start(ap, format);
+	ret = vsprintf_s(dst, size, format, ap);
+	va_end(ap);
+	return ret;
 }
 
 size_t strlcpy(char *dst, const char *src, size_t size) {
 	// Our backup of the source's start, we need this
 	// to calculate the source's length.
 	const char * const srcStart = src;
+
+	// If no src was specified, treat it as an empty string
+	if (!src) {
+		*dst = '\0';
+		return 0;
+	}
 
 	// In case a non-empty size was specified we
 	// copy over (size - 1) bytes at max.
@@ -870,6 +772,67 @@ size_t strlcat(char *dst, const char *src, size_t size) {
 	return dstLength + (src - srcStart);
 }
 
+size_t strnlen(const char *src, size_t maxSize) {
+	size_t counter = 0;
+	while (counter != maxSize && *src++)
+		++counter;
+	return counter;
+}
+
+String toPrintable(const String &in, bool keepNewLines) {
+	Common::String res;
+
+	const char *tr = "\x01\x01\x02\x03\x04\x05\x06" "a"
+				  //"\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f";
+					   "b" "t" "n" "v" "f" "r\x0e\x0f"
+					"\x10\x11\x12\x13\x14\x15\x16\x17"
+					"\x18\x19\x1a" "e\x1c\x1d\x1e\x1f";
+
+	for (const byte *p = (const byte *)in.c_str(); *p; p++) {
+		if (*p == '\n') {
+			if (keepNewLines)
+				res += *p;
+			else
+				res += "\\n";
+
+			continue;
+		}
+
+		if (*p < 0x20 || *p == '\'' || *p == '\"' || *p == '\\') {
+			res += '\\';
+
+			if (*p < 0x20) {
+				if (tr[*p] < 0x20)
+					res += Common::String::format("x%02x", *p);
+				else
+					res += tr[*p];
+			} else {
+				res += *p;	// We will escape it
+			}
+		} else if (*p > 0x7e) {
+			res += Common::String::format("\\x%02x", *p);
+		} else
+			res += *p;
+	}
+
+	return res;
+}
+
+String percentEncodeString(const String &src) {
+	String res;
+
+	for (uint i = 0; i < src.size(); i++) {
+		char c = src[i];
+		if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+			c == '~' || c == '-' || c == '.' || c == '_')
+			res += c;
+		else
+			res += Common::String::format("%%%02X", c);
+	}
+
+	return res;
+}
+
 } // End of namespace Common
 
 // Portable implementation of stricmp / strcasecmp / strcmpi.
@@ -893,7 +856,7 @@ int scumm_strnicmp(const char *s1, const char *s2, uint n) {
 	byte l1, l2;
 	do {
 		if (n-- == 0)
-			return 0;	// no difference found so far -> signal equality
+			return 0; // no difference found so far -> signal equality
 
 		// Don't use ++ inside tolower, in case the macro uses its
 		// arguments more than once.
@@ -903,4 +866,50 @@ int scumm_strnicmp(const char *s1, const char *s2, uint n) {
 		l2 = tolower(l2);
 	} while (l1 == l2 && l1 != 0);
 	return l1 - l2;
+}
+
+const char *scumm_skipArticle(const char *s1) {
+	int o1 = 0;
+	if (!scumm_strnicmp(s1, "the ", 4))
+		o1 = 4;
+	else if (!scumm_strnicmp(s1, "a ", 2))
+		o1 = 2;
+	else if (!scumm_strnicmp(s1, "an ", 3))
+		o1 = 3;
+
+	return &s1[o1];
+}
+
+int scumm_compareDictionary(const char *s1, const char *s2) {
+	return scumm_stricmp(scumm_skipArticle(s1), scumm_skipArticle(s2));
+}
+
+//  Portable implementation of strdup.
+char *scumm_strdup(const char *in) {
+	const size_t len = strlen(in);
+	char *out = (char *)malloc(len + 1);
+	if (out) {
+		memcpy(out, in, len);
+		out[len] = 0;
+	}
+	return out;
+}
+
+//  Portable implementation of strcasestr.
+const char *scumm_strcasestr(const char *s, const char *find) {
+	char c, sc;
+	size_t len;
+
+	if ((c = *find++) != 0) {
+		c = (char)tolower((unsigned char)c);
+		len = strlen(find);
+		do {
+			do {
+				if ((sc = *s++) == 0)
+					return (nullptr);
+			} while ((char)tolower((unsigned char)sc) != c);
+		} while (scumm_strnicmp(s, find, len) != 0);
+		s--;
+	}
+	return s;
 }

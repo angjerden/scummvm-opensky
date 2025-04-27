@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -116,7 +115,7 @@ void DrasculaEngine::animation_1_1() {
 		if ((term_int == 1) || (getScan() == Common::KEYCODE_ESCAPE) || shouldQuit())
 			break;
 
-		for (int l2 = 0; l2 < 3; l2++)
+		for (int l2 = 0; l2 < 3; l2++) {
 			for (int l = 0; l < 7; l++) {
 				copyBackground();
 				copyBackground(interf_x[l], interf_y[l], 156, 45, 63, 31, drawSurface2, screenSurface);
@@ -129,6 +128,9 @@ void DrasculaEngine::animation_1_1() {
 			}
 			if ((term_int == 1) || (getScan() == Common::KEYCODE_ESCAPE) || shouldQuit())
 				break;
+		}
+		if ((term_int == 1) || (getScan() == Common::KEYCODE_ESCAPE) || shouldQuit())
+			break;
 
 		for (int l = 0, l2 = 0, p = 0; l < 180; l++) {
 			copyBackground(0, 0, 320 - l, 0, l, 200, drawSurface3, screenSurface);
@@ -359,8 +361,8 @@ void DrasculaEngine::animation_2_1() {
 
 	int l;
 
-	gotoObject(231, 91);
-	hare_se_ve = 0;
+	walkToPoint(Common::Point(231, 91));
+	_characterVisible = false;
 
 	term_int = 0;
 
@@ -427,19 +429,16 @@ void DrasculaEngine::animation_2_1() {
 			break;
 		for (l = 0; l < 200; l++)
 			factor_red[l] = 99;
-		bjX = 170;
-		bjY = 90;
-		trackBJ = 0;
 		curX = 91;
 		curY = 95;
 		trackProtagonist = 1;
-		hare_se_ve = 1;
+		_characterVisible = true;
 
 		loadPic("97g.alg", extraSurface);
 		if (animate("lev.bin", 15))
 			break;
 
-		gotoObject(100 + curWidth / 2, 99 + curHeight);
+		walkToPoint(Common::Point(100 + curWidth / 2, 99 + curHeight));
 		if ((term_int == 1) || (getScan() == Common::KEYCODE_ESCAPE) || shouldQuit())
 			break;
 		trackProtagonist = 1;
@@ -484,7 +483,7 @@ void DrasculaEngine::animation_2_1() {
 		pause(118);
 		if ((term_int == 1) || (getScan() == Common::KEYCODE_ESCAPE) || shouldQuit())
 			break;
-		gotoObject(132, 97 + curHeight);
+		walkToPoint(Common::Point(132, 97 + curHeight));
 		pause(60);
 		if ((term_int == 1) || (getScan() == Common::KEYCODE_ESCAPE) || shouldQuit())
 			break;
@@ -492,7 +491,7 @@ void DrasculaEngine::animation_2_1() {
 		if ((term_int == 1) || (getScan() == Common::KEYCODE_ESCAPE) || shouldQuit())
 			break;
 		talk_bj(12);
-		gotoObject(157, 98 + curHeight);
+		walkToPoint(Common::Point(157, 98 + curHeight));
 		if (animate("bes.bin", 16))
 			break;
 		playMusic(11);
@@ -762,9 +761,9 @@ void DrasculaEngine::animation_16_2() {
 
 	for (int i = 1; i <= 4; i++) {
 		if (i < 4)
-			sprintf(curPic, "his%i.alg", i);
+			Common::sprintf_s(curPic, "his%i.alg", i);
 		else
-			strcpy(curPic, "his4_2.alg");
+			Common::strcpy_s(curPic, "his4_2.alg");
 
 		loadPic(curPic, screenSurface, HALF_PAL);
 		centerText(_texthis[i], 180, 180);
@@ -880,8 +879,8 @@ void DrasculaEngine::animation_23_2() {
 	trackVonBraun = 1;
 	talk_vonBraun(16, kVonBraunNormal);
 	trackVonBraun = 2;
-	gotoObject(157, 147);
-	gotoObject(131, 149);
+	walkToPoint(Common::Point(157, 147));
+	walkToPoint(Common::Point(131, 149));
 	trackProtagonist = 0;
 	animation_14_2();
 	if (flags[25] == 0)
@@ -1024,7 +1023,7 @@ void DrasculaEngine::animation_31_2() {
 	talk_vonBraun(44, kVonBraunNormal);
 	placeVonBraun(-50);
 	pause(15);
-	gotoObject(159, 140);
+	walkToPoint(Common::Point(159, 140));
 	loadPic(99, backSurface);
 
 	playTalkSequence(31);	// sequence 31, chapter 2
@@ -1041,8 +1040,8 @@ void DrasculaEngine::animation_31_2() {
 void DrasculaEngine::animation_35_2() {
 	debug(4, "animation_35_2()");
 
-	gotoObject(96, 165);
-	gotoObject(79, 165);
+	walkToPoint(Common::Point(96, 165));
+	walkToPoint(Common::Point(79, 165));
 
 	updateRoom();
 	updateScreen();
@@ -1130,7 +1129,7 @@ void DrasculaEngine::animation_2_3() {
 	loadPic(97, extraSurface);
 	loadPic(99, backSurface);
 
-	gotoObject(332, 127);
+	walkToPoint(Common::Point(332, 127));
 }
 
 void DrasculaEngine::animation_6_3() {
@@ -1140,7 +1139,7 @@ void DrasculaEngine::animation_6_3() {
 	int yoda_x[] = { 3 ,82, 161, 240, 3, 82 };
 	int yoda_y[] = { 3, 3, 3, 3, 94, 94 };
 
-	characterMoved = 0;
+	_characterMoved = false;
 	flags[3] = 1;
 	updateRoom();
 	updateScreen();
@@ -1221,7 +1220,7 @@ void DrasculaEngine::animation_1_5() {
 		talk_bj(19);
 		talk(229);
 		pause(5);
-		gotoObject(114, 170);
+		walkToPoint(Common::Point(114, 170));
 		trackProtagonist = 3;
 		talk(431);
 		talk_bj(20);
@@ -1230,13 +1229,13 @@ void DrasculaEngine::animation_1_5() {
 		talk(438);
 		roomX = 120;
 		roomY = 157;
-		walkToObject = 1;
+		_walkToObject = true;
 		trackFinal = 1;
 		startWalking();
 		talk_bj(21);
 
 		while (!shouldQuit()) {
-			if (characterMoved == 0)
+			if (!_characterMoved)
 				break;
 			updateRoom();
 			updateScreen();
@@ -1265,7 +1264,7 @@ void DrasculaEngine::animation_5_5(){
 	selectVerb(kVerbNone);
 	removeObject(8);
 
-	gotoObject(curX - 19, curY + curHeight);
+	walkToPoint(Common::Point(curX - 19, curY + curHeight));
 	trackProtagonist = 1;
 	updateRoom();
 	updateScreen();
@@ -1293,7 +1292,7 @@ void DrasculaEngine::animation_5_5(){
 	}
 
 	flags[6] = 1;
-	updateVisible();
+	updateVisible();	// sets visible[1] to 1 and visible[2] to 0
 	pause(12);
 
 	loadPic(96, frontSurface);
@@ -1429,15 +1428,15 @@ void DrasculaEngine::animation_12_5() {
 
 	loadPic(99, backSurface);
 
-	gotoObject(40, 169);
-	gotoObject(-14, 175);
+	walkToPoint(Common::Point(40, 169));
+	walkToPoint(Common::Point(-14, 175));
 
 	doBreak = 1;
 	previousMusic = roomMusic;
-	hare_se_ve = 1;
+	_characterVisible = true;
 	clearRoom();
 	trackProtagonist = 1;
-	characterMoved = 0;
+	_characterMoved = false;
 	curX = -1;
 	objExit = 104;
 	selectVerb(kVerbNone);
@@ -1487,7 +1486,7 @@ void DrasculaEngine::animation_14_5() {
 	pause(17);
 	trackProtagonist = 3;
 	talk(246);
-	gotoObject(89, 160);
+	walkToPoint(Common::Point(89, 160));
 	flags[10] = 1;
 	playSound(7);
 	updateRoom();
@@ -1504,6 +1503,7 @@ void DrasculaEngine::animation_14_5() {
 void DrasculaEngine::animation_1_6() {
 	debug(4, "animation_1_6()");
 
+	hideCursor();
 	trackProtagonist = 0;
 	curX = 103;
 	curY = 108;
@@ -1543,7 +1543,7 @@ void DrasculaEngine::animation_1_6() {
 	updateEvents();
 	clearRoom();
 	black();
-	hare_se_ve = 0;
+	_characterVisible = false;
 	flags[0] = 0;
 	updateRoom();
 	updateScreen();
@@ -1618,7 +1618,7 @@ void DrasculaEngine::animation_6_6() {
 	curX = -1;
 	selectVerb(kVerbNone);
 	enterRoom(58);
-	hare_se_ve = 1;
+	_characterVisible = true;
 	trackProtagonist = 1;
 	animate("hbp.bin", 14);
 
@@ -1658,7 +1658,7 @@ void DrasculaEngine::animation_9_6() {
 	updateScreen();
 	fadeFromBlack(0);
 	pause(96);
-	gotoObject(116, 178);
+	walkToPoint(Common::Point(116, 178));
 	trackProtagonist = 2;
 	updateRoom();
 	updateScreen();
@@ -1832,6 +1832,8 @@ void DrasculaEngine::animation_13_2() {
 
 	if (flags[41] == 0) {
 		playTalkSequence(13);	// sequence 13, chapter 2
+	} else {
+		converse(2);
 	}
 
 	loadPic(964, frontSurface);
@@ -1841,7 +1843,7 @@ void DrasculaEngine::animation_24_2() {
 	debug(4, "animation_24_2()");
 
 	if (curX < 178)
-		gotoObject(208, 136);
+		walkToPoint(Common::Point(208, 136));
 	trackProtagonist = 3;
 	updateRoom();
 	pause(3);
@@ -2077,7 +2079,7 @@ void DrasculaEngine::animation_1_4() {
 	debug(4, "animation_1_4()");
 
 	if (flags[21] == 0) {
-		strcpy(objName[2], "igor");
+		Common::strcpy_s(objName[2], _textmisc[5]); // "igor"
 		talk(275);
 
 		updateRefresh_pre();
@@ -2136,9 +2138,9 @@ void DrasculaEngine::animation_5_4(){
 
 	trackProtagonist = 3;
 	loadPic("anh_dr.alg", backSurface);
-	gotoObject(99, 160);
-	gotoObject(38, 177);
-	hare_se_ve = 0;
+	walkToPoint(Common::Point(99, 160));
+	walkToPoint(Common::Point(38, 177));
+	_characterVisible = false;
 	updateRoom();
 	updateScreen();
 	delay(800);
@@ -2156,7 +2158,7 @@ void DrasculaEngine::animation_5_4(){
 	talk_igor(30, kIgorFront);
 	loadPic(96, frontSurface);
 	loadPic(99, backSurface);
-	hare_se_ve = 1;
+	_characterVisible = true;
 	fadeToBlack(0);
 	exitRoom(0);
 }
@@ -2211,7 +2213,7 @@ void DrasculaEngine::activatePendulum() {
 	debug(4, "activatePendulum()");
 
 	flags[1] = 2;
-	hare_se_ve = 0;
+	_characterVisible = false;
 	_roomNumber = 102;
 	loadPic(102, bgSurface, HALF_PAL);
 	loadPic("an_p1.alg", drawSurface3);

@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -37,8 +36,6 @@ namespace ZVision {
 struct FontStyle {
 	const char *zorkFont;
 	const char *fontBase;
-	const char *freeFontBase;
-	const char *freeFontItalicName;
 	const char *liberationFontBase;
 };
 
@@ -72,12 +69,10 @@ public:
 
 	int getFontHeight();
 	int getMaxCharWidth();
-	int getCharWidth(byte chr);
+	int getCharWidth(uint16 chr);
 	int getKerningOffset(byte left, byte right);
 
-	Common::U32String convertUtf8ToUtf32(const Common::String &str);
-
-	void drawChar(Graphics::Surface *dst, byte chr, int x, int y, uint32 color);
+	void drawChar(Graphics::Surface *dst, uint16 chr, int x, int y, uint32 color);
 
 	void drawString(Graphics::Surface *dst, const Common::String &str, int x, int y, int w, uint32 color, Graphics::TextAlign align = Graphics::kTextAlignLeft);
 	int getStringWidth(const Common::String &str);

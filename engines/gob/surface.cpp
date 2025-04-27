@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,13 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ *
+ * This file is dual-licensed.
+ * In addition to the GPLv3 license mentioned above, this code is also
+ * licensed under LGPL 2.1. See LICENSES/COPYING.LGPL file for the
+ * full text of the license.
  *
  */
 
@@ -27,6 +32,7 @@
 #include "common/util.h"
 #include "common/frac.h"
 #include "common/textconsole.h"
+#include "common/stack.h"
 
 #include "graphics/primitives.h"
 #include "graphics/pixelformat.h"
@@ -36,12 +42,33 @@
 
 namespace Gob {
 
-static void plotPixel(int x, int y, int color, void *data) {
-	Surface *dest = (Surface *)data;
+class SurfacePrimitives final : public Graphics::Primitives {
+public:
+        void drawPoint(int x, int y, uint32 color, void *data) override {
+		Surface *s = (Surface *)data;
+		s->putPixel(x, y, color);
+	}
 
-	dest->putPixel(x, y, color);
-}
+        void drawHLine(int x1, int x2, int y, uint32 color, void *data) override {
+		Surface *s = (Surface *)data;
+		s->fillRect(x1, y, x2, y, color);
+	}
 
+        void drawVLine(int x, int y1, int y2, uint32 color, void *data) override {
+		Surface *s = (Surface *)data;
+		s->fillRect(x, y1, x, y2, color);
+	}
+
+	void drawFilledRect(const Common::Rect &rect, uint32 color, void *data) override {
+		Surface *s = (Surface *)data;
+		s->fillRect(rect.left, rect.top, rect.right - 1, rect.bottom - 1, color);
+	}
+
+	void drawFilledRect1(const Common::Rect &rect, uint32 color, void *data) override {
+		Surface *s = (Surface *)data;
+		s->fillRect(rect.left, rect.top, rect.right, rect.bottom, color);
+	}
+};
 
 Pixel::Pixel(byte *vidMem, uint8 bpp, byte *min, byte *max) :
 	_vidMem(vidMem), _bpp(bpp), _min(min), _max(max) {
@@ -182,16 +209,14 @@ Surface::Surface(uint16 width, uint16 height, uint8 bpp, byte *vidMem) :
 	assert((_bpp == 1) || (_bpp == 2) || (_bpp == 4));
 
 	if (!_vidMem) {
-		_vidMem    = new byte[_bpp * _width * _height];
+		_vidMem    = new byte[_bpp * _width * _height]();
 		_ownVidMem = true;
-
-		memset(_vidMem, 0, _bpp * _width * _height);
 	} else
 		_ownVidMem = false;
 }
 
 Surface::Surface(uint16 width, uint16 height, uint8 bpp, const byte *vidMem) :
-	_width(width), _height(height), _bpp(bpp), _vidMem(0) {
+	_width(width), _height(height), _bpp(bpp), _vidMem(nullptr) {
 
 	assert((_width > 0) && (_height > 0));
 	assert((_bpp == 1) || (_bpp == 2) || (_bpp == 4));
@@ -228,10 +253,8 @@ void Surface::resize(uint16 width, uint16 height) {
 	_width  = width;
 	_height = height;
 
-	_vidMem    = new byte[_bpp * _width * _height];
+	_vidMem    = new byte[_bpp * _width * _height]();
 	_ownVidMem = true;
-
-	memset(_vidMem, 0, _bpp * _width * _height);
 }
 
 void Surface::setBPP(uint8 bpp) {
@@ -323,7 +346,7 @@ bool Surface::clipBlitRect(int16 &left, int16 &top, int16 &right, int16 &bottom,
 }
 
 void Surface::blit(const Surface &from, int16 left, int16 top, int16 right, int16 bottom,
-		int16 x, int16 y, int32 transp) {
+		int16 x, int16 y, int32 transp, bool yAxisReflection) {
 
 	// Color depths have to fit
 	assert(_bpp == from._bpp);
@@ -340,7 +363,7 @@ void Surface::blit(const Surface &from, int16 left, int16 top, int16 right, int1
 		// Nothing to do
 		return;
 
-	if ((left == 0) && (_width == from._width) && (_width == width) && (transp == -1)) {
+	if ((left == 0) && (_width == from._width) && (_width == width) && (transp == -1) && !yAxisReflection) {
 		// If these conditions are met, we can directly use memmove
 
 		// Pointers to the blit destination and source start points
@@ -351,7 +374,7 @@ void Surface::blit(const Surface &from, int16 left, int16 top, int16 right, int1
 		return;
 	}
 
-	if (transp == -1) {
+	if (transp == -1 && !yAxisReflection) {
 		// We don't have to look for transparency => we can use memmove line-wise
 
 		// Pointers to the blit destination and source start points
@@ -378,9 +401,17 @@ void Surface::blit(const Surface &from, int16 left, int16 top, int16 right, int1
 		     Pixel dstRow = dst;
 		ConstPixel srcRow = src;
 
-		for (uint16 i = 0; i < width; i++, dstRow++, srcRow++)
-			if (srcRow.get() != ((uint32) transp))
-				dstRow.set(srcRow.get());
+		if (yAxisReflection) {
+			srcRow += width - 1;
+			for (uint16 i = 0; i < width; i++, ++dstRow, --srcRow)
+				if (srcRow.get() != ((uint32) transp))
+					dstRow.set(srcRow.get());
+		}
+		else {
+			for (uint16 i = 0; i < width; i++, ++dstRow, ++srcRow)
+				if (srcRow.get() != ((uint32) transp))
+					dstRow.set(srcRow.get());
+		}
 
 		dst +=      _width;
 		src += from._width;
@@ -529,6 +560,79 @@ void Surface::fillRect(int16 left, int16 top, int16 right, int16 bottom, uint32 
 	}
 }
 
+// Fill rectangle with fillColor, except pixels with backgroundColor
+void Surface::fillArea(int16 left, int16 top, int16 right, int16 bottom, uint32 fillColor, uint32 backgroundColor) {
+	// Just in case those are swapped
+	if (left > right)
+		SWAP(left, right);
+	if (top  > bottom)
+		SWAP(top, bottom);
+
+	if ((left >= _width) || (top >= _height))
+		// Nothing to do
+		return;
+
+	left   = CLIP<int32>(left  , 0, _width  - 1);
+	top    = CLIP<int32>(top   , 0, _height - 1);
+	right  = CLIP<int32>(right , 0, _width  - 1);
+	bottom = CLIP<int32>(bottom, 0, _height - 1);
+
+	// Area to actually fill
+	uint16 width  = CLIP<int32>(right  - left + 1, 0, _width  - left);
+	uint16 height = CLIP<int32>(bottom - top  + 1, 0, _height - top);
+
+	if ((width == 0) || (height == 0))
+		// Nothing to do
+		return;
+
+	Pixel p = get(left, top);
+	while (height-- > 0) {
+		for (uint16 i = 0; i < width; i++, ++p)
+			if (p.get() != backgroundColor)
+				p.set(fillColor);
+
+		p += _width - width;
+	}
+}
+
+Common::Rect Surface::fillAreaAtPoint(int16 left, int16 top, uint32 fillColor) {
+	Common::Rect modifiedArea;
+	if (left < 0 || left >= _width || top < 0  || top >= _height)
+		// Nothing to do
+		return modifiedArea;
+
+	Pixel pixel = get(left, top);
+	uint32 initialColor = pixel.get();
+	if (initialColor == fillColor)
+		return modifiedArea;
+
+	pixel.set(fillColor);
+	modifiedArea.extend(Common::Rect(left, top, left + 1, top + 1));
+	Common::Stack<Common::Point> pointsToScan;
+	pointsToScan.push(Common::Point(left, top));
+	int16 directions[4] = {1, 0, -1, 0};
+
+	while (!pointsToScan.empty()) {
+		Common::Point point = pointsToScan.pop();
+		for (int i = 0; i < 4; i++) {
+			int16 x = point.x + directions[i];
+			int16 y = point.y + directions[(i + 1) % 4];
+			if (x < 0 || x >= _width || y < 0 || y >= _height)
+				continue;
+
+			Pixel p = get(x, y);
+			if (p.get() == initialColor) {
+				p.set(fillColor);
+				if (!modifiedArea.contains(x, y))
+					modifiedArea.extend(Common::Rect(x, y, x + 1, y + 1));
+				pointsToScan.push(Common::Point(x, y));
+			}
+		}
+	}
+
+	return modifiedArea;
+}
+
 void Surface::fill(uint32 color) {
 	if (_bpp == 1) {
 		// We can directly use memset
@@ -613,7 +717,7 @@ void Surface::putPixel(uint16 x, uint16 y, uint32 color) {
 }
 
 void Surface::drawLine(uint16 x0, uint16 y0, uint16 x1, uint16 y1, uint32 color) {
-	Graphics::drawLine(x0, y0, x1, y1, color, &plotPixel, this);
+	SurfacePrimitives().drawLine(x0, y0, x1, y1, color, this);
 }
 
 void Surface::drawRect(uint16 left, uint16 top, uint16 right, uint16 bottom, uint32 color) {
@@ -657,13 +761,21 @@ void Surface::drawCircle(uint16 x0, uint16 y0, uint16 radius, uint32 color, int1
 	int16 x = 0;
 	int16 y = radius;
 
-	if (pattern == 0) {
+	switch (pattern) {
+	case 0xFF:
+		fillRect(x0, y0 + radius, x0, y0 - radius, color);
+		fillRect(x0 + radius, y0, x0 - radius, y0, color);
+		break ;
+	case 0:
 		putPixel(x0, y0 + radius, color);
 		putPixel(x0, y0 - radius, color);
 		putPixel(x0 + radius, y0, color);
 		putPixel(x0 - radius, y0, color);
-	} else
-		warning("Surface::drawCircle - pattern %d", pattern);
+		break;
+	default:
+		break;
+	}
+
 
 	while (x < y) {
 		if (f >= 0) {
@@ -676,7 +788,8 @@ void Surface::drawCircle(uint16 x0, uint16 y0, uint16 radius, uint32 color, int1
 		f += ddFx + 1;
 
 		switch (pattern) {
-		case -1:
+		case 0xFF:
+			// Fill circle
 			fillRect(x0 - y, y0 + x, x0 + y, y0 + x, color);
 			fillRect(x0 - x, y0 + y, x0 + x, y0 + y, color);
 			fillRect(x0 - y, y0 - x, x0 + y, y0 - x, color);
@@ -766,7 +879,7 @@ bool Surface::loadImage(Common::SeekableReadStream &stream, ImageType type) {
 		return loadJPEG(stream);
 
 	default:
-		warning("Surface::loadImage(): Unknown image type: %d", (int) type);
+		warning("Surface::loadImage(): Unknown image type: %d", (int)type);
 		return false;
 	}
 

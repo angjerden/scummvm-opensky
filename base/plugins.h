@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -28,26 +27,9 @@
 #include "common/str.h"
 #include "backends/plugins/elf/version.h"
 
-
-/**
- * @page pagePlugins An overview of the ScummVM plugin system
- * This is a brief overview of how plugins (dynamically loadable code modules)
- * work in ScummVM. We will explain how to write plugins, how they work internally,
- * and sketch how porters can add support for them in their ports.
- *
- * \section secPluginImpl Implementing a plugin
- * TODO
- *
- * \section secPluginUse Using plugins
- * TODO
- *
- * \section secPluginInternals How plugins work internally
- * TODO
- *
- * \section secPluginBackend How to add support for dynamic plugins to a port
- * TODO
- */
-
+#define INCLUDED_FROM_BASE_PLUGINS_H
+#include "base/internal_plugins.h"
+#undef INCLUDED_FROM_BASE_PLUGINS_H
 
 
 // Plugin versioning
@@ -56,31 +38,27 @@
 #define PLUGIN_VERSION 1
 
 enum PluginType {
-	PLUGIN_TYPE_ENGINE = 0,
+	PLUGIN_TYPE_ENGINE_DETECTION = 0,
+	PLUGIN_TYPE_ENGINE,
 	PLUGIN_TYPE_MUSIC,
-	/* PLUGIN_TYPE_SCALER, */	// TODO: Add graphics scaler plugins
+	PLUGIN_TYPE_DETECTION,
+	PLUGIN_TYPE_SCALER,
 
 	PLUGIN_TYPE_MAX
 };
 
 // TODO: Make the engine API version depend on ScummVM's version
-// because of the backlinking (posibly from the checkout revision)
-#define PLUGIN_TYPE_ENGINE_VERSION 1
+// because of the back linking (possibly from the checkout revision)
+#define PLUGIN_TYPE_ENGINE_DETECTION_VERSION 1
+#define PLUGIN_TYPE_ENGINE_VERSION 2
 #define PLUGIN_TYPE_MUSIC_VERSION 1
+#define PLUGIN_TYPE_DETECTION_VERSION 1
+#define PLUGIN_TYPE_SCALER_VERSION 1
 
-extern int pluginTypeVersions[PLUGIN_TYPE_MAX];
+extern const int pluginTypeVersions[PLUGIN_TYPE_MAX];
 
 
 // Plugin linking
-
-#define STATIC_PLUGIN 1
-#define DYNAMIC_PLUGIN 2
-
-#define PLUGIN_ENABLED_STATIC(ID) \
-	(ENABLE_##ID && !PLUGIN_ENABLED_DYNAMIC(ID))
-
-#define PLUGIN_ENABLED_DYNAMIC(ID) \
-	(ENABLE_##ID && (ENABLE_##ID == DYNAMIC_PLUGIN) && defined(DYNAMIC_MODULES))
 
 // see comments in backends/plugins/elf/elf-provider.cpp
 #if defined(USE_ELF_LOADER) && defined(ELF_LOADER_CXA_ATEXIT)
@@ -107,11 +85,12 @@ extern int pluginTypeVersions[PLUGIN_TYPE_MAX];
  * @see REGISTER_PLUGIN_DYNAMIC
  */
 #define REGISTER_PLUGIN_STATIC(ID,TYPE,PLUGINCLASS) \
-	PluginType g_##ID##_type = TYPE; \
+	extern const PluginType g_##ID##_type; \
+	const PluginType g_##ID##_type = TYPE; \
 	PluginObject *g_##ID##_getObject() { \
 		return new PLUGINCLASS(); \
 	} \
-	void dummyFuncToAllowTrailingSemicolon()
+	void dummyFuncToAllowTrailingSemicolon_##ID##_()
 
 #ifdef DYNAMIC_MODULES
 
@@ -135,7 +114,7 @@ extern int pluginTypeVersions[PLUGIN_TYPE_MAX];
 			return new PLUGINCLASS(); \
 		} \
 	} \
-	void dummyFuncToAllowTrailingSemicolon()
+	void dummyFuncToAllowTrailingSemicolon_##ID##_()
 
 #endif // DYNAMIC_MODULES
 
@@ -175,9 +154,9 @@ public:
 			//unloadPlugin();
 	}
 
-//	virtual bool isLoaded() const = 0;	// TODO
-	virtual bool loadPlugin() = 0;	// TODO: Rename to load() ?
-	virtual void unloadPlugin() = 0;	// TODO: Rename to unload() ?
+//	virtual bool isLoaded() const = 0; // TODO
+	virtual bool loadPlugin() = 0;     // TODO: Rename to load() ?
+	virtual void unloadPlugin() = 0;   // TODO: Rename to unload() ?
 
 	/**
 	 * The following functions query information from the plugin object once
@@ -186,35 +165,34 @@ public:
 	PluginType getType() const;
 	const char *getName() const;
 
+	template <class T>
+	T &get() const {
+		T *pluginObject = dynamic_cast<T *>(_pluginObject);
+		if (!pluginObject) {
+			error("Invalid cast of plugin %s", getName());
+		}
+		return *pluginObject;
+	}
+
 	/**
 	 * The getFileName() function gets the name of the plugin file for those
 	 * plugins that have files (ie. not static). It doesn't require the plugin
 	 * object to be loaded into memory, unlike getName()
 	 **/
-	virtual const char *getFileName() const { return 0; }
+	virtual Common::Path getFileName() const { return Common::Path(); }
 };
+
+class StaticPlugin : public Plugin {
+public:
+	StaticPlugin(PluginObject *pluginobject, PluginType type);
+	~StaticPlugin();
+	virtual bool loadPlugin();
+	virtual void unloadPlugin();
+};
+
 
 /** List of Plugin instances. */
 typedef Common::Array<Plugin *> PluginList;
-
-/**
- * Convenience template to make it easier defining normal Plugin
- * subclasses. Namely, the PluginSubclass will manage PluginObjects
- * of a type specified via the PO_t template parameter.
- */
-template<class PO_t>
-class PluginSubclass : public Plugin {
-public:
-	PO_t &operator*() const {
-		return *(PO_t *)_pluginObject;
-	}
-
-	PO_t *operator->() const {
-		return (PO_t *)_pluginObject;
-	}
-
-	typedef Common::Array<PluginSubclass *> List;
-};
 
 /**
  * Abstract base class for Plugin factories. Subclasses of this
@@ -314,10 +292,12 @@ protected:
 
 	bool tryLoadPlugin(Plugin *plugin);
 	void addToPluginsInMemList(Plugin *plugin);
+	const Plugin *findLoadedPlugin(const Common::String &engineId);
 
 	static PluginManager *_instance;
 	PluginManager();
 
+	void unloadAllPlugins();
 public:
 	virtual ~PluginManager();
 
@@ -326,16 +306,27 @@ public:
 
 	void addPluginProvider(PluginProvider *pp);
 
+	/**
+	 * A method which finds the METAENGINE plugin for the provided engineId
+	 *
+	 * @param engineId The engine ID
+	 *
+	 * @return A plugin of type METAENGINE.
+	 */
+	const Plugin *findEnginePlugin(const Common::String &engineId);
+
 	// Functions used by the uncached PluginManager
 	virtual void init()	{}
 	virtual void loadFirstPlugin() {}
 	virtual bool loadNextPlugin() { return false; }
-	virtual bool loadPluginFromGameId(const Common::String &gameId) { return false; }
-	virtual void updateConfigWithFileName(const Common::String &gameId) {}
+	virtual bool loadPluginFromEngineId(const Common::String &engineId) { return false; }
+	virtual void updateConfigWithFileName(const Common::String &engineId) {}
+	virtual void loadDetectionPlugin() {}
+	virtual void unloadDetectionPlugin() {}
 
 	// Functions used only by the cached PluginManager
 	virtual void loadAllPlugins();
-	void unloadAllPlugins();
+	virtual void loadAllPluginsOfType(PluginType type);
 
 	void unloadPluginsExcept(PluginType type, const Plugin *plugin, bool deletePlugin = true);
 
@@ -350,19 +341,28 @@ class PluginManagerUncached : public PluginManager {
 protected:
 	friend class PluginManager;
 	PluginList _allEnginePlugins;
+	Plugin  *_detectionPlugin;
 	PluginList::iterator _currentPlugin;
 
-	PluginManagerUncached() {}
-	bool loadPluginByFileName(const Common::String &filename);
+	bool _isDetectionLoaded;
+
+	PluginManagerUncached() : _detectionPlugin(nullptr), _currentPlugin(nullptr), _isDetectionLoaded(false) {}
+	bool loadPluginByFileName(const Common::Path &filename);
 
 public:
-	virtual void init();
-	virtual void loadFirstPlugin();
-	virtual bool loadNextPlugin();
-	virtual bool loadPluginFromGameId(const Common::String &gameId);
-	virtual void updateConfigWithFileName(const Common::String &gameId);
+	virtual ~PluginManagerUncached();
+	void init() override;
+	void loadFirstPlugin() override;
+	bool loadNextPlugin() override;
+	bool loadPluginFromEngineId(const Common::String &engineId) override;
+	void updateConfigWithFileName(const Common::String &engineId) override;
+#ifndef DETECTION_STATIC
+	void loadDetectionPlugin() override;
+	void unloadDetectionPlugin() override;
+#endif
 
-	virtual void loadAllPlugins() {} 	// we don't allow this
+	void loadAllPlugins() override {} 	// we don't allow these
+	void loadAllPluginsOfType(PluginType type) override {}
 };
 
 #endif

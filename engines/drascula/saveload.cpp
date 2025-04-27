@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -44,12 +43,12 @@ void DrasculaEngine::checkForOldSaveGames() {
 		return;
 
 	GUI::MessageDialog dialog0(
-	    _("ScummVM found that you have old savefiles for Drascula that should be converted.\n"
-	      "The old save game format is no longer supported, so you will not be able to load your games if you don't convert them.\n\n"
+	    _("ScummVM found that you have old saved games for Drascula that should be converted.\n"
+	      "The old saved game format is no longer supported, so you will not be able to load your games if you don't convert them.\n\n"
 	      "Press OK to convert them now, otherwise you will be asked again the next time you start the game.\n"), _("OK"), _("Cancel"));
 
 	int choice = dialog0.runModal();
-	if (choice == GUI::kMessageCancel)
+	if (choice != GUI::kMessageOK)
 		return;
 
 	// Convert every save slot we find in the index file to the new format
@@ -59,9 +58,10 @@ void DrasculaEngine::checkForOldSaveGames() {
 	// Get list of savefiles for target game
 	Common::StringArray filenames = saveFileMan->listSavefiles(pattern);
 	Common::Array<int> slots;
-	for (Common::StringArray::const_iterator file = filenames.begin(); file != filenames.end(); ++file) {
+
+	for (auto &filename : filenames) {
 		// Obtain the last 2 digits of the filename, since they correspond to the save slot
-		int slotNum = atoi(file->c_str() + file->size() - 2);
+		int slotNum = atoi(filename.c_str() + filename.size() - 2);
 
 		// Ensure save slot is within valid range
 		if (slotNum >= 1 && slotNum <= 10) {
@@ -105,7 +105,7 @@ SaveStateDescriptor loadMetaData(Common::ReadStream *s, int slot, bool setPlayTi
 	uint32 sig = s->readUint32BE();
 	byte version = s->readByte();
 
-	SaveStateDescriptor desc(-1, "");	// init to an invalid save slot
+	SaveStateDescriptor desc;	// init to an invalid save slot
 
 	if (sig != MAGIC_HEADER || version > SAVEGAME_VERSION)
 		return desc;
@@ -138,7 +138,7 @@ SaveStateDescriptor loadMetaData(Common::ReadStream *s, int slot, bool setPlayTi
 	return desc;
 }
 
-void saveMetaData(Common::WriteStream *s, Common::String &desc) {
+void saveMetaData(Common::WriteStream *s, const Common::String &desc) {
 	TimeDate curTime;
 	g_system->getTimeAndDate(curTime);
 
@@ -155,7 +155,7 @@ void saveMetaData(Common::WriteStream *s, Common::String &desc) {
 	s->writeUint32LE(playTime);
 }
 
-void DrasculaEngine::convertSaveGame(int slot, Common::String &desc) {
+void DrasculaEngine::convertSaveGame(int slot, const Common::String &desc) {
 	Common::String oldFileName = Common::String::format("%s%02d", _targetName.c_str(), slot);
 	Common::String newFileName = Common::String::format("%s.%03d", _targetName.c_str(), slot);
 	Common::InSaveFile *oldFile = _saveFileMan->openForLoading(oldFileName);
@@ -188,6 +188,26 @@ void DrasculaEngine::convertSaveGame(int slot, Common::String &desc) {
 	_saveFileMan->removeSavefile(oldFileName);
 }
 
+Common::Error DrasculaEngine::loadGameState(int slot) {
+	// The boolean returned by loadGame() indicates if loading is in the same
+	// chapter or in a different one. Thus it does not indicate an error.
+	loadGame(slot);
+	return Common::kNoError;
+}
+
+bool DrasculaEngine::canLoadGameStateCurrently(Common::U32String *msg) {
+	return _canSaveLoad;
+}
+
+Common::Error DrasculaEngine::saveGameState(int slot, const Common::String &desc, bool isAutosave) {
+	saveGame(slot, desc);
+	return Common::kNoError;
+}
+
+bool DrasculaEngine::canSaveGameStateCurrently(Common::U32String *msg) {
+	return _canSaveLoad;
+}
+
 /**
  * Loads the first 10 save names, to be used in Drascula's save/load screen
  */
@@ -205,11 +225,11 @@ void DrasculaEngine::loadSaveNames() {
 	}
 }
 
-void DrasculaEngine::saveGame(int slot, Common::String &desc) {
+void DrasculaEngine::saveGame(int slot, const Common::String &desc) {
 	Common::OutSaveFile *out;
 	int l;
 
-	Common::String saveFileName = Common::String::format("%s.%03d", _targetName.c_str(), slot);
+	Common::String saveFileName = getSaveStateName(slot);
 	if (!(out = _saveFileMan->openForSaving(saveFileName))) {
 		error("Unable to open the file");
 	}
@@ -251,10 +271,23 @@ bool DrasculaEngine::loadGame(int slot) {
 	if (currentChapter != 1)
 		clearRoom();
 
-	Common::String saveFileName = Common::String::format("%s.%03d", _targetName.c_str(), slot);
+	Common::String saveFileName = getSaveStateName(slot);
 	if (!(in = _saveFileMan->openForLoading(saveFileName))) {
 		error("missing savegame file %s", saveFileName.c_str());
 	}
+
+	// If we currently are in room 102 while being attached below the pendulum
+	// the character is invisible and some surface are temporarily used for other
+	// things. Reset those before loading the savegame otherwise we may have some
+	// issues such as the protagonist being invisible after reloading a savegame.
+	if (_roomNumber == 102 && flags[1] == 2) {
+		_characterVisible = true;
+		loadPic(96, frontSurface);
+		loadPic(97, frontSurface);
+		loadPic(97, extraSurface);
+		loadPic(99, backSurface);
+	}
+
 
 	loadMetaData(in, slot, true);
 	Graphics::skipThumbnail(*in);
@@ -284,11 +317,25 @@ bool DrasculaEngine::loadGame(int slot) {
 	takeObject = in->readSint32LE();
 	pickedObject = in->readSint32LE();
 	_loadedDifferentChapter = false;
-	if (!sscanf(currentData, "%d.ald", &roomNum)) {
+	if (!sscanf(currentData, "%d.ald", &roomNum))
 		error("Bad save format");
+
+	// When loading room 102 while being attached below the pendulum Some variables
+	// are not correctly set and can cause random crashes when calling enterRoom below.
+	// The crash occurs in moveCharacters() when accessing factor_red[curY + curHeight].
+	if (roomNum == 102 && flags[1] == 2) {
+		curX = 103;
+		curY = 108;
+		curWidth = curHeight = 0;
 	}
+
 	enterRoom(roomNum);
 	selectVerb(kVerbNone);
+
+	// When loading room 102 while being attached below the pendulum we
+	// need to call activatePendulum() to properly initialized the scene.
+	if (_roomNumber == 102 && flags[1] == 2)
+		activatePendulum();
 
 	return true;
 }
@@ -339,7 +386,7 @@ bool DrasculaEngine::scummVMSaveLoadDialog(bool isSave) {
 		desc = dialog->getResultString();
 
 		if (desc.empty()) {
-			// create our own description for the saved game, the user didnt enter it
+			// create our own description for the saved game, the user didn't enter it
 			desc = dialog->createDefaultSaveDescription(slot);
 		}
 

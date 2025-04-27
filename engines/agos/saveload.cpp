@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -25,7 +24,6 @@
 #include "common/textconsole.h"
 #include "common/translation.h"
 
-#include "gui/about.h"
 #include "gui/message.h"
 
 #include "agos/agos.h"
@@ -37,8 +35,7 @@ namespace AGOS {
 // FIXME: This code counts savegames, but callers in many cases assume
 // that the return value + 1 indicates an empty slot.
 int AGOSEngine::countSaveGames() {
-	Common::StringArray filenames;
-	uint s, numSaveGames = 1;
+	uint numSaveGames = 1;
 	int slotNum;
 	bool marks[256];
 
@@ -47,20 +44,20 @@ int AGOSEngine::countSaveGames() {
 	Common::String tmp = genSaveName(998);
 	assert(tmp.size() >= 4 && tmp[tmp.size()-4] == '.');
 	Common::String prefix = Common::String(tmp.c_str(), tmp.size()-3) + "*";
+	Common::StringArray filenames = _saveFileMan->listSavefiles(prefix);
 
 	memset(marks, false, 256 * sizeof(bool));	//assume no savegames for this title
-	filenames = _saveFileMan->listSavefiles(prefix);
 
-	for (Common::StringArray::const_iterator file = filenames.begin(); file != filenames.end(); ++file){
-		//Obtain the last 3 digits of the filename, since they correspond to the save slot
-		assert(file->size() >= 4);
-		slotNum = atoi(file->c_str() + file->size() - 3);
+	for (const auto &filename : filenames){
+		// Obtain the last 3 digits of the filename, since they correspond to the save slot
+		assert(filename.size() >= 4);
+		slotNum = atoi(filename.c_str() + filename.size() - 3);
 		if (slotNum >= 0 && slotNum < 256)
 			marks[slotNum] = true;	//mark this slot as valid
 	}
 
 	// locate first empty slot
-	for (s = 1; s < 256; s++) {
+	for (uint s = 1; s < 256; s++) {
 		if (marks[s])
 			numSaveGames++;
 	}
@@ -86,7 +83,10 @@ Common::String AGOSEngine_Simon2::genSaveName(int slot) const {
 }
 
 Common::String AGOSEngine_Simon1::genSaveName(int slot) const {
-	return Common::String::format("simon1.%.3d", slot);
+	if (_gameDescription->desc.flags & ADGF_DEMO)
+		return Common::String::format("simon1-demo.%.3d", slot);
+	else
+		return Common::String::format("simon1.%.3d", slot);
 }
 
 Common::String AGOSEngine_Waxworks::genSaveName(int slot) const {
@@ -126,7 +126,7 @@ void AGOSEngine_Feeble::quickLoadOrSave() {
 // was disabled
 void AGOSEngine::quickLoadOrSave() {
 	bool success;
-	Common::String buf;
+	Common::U32String buf;
 
 	// Disable loading and saving when it was not possible in the original:
 	// In overhead maps areas in Simon the Sorcerer 2
@@ -135,8 +135,8 @@ void AGOSEngine::quickLoadOrSave() {
 	if ((getGameType() == GType_SIMON2 && _boxStarHeight == 200) ||
 		(getGameType() == GType_SIMON1 && (getFeatures() & GF_DEMO)) ||
 		_mouseHideCount || _showPreposition) {
-		buf = Common::String::format("Quick load or save game isn't supported in this location");
-		GUI::MessageDialog dialog(buf, "OK");
+		buf = _("Quick load or save game isn't supported in this location");
+		GUI::MessageDialog dialog(buf);
 		dialog.runModal();
 		return;
 	}
@@ -157,7 +157,7 @@ void AGOSEngine::quickLoadOrSave() {
 		Subroutine *sub;
 		success = loadGame(genSaveName(_saveLoadSlot));
 		if (!success) {
-			buf = Common::String::format(_("Failed to load game state from file:\n\n%s"), filename.c_str());
+			buf = Common::U32String::format(_("Failed to load saved game from file:\n\n%s"), filename.c_str());
 		} else if (getGameType() == GType_SIMON1 || getGameType() == GType_SIMON2) {
 			drawIconArray(2, me(), 0, 0);
 			setBitFlag(97, true);
@@ -192,15 +192,15 @@ void AGOSEngine::quickLoadOrSave() {
 	} else {
 		success = saveGame(_saveLoadSlot, _saveLoadName);
 		if (!success)
-			buf = Common::String::format(_("Failed to save game state to file:\n\n%s"), filename.c_str());
+			buf = Common::U32String::format(_("Failed to save game to file:\n\n%s"), filename.c_str());
 	}
 
 	if (!success) {
-		GUI::MessageDialog dialog(buf, "OK");
+		GUI::MessageDialog dialog(buf);
 		dialog.runModal();
 
 	} else if (_saveLoadType == 1) {
-		buf = Common::String::format(_("Successfully saved game state in file:\n\n%s"), filename.c_str());
+		buf = Common::U32String::format(_("Successfully saved game in file:\n\n%s"), filename.c_str());
 		GUI::TimedMessageDialog dialog(buf, 1500);
 		dialog.runModal();
 
@@ -211,7 +211,7 @@ void AGOSEngine::quickLoadOrSave() {
 
 bool AGOSEngine_Waxworks::confirmOverWrite(WindowBlock *window) {
 	Subroutine *sub = getSubroutineByID(80);
-	if (sub != NULL)
+	if (sub != nullptr)
 		startSubroutineEx(sub);
 
 	if (_variableArray[253] == 0)
@@ -221,7 +221,7 @@ bool AGOSEngine_Waxworks::confirmOverWrite(WindowBlock *window) {
 }
 
 bool AGOSEngine_Elvira2::confirmOverWrite(WindowBlock *window) {
-	// Original verison never confirmed
+	// Original version never confirmed
 	return true;
 }
 
@@ -238,6 +238,11 @@ bool AGOSEngine::confirmOverWrite(WindowBlock *window) {
 		message1 = "\rDatei existiert bereits.\r\r";
 		message2 = "   Ueberschreiben ?\r\r";
 		message3 = "     Ja        Nein";
+		break;
+	case Common::JA_JPN:
+		message1 = "\r   ""\x82\xbb\x82\xcc\x83""t""\x83""@""\x83""C""\x83\x8b\x82\xcd\x82\xb7\x82\xc5\x82\xc9\x91\xb6\x8d\xdd\x82\xb5\x82\xdc\x82\xb7""\r\r";
+		message2 = "     ""\x8f\xe3\x8f\x91\x82\xab\x82\xb5\x82\xc4\x82\xe6\x82\xeb\x82\xb5\x82\xa2\x82\xc5\x82\xb7\x82\xa9\x81""H\r\r";
+		message3 = "       ""\x82\xcd\x82\xa2""           ""\x82\xa2\x82\xa2\x82\xa6";
 		break;
 	default:
 		message1 = "\r File already exists.\r\r";
@@ -285,6 +290,11 @@ int16 AGOSEngine::matchSaveGame(const char *name, uint16 max) {
 	return -1;
 }
 
+void AGOSEngine::enterSaveLoadScreen(bool entering) {
+	_system->setFeatureState(OSystem::kFeatureVirtualKeyboard, entering);
+	getEventManager()->getKeymapper()->getKeymap("game-shortcuts")->setEnabled(!entering);
+}
+
 void AGOSEngine::userGame(bool load) {
 	WindowBlock *window = _windowArray[4];
 	const char *message1;
@@ -311,17 +321,22 @@ restart:
 	case Common::DE_DEU:
 		message1 = "\rLege Spielstandsdiskette ein. Dateinamen eingeben:\r\r   ";
 		break;
+	case Common::JA_JPN:
+		message1 = "\r  ""\x83""t""\x83""@""\x83""C""\x83\x8b\x96\xbc\x82\xf0\x93\xfc\x97\xcd\x82\xb5\x82\xc4\x82\xad\x82\xbe\x82\xb3\x82\xa2\x81""F\r\r\r   ";
+		break;
 	default:
 		message1 = "\r Insert savegame data disk & enter filename:\r\r   ";
 		break;
 	}
 
+	clearHiResTextLayer();
 	for (; *message1; message1++)
 		windowPutChar(window, *message1);
 
 	memset(_saveBuf, 0, 10);
 	name = _saveBuf;
 	_saveGameNameLen = 0;
+	_forceAscii = true;
 
 	while (!shouldQuit()) {
 		windowPutChar(window, 128);
@@ -351,6 +366,8 @@ restart:
 		}
 	}
 
+	_forceAscii = false;
+
 	if (_saveGameNameLen != 0) {
 		int16 slot = matchSaveGame(name, numSaveGames);
 		if (!load) {
@@ -374,6 +391,7 @@ restart:
 		printStats();
 	}
 
+	clearHiResTextLayer();
 	restartAnimation();
 	_gameStoppedClock = getTime() - saveTime + _gameStoppedClock;
 }
@@ -495,7 +513,7 @@ void AGOSEngine_Elvira2::userGame(bool load) {
 
 			i = userGameGetKey(&b, 128);
 			if (b) {
-				if (i <= 223) {
+				if (i <= 23) {
 					if (!confirmOverWrite(window)) {
 						listSaveGames();
 						continue;
@@ -562,8 +580,8 @@ int AGOSEngine_Elvira2::userGameGetKey(bool *b, uint maxChar) {
 	_keyPressed.reset();
 
 	while (!shouldQuit()) {
-		_lastHitArea = NULL;
-		_lastHitArea3 = NULL;
+		_lastHitArea = nullptr;
+		_lastHitArea3 = nullptr;
 
 		do {
 			if (_saveLoadEdit && _keyPressed.ascii && _keyPressed.ascii < maxChar) {
@@ -571,10 +589,10 @@ int AGOSEngine_Elvira2::userGameGetKey(bool *b, uint maxChar) {
 				return _keyPressed.ascii;
 			}
 			delay(10);
-		} while (_lastHitArea3 == 0 && !shouldQuit());
+		} while (_lastHitArea3 == nullptr && !shouldQuit());
 
 		ha = _lastHitArea;
-		if (ha == NULL || ha->id < 200) {
+		if (ha == nullptr || ha->id < 200) {
 		} else if (ha->id == 225) {
 			return ha->id;
 		} else if (ha->id == 224) {
@@ -834,8 +852,8 @@ int AGOSEngine_Simon1::userGameGetKey(bool *b, uint maxChar) {
 	_keyPressed.reset();
 
 	while (!shouldQuit()) {
-		_lastHitArea = NULL;
-		_lastHitArea3 = NULL;
+		_lastHitArea = nullptr;
+		_lastHitArea3 = nullptr;
 
 		do {
 			if (_saveLoadEdit && _keyPressed.ascii && _keyPressed.ascii < maxChar) {
@@ -843,10 +861,10 @@ int AGOSEngine_Simon1::userGameGetKey(bool *b, uint maxChar) {
 				return _keyPressed.ascii;
 			}
 			delay(10);
-		} while (_lastHitArea3 == 0 && !shouldQuit());
+		} while (_lastHitArea3 == nullptr && !shouldQuit());
 
 		ha = _lastHitArea;
-		if (ha == NULL || ha->id < 205) {
+		if (ha == nullptr || ha->id < 205) {
 		} else if (ha->id == 205) {
 			return ha->id;
 		} else if (ha->id == 206) {
@@ -943,6 +961,10 @@ void AGOSEngine::fileError(WindowBlock *window, bool saveError) {
 			message1 = "\r  Sicherung erfolglos.";
 			message2 = "\rVersuche eine andere     Diskette.";
 			break;
+		case Common::JA_JPN:
+			message1 = "\r       ""\x83""Z""\x81""[""\x83""u""\x82\xc9\x8e\xb8\x94""s""\x82\xb5\x82\xdc\x82\xb5\x82\xbd";
+			message2 = "\r   ""\x95\xca\x82\xcc\x83""f""\x83""B""\x83""X""\x83""N""\x82\xf0\x8e""g""\x97""p""\x82\xb5\x82\xc4\x82\xad\x82\xbe\x82\xb3\x82\xa2";
+			break;
 		default:
 			message1 = "\r       Save failed.";
 			message2 = "\r       Disk error.";
@@ -978,6 +1000,10 @@ void AGOSEngine::fileError(WindowBlock *window, bool saveError) {
 		case Common::DE_DEU:
 			message1 = "\r    Laden erfolglos.";
 			message2 = "\r  Datei nicht gefunden.";
+			break;
+		case Common::JA_JPN:
+			message1 = "\r       ""\x83\x8d\x81""[""\x83""h""\x82\xc9\x8e\xb8\x94""s""\x82\xb5\x82\xdc\x82\xb5\x82\xbd";
+			message2 = "\r     ""\x83""t""\x83""@""\x83""C""\x83\x8b\x82\xaa\x8c\xa9\x82\xc2\x82\xa9\x82\xe8\x82\xdc\x82\xb9\x82\xf1";
 			break;
 		default:
 			message1 = "\r       Load failed.";
@@ -1020,24 +1046,28 @@ void writeItemID(Common::WriteStream *f, uint16 val) {
 
 bool AGOSEngine::loadGame(const Common::String &filename, bool restartMode) {
 	char ident[100];
-	Common::SeekableReadStream *f = NULL;
+	Common::SeekableReadStream *f = nullptr;
 	uint num, item_index, i;
 
 	_videoLockOut |= 0x100;
 
 	if (restartMode) {
 		// Load restart state
-		Common::File *file = new Common::File();
-		if (!file->open(filename)) {
-			delete file;
-			file = nullptr;
+		if (getPlatform() == Common::kPlatformPC98 && !filename.compareToIgnoreCase("start")) {
+			f = createPak98FileStream("START.PAK");
+		} else {
+			Common::File *file = new Common::File();
+			if (!file->open(Common::Path(filename))) {
+				delete file;
+				file = nullptr;
+			}
+			f = file;
 		}
-		f = file;
 	} else {
 		f = _saveFileMan->openForLoading(filename);
 	}
 
-	if (f == NULL) {
+	if (f == nullptr) {
 		_videoLockOut &= ~0x100;
 		return false;
 	}
@@ -1061,7 +1091,8 @@ bool AGOSEngine::loadGame(const Common::String &filename, bool restartMode) {
 	// add all timers
 	killAllTimers();
 	for (num = f->readUint32BE(); num; num--) {
-		uint32 timeout = f->readUint32BE();
+		// See comment below inAGOSEngine_Elvira2::loadGame(): The timers are just as broken for Elvira as for the other games.
+		int32 timeout = (int16)f->readSint32BE();
 		uint16 subroutine_id = f->readUint16BE();
 		addTimeEvent(timeout, subroutine_id);
 	}
@@ -1128,7 +1159,7 @@ bool AGOSEngine::saveGame(uint slot, const char *caption) {
 	_videoLockOut |= 0x100;
 
 	f = _saveFileMan->openForSaving(genSaveName(slot));
-	if (f == NULL) {
+	if (f == nullptr) {
 		_videoLockOut &= ~0x100;
 		return false;
 	}
@@ -1199,7 +1230,7 @@ bool AGOSEngine::saveGame(uint slot, const char *caption) {
 
 bool AGOSEngine_Elvira2::loadGame(const Common::String &filename, bool restartMode) {
 	char ident[100];
-	Common::SeekableReadStream *f = NULL;
+	Common::SeekableReadStream *f = nullptr;
 	uint num, item_index, i, j;
 
 	_videoLockOut |= 0x100;
@@ -1207,7 +1238,7 @@ bool AGOSEngine_Elvira2::loadGame(const Common::String &filename, bool restartMo
 	if (restartMode) {
 		// Load restart state
 		Common::File *file = new Common::File();
-		if (!file->open(filename)) {
+		if (!file->open(Common::Path(filename))) {
 			delete file;
 			file = nullptr;
 		}
@@ -1216,7 +1247,7 @@ bool AGOSEngine_Elvira2::loadGame(const Common::String &filename, bool restartMo
 		f = _saveFileMan->openForLoading(filename);
 	}
 
-	if (f == NULL) {
+	if (f == nullptr) {
 		_videoLockOut &= ~0x100;
 		return false;
 	}
@@ -1246,7 +1277,15 @@ bool AGOSEngine_Elvira2::loadGame(const Common::String &filename, bool restartMo
 	// add all timers
 	killAllTimers();
 	for (num = f->readUint32BE(); num; num--) {
-		uint32 timeout = f->readUint32BE();
+		// WORKAROUND for older (corrupt) savegames. Games with short timer intervals may write negative timeouts into the save files. The
+		// original interpreter does that, too. I have checked it in the DOSBox debugger. We didn't handle this well, treating the negative
+		// values as very large positive values. This effectively disabled the timers. In most cases this seems to have gone unnoticed, but
+		// it also caused bug #14886 ("Waxworks crashing at Egypt Level 3, corrupting save file"). Waxworks runs a timer every 10 seconds
+		// that cleans up the items chain and failure to do so causes that bug. The design of the timers in the original interpreter is poor,
+		// but at least it somehow survives. Now, unfortunately, we don't have savegame versioning in this engine, so I can't simply limit
+		// a fix to old savegames. However, it is so highly unlikely that a valid timer would exceed 32767 seconds (= 9 hours) that I
+		// consider this safe.
+		int32 timeout = (int16)f->readSint32BE();
 		uint16 subroutine_id = f->readUint16BE();
 		addTimeEvent(timeout, subroutine_id);
 	}
@@ -1261,7 +1300,6 @@ bool AGOSEngine_Elvira2::loadGame(const Common::String &filename, bool restartMo
 
 		uint16 room = _currentRoom;
 		_currentRoom = f->readUint16BE();
-
 		if (_roomsListPtr) {
 			byte *p = _roomsListPtr;
 			if (room == _currentRoom) {
@@ -1293,15 +1331,14 @@ bool AGOSEngine_Elvira2::loadGame(const Common::String &filename, bool restartMo
 
 					 for (uint16 z = minNum; z <= maxNum; z++) {
 						uint16 itemNum = z + 2;
-						Item *item = derefItem(itemNum);
-						item->parent = 0;
+						_itemArrayPtr[itemNum] = nullptr;
 					}
 				}
 			}
 		}
 
 		if (room != _currentRoom) {
-			_roomsListPtr = 0;
+			_roomsListPtr = nullptr;
 			loadRoomItems(_currentRoom);
 		}
 	}
@@ -1318,10 +1355,13 @@ bool AGOSEngine_Elvira2::loadGame(const Common::String &filename, bool restartMo
 			uint parent = f->readUint16BE();
 			uint next = f->readUint16BE();
 
+			if (getGameType() == GType_WW && getPlatform() == Common::kPlatformDOS && derefItem(item->parent) == nullptr)
+				item->parent = 0;
+
 			parent_item = derefItem(parent);
 			setItemParent(item, parent_item);
 
-			if (parent_item == NULL) {
+			if (parent_item == nullptr) {
 				item->parent = parent;
 				item->next = next;
 			}
@@ -1430,7 +1470,7 @@ bool AGOSEngine_Elvira2::saveGame(uint slot, const char *caption) {
 	_videoLockOut |= 0x100;
 
 	f = _saveFileMan->openForSaving(genSaveName(slot));
-	if (f == NULL) {
+	if (f == nullptr) {
 		_videoLockOut &= ~0x100;
 		return false;
 	}
@@ -1593,7 +1633,7 @@ bool AGOSEngine_PN::badload(int8 errorNum) {
 	// Load error recovery routine
 
 	// Clear any stack
-	while (_stackbase != NULL) {
+	while (_stackbase != nullptr) {
 		dumpstack();
 	}
 
@@ -1625,7 +1665,7 @@ int AGOSEngine_PN::loadFile(const Common::String &name) {
 	haltAnimation();
 
 	f = _saveFileMan->openForLoading(name);
-	if (f == NULL) {
+	if (f == nullptr) {
 		restartAnimation();
 		return -2;
 	}
@@ -1659,7 +1699,7 @@ int AGOSEngine_PN::saveFile(const Common::String &name) {
 	haltAnimation();
 
 	f = _saveFileMan->openForSaving(name);
-	if (f == NULL) {
+	if (f == nullptr) {
 		restartAnimation();
 
 		const char *msg = "Couldn't save. ";

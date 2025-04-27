@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -51,82 +50,77 @@ enum {
 };
 
 void OnScreenDialog::reflowLayout() {
-	GuiObject::reflowLayout();
+	Dialog::reflowLayout();
+
+	_x = _y = 0;
 }
 
 void OnScreenDialog::releaseFocus() {
 }
 
 OnScreenDialog::OnScreenDialog(bool isRecord) : Dialog("OnScreenDialog") {
-	_x = _y = 0;
-
 #ifndef DISABLE_FANCY_THEMES
 	if (g_gui.xmlEval()->getVar("Globals.OnScreenDialog.ShowPics") == 1 && g_gui.theme()->supportsImages()) {
-		GUI::PicButtonWidget *btn;
-		btn = new PicButtonWidget(this, "OnScreenDialog.StopButton", 0, kStopCmd, 0);
-		btn->useThemeTransparency(true);
+		GUI::PicButtonWidget *button;
 
-		if (g_system->getOverlayWidth() > 320)
-			btn->setGfx(g_gui.theme()->getImageSurface(ThemeEngine::kImageStopbtn));
+		button = new PicButtonWidget(this, "OnScreenDialog.StopButton", Common::U32String(), kStopCmd, 0);
+		if (!g_gui.useLowResGUI())
+			button->setGfxFromTheme(ThemeEngine::kImageStopButton);
 		else
-			btn->setGfx(g_gui.theme()->getImageSurface(ThemeEngine::kImageStopSmallbtn));
+			button->setGfxFromTheme(ThemeEngine::kImageStopSmallButton);
 
 		if (isRecord) {
-			btn = new PicButtonWidget(this, "OnScreenDialog.EditButton", 0, kEditCmd, 0);
-			btn->useThemeTransparency(true);
-
-			if (g_system->getOverlayWidth() > 320)
-				btn->setGfx(g_gui.theme()->getImageSurface(ThemeEngine::kImageEditbtn));
+			button = new PicButtonWidget(this, "OnScreenDialog.EditButton", Common::U32String(), kEditCmd, 0);
+			if (!g_gui.useLowResGUI())
+				button->setGfxFromTheme(ThemeEngine::kImageEditButton);
 			else
-				btn->setGfx(g_gui.theme()->getImageSurface(ThemeEngine::kImageEditSmallbtn));
+				button->setGfxFromTheme(ThemeEngine::kImageEditSmallButton);
 		} else {
-			btn = new PicButtonWidget(this, "OnScreenDialog.SwitchModeButton", 0, kSwitchModeCmd, 0);
-			btn->useThemeTransparency(true);
-			if (g_system->getOverlayWidth() > 320)
-				btn->setGfx(g_gui.theme()->getImageSurface(ThemeEngine::kImageSwitchModebtn));
+			button = new PicButtonWidget(this, "OnScreenDialog.SwitchModeButton", Common::U32String(), kSwitchModeCmd, 0);
+			if (!g_gui.useLowResGUI())
+				button->setGfxFromTheme(ThemeEngine::kImageSwitchModeButton);
 			else
-				btn->setGfx(g_gui.theme()->getImageSurface(ThemeEngine::kImageSwitchModeSmallbtn));
+				button->setGfxFromTheme(ThemeEngine::kImageSwitchModeSmallButton);
 
-			btn = new PicButtonWidget(this, "OnScreenDialog.FastReplayButton", 0, kFastModeCmd, 0);
-			btn->useThemeTransparency(true);
-			if (g_system->getOverlayWidth() > 320)
-				btn->setGfx(g_gui.theme()->getImageSurface(ThemeEngine::kImageFastReplaybtn));
+			button = new PicButtonWidget(this, "OnScreenDialog.FastReplayButton", Common::U32String(), kFastModeCmd, 0);
+			if (!g_gui.useLowResGUI())
+				button->setGfxFromTheme(ThemeEngine::kImageFastReplayButton);
 			else
-				btn->setGfx(g_gui.theme()->getImageSurface(ThemeEngine::kImageFastReplaySmallbtn));
+				button->setGfxFromTheme(ThemeEngine::kImageFastReplaySmallButton);
 		}
 	} else
 #endif
 	{
-		if (g_system->getOverlayWidth() > 320)
-			new ButtonWidget(this, "OnScreenDialog.StopButton", "[ ]", _("Stop"), kStopCmd);
+		if (!g_gui.useLowResGUI())
+			new ButtonWidget(this, "OnScreenDialog.StopButton", Common::U32String("[ ]"), _("Stop"), kStopCmd);
 		else
-			new ButtonWidget(this, "OnScreenDialog.StopButton", "[]", _("Stop"), kStopCmd);
+			new ButtonWidget(this, "OnScreenDialog.StopButton", Common::U32String("[]"), _("Stop"), kStopCmd);
 
 		if (isRecord) {
-			new ButtonWidget(this, "OnScreenDialog.EditButton", "E", _("Edit record description"), kEditCmd);
+			new ButtonWidget(this, "OnScreenDialog.EditButton", Common::U32String("E"), _("Edit record description"), kEditCmd);
 		} else {
-			new ButtonWidget(this, "OnScreenDialog.SwitchModeButton", "G", _("Switch to Game"), kSwitchModeCmd);
+			new ButtonWidget(this, "OnScreenDialog.SwitchModeButton", Common::U32String("G"), _("Switch to Game"), kSwitchModeCmd);
 
-			new ButtonWidget(this, "OnScreenDialog.FastReplayButton", ">>", _("Fast replay"), kFastModeCmd);
+			new ButtonWidget(this, "OnScreenDialog.FastReplayButton", Common::U32String(">>"), _("Fast replay"), kFastModeCmd);
 		}
 	}
 
 
-	_text = new GUI::StaticTextWidget(this, "OnScreenDialog.TimeLabel", "00:00:00");
+	_text = new GUI::StaticTextWidget(this, "OnScreenDialog.TimeLabel", Common::U32String("00:00:00"));
 	_enableDrag = false;
 	_mouseOver = false;
 	_editDlgShown = false;
 
 	_lastTime = 0;
-	_dlg = 0;
+	_dlg = nullptr;
 }
 
 void OnScreenDialog::handleCommand(CommandSender *sender, uint32 cmd, uint32 data) {
-	Common::Event eventRTL;
+	Common::Event eventReturnToLauncher;
 	switch (cmd) {
 	case kStopCmd:
-		eventRTL.type = Common::EVENT_RTL;
-		g_system->getEventManager()->pushEvent(eventRTL);
+		eventReturnToLauncher.type = Common::EVENT_RETURN_TO_LAUNCHER;
+		g_system->getEventManager()->pushEvent(eventReturnToLauncher);
 		close();
 		break;
 	case kEditCmd:
@@ -152,6 +146,8 @@ void OnScreenDialog::handleCommand(CommandSender *sender, uint32 cmd, uint32 dat
 		break;
 	case kFastModeCmd:
 		g_eventRec.switchFastMode();
+		break;
+	default:
 		break;
 	}
 }

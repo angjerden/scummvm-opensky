@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,14 +15,14 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #ifndef BACKENDS_AUDIOCD_ABSTRACT_H
 #define BACKENDS_AUDIOCD_ABSTRACT_H
 
+#include "audio/mixer.h"
 #include "common/scummsys.h"
 #include "common/noncopyable.h"
 
@@ -48,26 +48,47 @@ public:
 	};
 
 	/**
-	 * @name Emulated playback functions
-	 * Engines should call these functions. Not all platforms
-	 * support cd playback, and these functions should try to
-	 * emulate it.
+	 * Initialize the specified CD drive for audio playback.
+	 * @return true if the CD drive was inited successfully
 	 */
-	//@{
+	virtual bool open() = 0;
+
+	/**
+	 * Close the currently open CD drive
+	 */
+	virtual void close() = 0;
 
 	/**
 	 * Start audio CD playback
-	 * @param track			the track to play.
-	 * @param numLoops		how often playback should be repeated (-1 = infinitely often).
-	 * @param startFrame	the frame at which playback should start (75 frames = 1 second).
-	 * @param duration		the number of frames to play.
-	 * @param only_emulate	determines if the track should be emulated only
+	 * @param track          the track to play.
+	 * @param numLoops       how often playback should be repeated (<=0 means infinitely often).
+	 * @param startFrame     the frame at which playback should start (75 frames = 1 second).
+	 * @param duration       the number of frames to play.
+	 * @param onlyEmulate    determines if the track should be emulated only
+	 * @param soundType      What sound type to play as. By default, it's as music
+	 * @note The @c onlyEmulate parameter is deprecated.
+	 * @return @c true if the track started playing, @c false otherwise
 	 */
-	virtual void play(int track, int numLoops, int startFrame, int duration, bool only_emulate = false) = 0;
+	virtual bool play(int track, int numLoops, int startFrame, int duration, bool onlyEmulate = false,
+		Audio::Mixer::SoundType soundType = Audio::Mixer::kMusicSoundType) = 0;
+
+	/**
+	 * Start audio CD playback at a specific absolute timestamp
+	 * @param startFrame     the frame at which playback should start (75 frames = 1 second).
+	 * @param numLoops       how often playback should be repeated (<=0 means infinitely often).
+	 * @param duration       the number of frames to play.
+	 * @param onlyEmulate    determines if the track should be emulated only
+	 * @param soundType      What sound type to play as. By default, it's as music
+	 * @param cuesheet       The name of the cuesheet to use for timing data
+	 * @note The @c onlyEmulate parameter is deprecated.
+	 * @return @c true if the track started playing, @c false otherwise
+	 */
+	virtual bool playAbsolute(int startFrame, int numLoops, int duration, bool onlyEmulate = false,
+		Audio::Mixer::SoundType soundType = Audio::Mixer::kMusicSoundType, const char *cuesheet = "disc.cue") = 0;
 
 	/**
 	 * Get if audio is being played.
-	 * @return true if CD or emulated audio is playing
+	 * @return true if CD audio is playing
 	 */
 	virtual bool isPlaying() const = 0;
 
@@ -82,12 +103,12 @@ public:
 	virtual void setBalance(int8 balance) = 0;
 
 	/**
-	 * Stop CD or emulated audio playback.
+	 * Stop audio playback.
 	 */
 	virtual void stop() = 0;
 
 	/**
-	 * Update CD or emulated audio status.
+	 * Update audio status.
 	 */
 	virtual void update() = 0;
 
@@ -97,49 +118,18 @@ public:
 	 */
 	virtual Status getStatus() const = 0;
 
-	//@}
-
+	/**
+	 * Checks whether the extracted audio cd tracks exists as files in
+	 * the search paths.
+	 * @return true if audio files of the expected naming scheme are found, and supported by ScummVM.
+	 */
+	virtual bool existExtractedCDAudioFiles(uint track) = 0;
 
 	/**
-	 * @name Real CD audio methods
-	 * These functions should be called from the emulated
-	 * ones if they can't emulate the audio playback.
+	 * Checks if game data are read from the same CD drive which should also play game CD audio.
+	 * @return true, if this case is applicable, and the system doesn't allow it.
 	 */
-	//@{
-
-	/**
-	 * Initialize the specified CD drive for audio playback.
-	 * @param drive the drive id
-	 * @return true if the CD drive was inited successfully
-	 */
-	virtual bool openCD(int drive) = 0;
-
-	/**
-	 * Poll CD status.
-	 * @return true if CD audio is playing
-	 */
-	virtual bool pollCD() const = 0;
-
-	/**
-	 * Start CD audio playback.
-	 * @param track			the track to play.
-	 * @param num_loops		how often playback should be repeated (-1 = infinitely often).
-	 * @param start_frame	the frame at which playback should start (75 frames = 1 second).
-	 * @param duration		the number of frames to play.
-	 */
-	virtual void playCD(int track, int num_loops, int start_frame, int duration) = 0;
-
-	/**
-	 * Stop CD audio playback.
-	 */
-	virtual void stopCD() = 0;
-
-	/**
-	 * Update CD audio status.
-	 */
-	virtual void updateCD() = 0;
-
-	//@}
+	virtual bool isDataAndCDAudioReadFromSameCD() = 0;
 };
 
 #endif

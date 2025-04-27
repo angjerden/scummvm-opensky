@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,13 +15,12 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #ifndef __has_feature         // Optional of course.
-  #define __has_feature(x) 0  // Compatibility with non-clang compilers.
+#define __has_feature(x) 0    // Compatibility with non-clang compilers.
 #endif
 
 #include <fstream>
@@ -35,10 +34,24 @@
 struct BdfBoundingBox {
 	int width, height;
 	int xOffset, yOffset;
+
+	void reset() {
+		width = 0;
+		height = 0;
+		xOffset = 0;
+		yOffset = 0;
+	}
+
+	BdfBoundingBox() {
+		reset();
+	}
 };
 
 struct BdfFont {
+	char *familyName;
+	char *slant;
 	int maxAdvance;
+	int size;
 	int height;
 	BdfBoundingBox defaultBox;
 	int ascent;
@@ -51,7 +64,26 @@ struct BdfFont {
 	unsigned char *advances;
 	BdfBoundingBox *boxes;
 
-	BdfFont() : bitmaps(0), advances(0), boxes(0) {
+	void reset() {
+		familyName = nullptr;
+		slant = nullptr;
+		maxAdvance = 0;
+		size = 0;
+		height = 0;
+		defaultBox.reset();
+		ascent = 0;
+
+		firstCharacter = 0;
+		defaultCharacter = 0;
+		numCharacters = 0;
+
+		bitmaps = nullptr;
+		advances = nullptr;
+		boxes = nullptr;
+	}
+
+	BdfFont() {
+		reset();
 	}
 
 	~BdfFont() {
@@ -62,6 +94,8 @@ struct BdfFont {
 		delete[] bitmaps;
 		delete[] advances;
 		delete[] boxes;
+		delete[] familyName;
+		delete[] slant;
 	}
 };
 
@@ -126,7 +160,6 @@ int main(int argc, char *argv[]) {
 	std::string fontName;
 	std::string copyright;
 	BdfFont font;
-	memset(&font, 0, sizeof(font));
 	font.ascent = -1;
 	font.defaultCharacter = -1;
 
@@ -137,8 +170,9 @@ int main(int argc, char *argv[]) {
 		if (in.fail() || in.eof())
 			error("Premature end of file");
 
-		if (hasPrefix(line, "SIZE ")) {
-			// Ignore
+		if (hasPrefix(line, "PIXEL_SIZE ")) {
+			if (sscanf(line.c_str(), "PIXEL_SIZE %d", &font.size) != 1)
+				error("Invalid PIXEL_SIZE");
 		} else if (hasPrefix(line, "FONT ")) {
 			fontName = line.substr(5);
 		} else if (hasPrefix(line, "COPYRIGHT ")) {
@@ -154,11 +188,29 @@ int main(int argc, char *argv[]) {
 			if (sscanf(line.c_str(), "CHARS %d", &charsAvailable) != 1)
 				error("Invalid CHARS");
 
-			font.numCharacters = 256;
+			font.numCharacters = 384;
 			font.bitmaps = new unsigned char *[font.numCharacters];
 			memset(font.bitmaps, 0, sizeof(unsigned char *) * font.numCharacters);
 			font.advances = new unsigned char[font.numCharacters];
 			font.boxes = new BdfBoundingBox[font.numCharacters];
+		} else if (hasPrefix(line, "FAMILY_NAME \"")) {
+			font.familyName = new char[line.size()]; // We will definitely fit here
+			strncpy(font.familyName, &line.c_str()[13], line.size() - 1);
+			char *p = &font.familyName[strlen(font.familyName)];
+			while (p != font.familyName && *p != '"')
+				p--;
+			if (p == font.familyName)
+				error("Invalid FAMILY_NAME");
+			*p = '\0'; // Remove last quote
+		} else if (hasPrefix(line, "SLANT \"")) {
+			font.slant = new char[line.size()]; // We will definitely fit here
+			strncpy(font.slant, &line.c_str()[7], line.size() - 1);
+			char *p = &font.slant[strlen(font.slant)];
+			while (p != font.slant && *p != '"')
+				p--;
+			if (p == font.slant)
+				error("Invalid SLANT");
+			*p = '\0'; // Remove last quote
 		} else if (hasPrefix(line, "FONT_ASCENT ")) {
 			if (sscanf(line.c_str(), "FONT_ASCENT %d", &font.ascent) != 1)
 				error("Invalid FONT_ASCENT");
@@ -178,7 +230,7 @@ int main(int argc, char *argv[]) {
 
 			int encoding = -1;
 			int xAdvance;
-			unsigned char *bitmap = 0;
+			unsigned char *bitmap = nullptr;
 			BdfBoundingBox bbox = font.defaultBox;
 
 			while (true) {
@@ -236,10 +288,10 @@ int main(int argc, char *argv[]) {
 						}
 					}
 				} else if (line == "ENDCHAR") {
-					if (encoding == -1 || !hasWidth || !hasBitmap)
+					if (!hasWidth || !hasBitmap)
 						error("Character not completly defined");
 
-					if (encoding < font.numCharacters) {
+					if (encoding >= 0 && encoding < font.numCharacters) {
 						font.advances[encoding] = xAdvance;
 						font.boxes[encoding] = bbox;
 						font.bitmaps[encoding] = bitmap;
@@ -294,13 +346,13 @@ int main(int argc, char *argv[]) {
 	// Free the advance table, in case all glyphs use the same advance
 	if (hasFixedAdvance) {
 		delete[] font.advances;
-		font.advances = 0;
+		font.advances = nullptr;
 	}
 
 	// Free the box table, in case all glyphs use the same box
 	if (hasFixedBBox) {
 		delete[] font.boxes;
-		font.boxes = 0;
+		font.boxes = nullptr;
 	}
 
 	// Adapt for the fact that we never use encoding 0.
@@ -314,10 +366,10 @@ int main(int argc, char *argv[]) {
 	// Try to compact the tables
 	if (charsAvailable < font.numCharacters) {
 		unsigned char **bitmaps = new unsigned char *[charsAvailable];
-		BdfBoundingBox *boxes = 0;
+		BdfBoundingBox *boxes = nullptr;
 		if (!hasFixedBBox)
 			boxes = new BdfBoundingBox[charsAvailable];
-		unsigned char *advances = 0;
+		unsigned char *advances = nullptr;
 		if (!hasFixedAdvance)
 			advances = new unsigned char[charsAvailable];
 
@@ -331,7 +383,7 @@ int main(int argc, char *argv[]) {
 				if (!hasFixedAdvance)
 					advances[i] = font.advances[encoding];
 			} else {
-				bitmaps[i] = 0;
+				bitmaps[i] = nullptr;
 			}
 		}
 
@@ -346,7 +398,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	char dateBuffer[256];
-	time_t curTime = time(0);
+	time_t curTime = time(nullptr);
 	snprintf(dateBuffer, sizeof(dateBuffer), "%s", ctime(&curTime));
 
 	// Finally output the cpp source file to stdout
@@ -392,7 +444,7 @@ int main(int argc, char *argv[]) {
 
 		for (int y = 0; y < box.height; ++y) {
 			printf("// |");
-			unsigned char data;
+			unsigned char data = 0;
 			for (int x = 0; x < box.width; ++x) {
 				if (!(x % 8))
 					data = *bitmap++;
@@ -481,8 +533,11 @@ int main(int argc, char *argv[]) {
 
 	printf("// Font structure\n"
 	       "static const BdfFontData desc = {\n"
+		   "\t\"%s\", // Family name\n"
+		   "\t\"%s\", // Slant\n"
 	       "\t%d, // Max advance\n"
 	       "\t%d, // Height\n"
+		   "\t%d, // Size\n"
 	       "\t{ %d, %d, %d, %d }, // Bounding box\n"
 	       "\t%d, // Ascent\n"
 	       "\n"
@@ -491,7 +546,7 @@ int main(int argc, char *argv[]) {
 	       "\t%d, // Characters\n"
 	       "\n"
 	       "\tbitmapTable, // Bitmaps\n",
-	       font.maxAdvance, font.height, font.defaultBox.width,
+	       font.familyName, font.slant, font.maxAdvance, font.size, font.height, font.defaultBox.width,
 	       font.defaultBox.height, font.defaultBox.xOffset, font.defaultBox.yOffset,
 	       font.ascent, font.firstCharacter, font.defaultCharacter, font.numCharacters);
 

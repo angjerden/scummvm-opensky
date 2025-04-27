@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -26,29 +25,56 @@
 #include "backends/audiocd/audiocd.h"
 #include "audio/mixer.h"
 
+namespace Common {
+class String;
+} // End of namespace Common
+
 /**
  * The default audio cd manager. Implements emulation of audio cd playback.
  */
 class DefaultAudioCDManager : public AudioCDManager {
 public:
 	DefaultAudioCDManager();
-	virtual ~DefaultAudioCDManager() {}
+	virtual ~DefaultAudioCDManager();
 
-	void play(int track, int numLoops, int startFrame, int duration, bool only_emulate = false);
-	void stop();
-	bool isPlaying() const;
-	void setVolume(byte volume);
-	void setBalance(int8 balance);
-	void update();
+	virtual bool open();
+	virtual void close();
+	virtual bool play(int track, int numLoops, int startFrame, int duration, bool onlyEmulate = false,
+		Audio::Mixer::SoundType soundType = Audio::Mixer::kMusicSoundType);
+	virtual bool playAbsolute(int startFrame, int numLoops, int duration, bool onlyEmulate = false,
+		Audio::Mixer::SoundType soundType = Audio::Mixer::kMusicSoundType, const char *cuesheet = "disc.cue");
+	virtual void stop();
+	virtual bool isPlaying() const;
+	virtual void setVolume(byte volume);
+	virtual void setBalance(int8 balance);
+	virtual void update();
 	virtual Status getStatus() const; // Subclasses should override for better status results
+	virtual bool existExtractedCDAudioFiles(uint track);
+	virtual bool isDataAndCDAudioReadFromSameCD() { return false; }
 
-	virtual bool openCD(int drive) { return false; }
-	virtual void updateCD() {}
-	virtual bool pollCD() const { return false; }
-	virtual void playCD(int track, int num_loops, int start_frame, int duration) {}
-	virtual void stopCD() {}
+private:
+	void fillPotentialTrackNames(Common::Array<Common::String> &trackNames, int track) const;
 
 protected:
+	/**
+	 * Open a CD using the cdrom config variable
+	 */
+	bool openRealCD();
+
+	/**
+	 * Open a CD using the specified drive index
+	 * @param drive The index of the drive
+	 * @note The index is implementation-defined, but 0 is always the best choice
+	 */
+	virtual bool openCD(int drive) { return false; }
+
+	/**
+	 * Open a CD from a specific drive
+	 * @param drive The name of the drive/path
+	 * @note The drive parameter is platform-specific
+	 */
+	virtual bool openCD(const Common::Path &drive) { return false; }
+
 	Audio::SoundHandle _handle;
 	bool _emulating;
 

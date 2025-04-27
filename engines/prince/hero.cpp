@@ -4,19 +4,18 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
-
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -33,6 +32,15 @@
 #include "prince/script.h"
 
 namespace Prince {
+
+class ShadowLinePlotter : public Graphics::Primitives {
+	void drawPoint(int x, int y, uint32 color, void *data) override {
+		PrinceEngine *vm = (PrinceEngine *)data;
+		WRITE_LE_UINT16(&vm->_shadowLine[vm->_shadLineLen * 4], x);
+		WRITE_LE_UINT16(&vm->_shadowLine[vm->_shadLineLen * 4 + 2], y);
+		vm->_shadLineLen++;
+	}
+};
 
 Hero::Hero(PrinceEngine *vm, GraphicsMan *graph) : _vm(vm), _graph(graph),
 	_number(0), _visible(false), _state(kHeroStateStay), _middleX(0), _middleY(0),
@@ -68,7 +76,7 @@ bool Hero::loadAnimSet(uint32 animSetNr) {
 
 	_moveSet.resize(kMoveSetSize);
 	for (uint32 i = 0; i < kMoveSetSize; i++) {
-		debug("Anim set item %d %s", i, animSet[i]);
+		debug(5, "Anim set item %d %s", i, animSet[i]);
 		Animation *anim = nullptr;
 		if (animSet[i] != nullptr) {
 			anim = new Animation();
@@ -232,7 +240,7 @@ void Hero::showHeroShadow(Graphics::Surface *screen, DrawNode *drawNode) {
 		}
 
 		vm->_shadLineLen = 0;
-		Graphics::drawLine(vm->_lightX, vm->_lightY, drawNode->posX, drawNode->posY, 0, &vm->plotShadowLinePoint, vm);
+		ShadowLinePlotter().drawLine(vm->_lightX, vm->_lightY, drawNode->posX, drawNode->posY, 0, vm);
 
 		byte *sprShadow = vm->_graph->_shadowTable70;
 
@@ -264,8 +272,7 @@ void Hero::showHeroShadow(Graphics::Surface *screen, DrawNode *drawNode) {
 		int shadWallDown = 0;
 		int shadWallBitAddr = 0;
 		int shadWallBitMask = 0;
-		byte *shadWallDestAddr = 0;
-		int shadWallPosY = 0;
+		byte *shadWallDestAddr = nullptr;
 		int shadWallSkipX = 0;
 		int shadWallModulo = 0;
 
@@ -409,7 +416,6 @@ void Hero::showHeroShadow(Graphics::Surface *screen, DrawNode *drawNode) {
 						shadWallBitAddr = shadBitAddr;
 						shadWallDestAddr = (byte *)screen->getBasePtr(shadDrawX + diffX, shadDrawY + diffY);
 						shadWallBitMask = shadBitMask;
-						shadWallPosY = shadPosY;
 						shadWallSkipX = shadSkipX;
 						shadWallModulo = sprModulo;
 					}
@@ -456,7 +462,6 @@ void Hero::showHeroShadow(Graphics::Surface *screen, DrawNode *drawNode) {
 						//krap2
 						shadWallDestAddr -= PrinceEngine::kNormalWidth;
 						shadWallBitAddr -= PrinceEngine::kMaxPicWidth / 8;
-						shadWallPosY--;
 					}
 				}
 			}
@@ -534,6 +539,8 @@ int Hero::rotateHero(int oldDirection, int newDirection) {
 			return kMove_MLU;
 		case kHeroDirDown:
 			return kMove_MLD;
+		default:
+			break;
 		}
 		break;
 	case kHeroDirRight:
@@ -544,6 +551,8 @@ int Hero::rotateHero(int oldDirection, int newDirection) {
 			return kMove_MRU;
 		case kHeroDirDown:
 			return kMove_MRD;
+		default:
+			break;
 		}
 		break;
 	case kHeroDirUp:
@@ -554,6 +563,8 @@ int Hero::rotateHero(int oldDirection, int newDirection) {
 			return kMove_MUR;
 		case kHeroDirDown:
 			return kMove_MUD;
+		default:
+			break;
 		}
 		break;
 	case kHeroDirDown:
@@ -564,7 +575,11 @@ int Hero::rotateHero(int oldDirection, int newDirection) {
 			return kMove_MDR;
 		case kHeroDirUp:
 			return kMove_MDU;
+		default:
+			break;
 		}
+		break;
+	default:
 		break;
 	}
 	error("rotateHero - wrong directions - old %d, new %d", oldDirection, newDirection);
@@ -584,6 +599,8 @@ void Hero::heroStanding() {
 		break;
 	case kHeroDirDown:
 		_moveSetType = kMove_SD;
+		break;
+	default:
 		break;
 	}
 }
@@ -637,6 +654,8 @@ void Hero::showHero() {
 				case kHeroDirDown:
 					_moveSetType = kMove_TD;
 					break;
+				default:
+					break;
 				}
 				if (_phase < _moveSet[_moveSetType]->getPhaseCount() - 1) {
 					_phase++;
@@ -655,6 +674,8 @@ void Hero::showHero() {
 				break;
 			case 1:
 				_moveSetType = kMove_BORED2;
+				break;
+			default:
 				break;
 			}
 			if (_moveSet[_moveSetType] != nullptr) {
@@ -899,6 +920,8 @@ void Hero::heroMoveGotIt(int x, int y, int dir) {
 	case kHeroDirDown:
 		_moveSetType = kMove_MD;
 		break;
+	default:
+		break;
 	}
 
 	if (_vm->_flags->getFlagValue(Flags::HEROFAST) || _state == kHeroStateRun) {
@@ -948,6 +971,8 @@ void Hero::scrollHero() {
 		} else {
 			_vm->_flags->setFlagValue(Flags::SCROLLVALUE, scrollValue - scrollValue2);
 		}
+		break;
+	default:
 		break;
 	}
 

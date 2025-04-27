@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -33,7 +32,7 @@ class GraphicsManager;
 class Feature;
 class View;
 
-enum {
+enum : uint {
 	kFeatureObjectMask = 0xff, // both (sort of)
 	kFeatureOldSortForeground = 0x1000, // old
 	kFeatureOldDropSpot = 0x2000, // old
@@ -138,11 +137,10 @@ public:
 	uint32 _flags;
 	uint32 _nextTime;
 	uint32 _delayTime;
-	uint16 _dirty; // byte in old
-	byte _needsReset;
-	byte _justReset; // old
-	byte _notifyDone; // old
-	byte _done; // new
+	bool _dirty; // byte in old
+	bool _needsReset;
+	bool _justReset; // old
+	bool _done; // new
 
 	FeatureData _data;
 
@@ -156,23 +154,23 @@ protected:
 class OldFeature : public Feature {
 public:
 	OldFeature(View *view);
-	~OldFeature();
+	~OldFeature() override;
 
-	void resetFrame();
-	void resetFeatureScript(uint16 enabled, uint16 scrbId);
+	void resetFrame() override;
+	void resetFeatureScript(uint16 enabled, uint16 scrbId) override;
 
 protected:
-	void resetScript();
-	void finishResetFeatureScript();
+	void resetScript() override;
+	void finishResetFeatureScript() override;
 };
 
 class NewFeature : public Feature {
 public:
 	NewFeature(View *view);
-	~NewFeature();
+	~NewFeature() override;
 
-	void resetFrame();
-	void resetFeatureScript(uint16 enabled, uint16 scrbId);
+	void resetFrame() override;
+	void resetFeatureScript(uint16 enabled, uint16 scrbId) override;
 
 	uint32 _unknown168;
 
@@ -188,15 +186,8 @@ public:
 	Common::Point _currDragPos;
 
 protected:
-	void resetScript();
-	void finishResetFeatureScript();
-};
-
-#define NUM_SYNC_CHANNELS 17
-struct SyncChannel {
-	uint16 masterId;
-	byte state;
-	bool alternate;
+	void resetScript() override;
+	void finishResetFeatureScript() override;
 };
 
 class View {
@@ -234,7 +225,6 @@ public:
 	void sortView();
 
 	uint32 _lastIdleTime;
-	SyncChannel _syncChannels[NUM_SYNC_CHANNELS];
 
 	virtual uint32 getTime() = 0;
 

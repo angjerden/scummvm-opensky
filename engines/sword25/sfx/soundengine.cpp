@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -36,7 +35,9 @@
 #include "sword25/kernel/inputpersistenceblock.h"
 #include "sword25/kernel/outputpersistenceblock.h"
 
+#include "audio/audiostream.h"
 #include "audio/decoders/vorbis.h"
+#include "audio/mididrv.h"
 
 #include "common/system.h"
 #include "common/config-manager.h"
@@ -46,7 +47,7 @@ namespace Sword25 {
 class SoundResource : public Resource {
 public:
 	SoundResource(const Common::String &fileName) : Resource(fileName, Resource::TYPE_SOUND), _fname(fileName) {}
-	virtual ~SoundResource() {
+	~SoundResource() override {
 		debugC(1, kDebugSound, "SoundResource: Unloading file %s", _fname.c_str());
 	}
 
@@ -65,8 +66,14 @@ SoundEngine::SoundEngine(Kernel *pKernel) : ResourceService(pKernel) {
 
 	_maxHandleId = 1;
 
-	for (int i = 0; i < SOUND_HANDLES; i++)
-		_handles[i].type = kFreeHandle;
+	Common::String selDevStr = ConfMan.hasKey("music_driver") ? ConfMan.get("music_driver") : Common::String("auto");
+	MidiDriver::DeviceHandle dev = MidiDriver::getDeviceHandle(selDevStr.empty() ? Common::String("auto") : selDevStr);
+	_noMusic = (MidiDriver::getMusicType(dev) == MT_NULL || MidiDriver::getMusicType(dev) == MT_INVALID);
+
+	if (_noMusic) {
+		warning("AUDIO: MUSIC IS FORCED TO OFF");
+		ConfMan.setInt("music_volume", 0);
+	}
 }
 
 bool SoundEngine::init(uint sampleRate, uint channels) {
@@ -81,8 +88,10 @@ void SoundEngine::setVolume(float volume, SOUND_TYPES type) {
 
 	switch (type) {
 	case SoundEngine::MUSIC:
-		ConfMan.setInt("music_volume", val);
-		_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, val);
+		if (!_noMusic) {
+			ConfMan.setInt("music_volume", val);
+			_mixer->setVolumeForSoundType(Audio::Mixer::kMusicSoundType, val);
+		}
 		break;
 	case SoundEngine::SPEECH:
 		ConfMan.setInt("speech_volume", val);
@@ -102,7 +111,7 @@ float SoundEngine::getVolume(SOUND_TYPES type) {
 
 	switch (type) {
 	case SoundEngine::MUSIC:
-		val = ConfMan.getInt("music_volume");
+		val = _noMusic ? 0 : ConfMan.getInt("music_volume");
 		break;
 	case SoundEngine::SPEECH:
 		val = ConfMan.getInt("speech_volume");
@@ -197,7 +206,7 @@ Audio::Mixer::SoundType getType(SoundEngine::SOUND_TYPES type) {
 }
 
 bool SoundEngine::playSound(const Common::String &fileName, SOUND_TYPES type, float volume, float pan, bool loop, int loopStart, int loopEnd, uint layer) {
-	debugC(1, kDebugSound, "SoundEngine::playSound(%s, %d, %f, %f, %d, %d, %d, %d)", fileName.c_str(), type, volume, pan, loop, loopStart, loopEnd, layer);
+	debugC(1, kDebugSound, "SoundEngine::playSound(filename='%s', type=%d, volume=%f, pan=%f, loop=%d, loopStart=%d, loopEnd=%d, layer=%d)", fileName.c_str(), type, volume, pan, loop, loopStart, loopEnd, layer);
 
 	playSoundEx(fileName, type, volume, pan, loop, loopStart, loopEnd, layer);
 
@@ -205,10 +214,9 @@ bool SoundEngine::playSound(const Common::String &fileName, SOUND_TYPES type, fl
 }
 
 uint SoundEngine::playSoundEx(const Common::String &fileName, SOUND_TYPES type, float volume, float pan, bool loop, int loopStart, int loopEnd, uint layer, uint handleId) {
-	Common::SeekableReadStream *in = Kernel::getInstance()->getPackage()->getStream(fileName);
-#ifdef USE_VORBIS
-	Audio::SeekableAudioStream *stream = Audio::makeVorbisStream(in, DisposeAfterUse::YES);
-#endif
+	if (type == MUSIC && _noMusic)
+		return 0;
+
 	uint id = handleId;
 	SndHandle *handle;
 
@@ -226,10 +234,20 @@ uint SoundEngine::playSoundEx(const Common::String &fileName, SOUND_TYPES type, 
 	handle->loopEnd = loopEnd;
 	handle->layer = layer;
 
-	debugC(1, kDebugSound, "SoundEngine::playSoundEx(%s, %d, %f, %f, %d, %d, %d, %d)", fileName.c_str(), type, volume, pan, loop, loopStart, loopEnd, layer);
+	debugC(1, kDebugSound, "SoundEngine::playSoundEx(fileName='%s', type=%d, volume=%f, pan=%f, loop=%d, loopStart=%d, loopEnd=%d, layer=%d)", fileName.c_str(), type, volume, pan, loop, loopStart, loopEnd, layer);
 
 #ifdef USE_VORBIS
-	_mixer->playStream(getType(type), &(handle->handle), stream, -1, (byte)(volume * 255), (int8)(pan * 127));
+	Common::SeekableReadStream *in = Kernel::getInstance()->getPackage()->getStream(fileName);
+
+	Audio::SeekableAudioStream *stream = Audio::makeVorbisStream(in, DisposeAfterUse::YES);
+
+	if (loop) {
+		Audio::AudioStream *audio = new Audio::LoopingAudioStream(stream, 0, DisposeAfterUse::YES);
+
+		_mixer->playStream(getType(type), &(handle->handle), audio, -1, (byte)(volume * 255), (int8)(pan * 127));
+	} else {
+		_mixer->playStream(getType(type), &(handle->handle), stream, -1, (byte)(volume * 255), (int8)(pan * 127));
+	}
 #endif
 
 	return id;
@@ -393,5 +411,16 @@ bool SoundEngine::unpersist(InputPersistenceBlock &reader) {
 	return reader.isGood();
 }
 
+SndHandle::SndHandle() :
+		type(kFreeHandle),
+		id(0),
+		sndType(-1),
+		volume(0),
+		pan(0),
+		loop(false),
+		loopStart(0),
+		loopEnd(0),
+		layer(0) {
+}
 
 } // End of namespace Sword25

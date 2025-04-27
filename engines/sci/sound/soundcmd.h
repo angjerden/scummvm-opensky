@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,13 +15,12 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
-#ifndef SCI_SOUNDCMD_H
-#define SCI_SOUNDCMD_H
+#ifndef SCI_SOUND_SOUNDCMD_H
+#define SCI_SOUND_SOUNDCMD_H
 
 #include "common/list.h"
 #include "audio/mididrv.h"	// for MusicType
@@ -33,20 +32,11 @@ class Console;
 class SciMusic;
 class SoundCommandParser;
 class MusicEntry;
-//typedef void (SoundCommandParser::*SoundCommand)(reg_t obj, int16 value);
-
-//struct MusicEntryCommand {
-//	MusicEntryCommand(const char *d, SoundCommand c) : sndCmd(c), desc(d) {}
-//	SoundCommand sndCmd;
-//	const char *desc;
-//};
 
 class SoundCommandParser {
 public:
 	SoundCommandParser(ResourceManager *resMan, SegManager *segMan, Kernel *kernel, AudioPlayer *audio, SciVersion soundVersion);
 	~SoundCommandParser();
-
-	//reg_t parseCommand(int argc, reg_t *argv, reg_t acc);
 
 	// Functions used for game state loading
 	void clearPlayList();
@@ -56,18 +46,31 @@ public:
 	// Functions used for the ScummVM menus
 	void setMasterVolume(int vol);
 	void pauseAll(bool pause);
+	void resetGlobalPauseCounter();
+	bool isGlobalPauseActive() const;
+#ifdef ENABLE_SCI32
+	void setVolume(const reg_t obj, const int vol);
+#endif
 
 	// Debug console functions
 	void startNewSound(int number);
 	void stopAllSounds();
+	void stopAllSamples();
 	void printPlayList(Console *con);
 	void printSongInfo(reg_t obj, Console *con);
 
-	void processPlaySound(reg_t obj, bool playBed);
+	void processPlaySound(reg_t obj, bool playBed, bool restoring = false);
 	void processStopSound(reg_t obj, bool sampleFinishedPlaying);
 	void initSoundResource(MusicEntry *newSound);
 
 	MusicType getMusicType() const;
+
+	ResourceType getSoundResourceType(const uint16 resourceNo) const {
+		if (_useDigitalSFX && _resMan->testResource(ResourceId(kResourceTypeAudio, resourceNo)))
+			return kResourceTypeAudio;
+		else
+			return kResourceTypeSound;
+	}
 
 	/**
 	 * Synchronizes the current state of the music list to the rest of the engine, so that
@@ -78,33 +81,31 @@ public:
 	 */
 	void updateSci0Cues();
 
-	reg_t kDoSoundInit(int argc, reg_t *argv, reg_t acc);
-	reg_t kDoSoundPlay(int argc, reg_t *argv, reg_t acc);
-	reg_t kDoSoundRestore(int argc, reg_t *argv, reg_t acc);
-	reg_t kDoSoundMute(int argc, reg_t *argv, reg_t acc);
-	reg_t kDoSoundPause(int argc, reg_t *argv, reg_t acc);
-	reg_t kDoSoundResumeAfterRestore(int argc, reg_t *argv, reg_t acc);
-	reg_t kDoSoundStop(int argc, reg_t *argv, reg_t acc);
-	reg_t kDoSoundStopAll(int argc, reg_t *argv, reg_t acc);
-	reg_t kDoSoundDispose(int argc, reg_t *argv, reg_t acc);
-	reg_t kDoSoundMasterVolume(int argc, reg_t *argv, reg_t acc);
-	reg_t kDoSoundFade(int argc, reg_t *argv, reg_t acc);
-	reg_t kDoSoundGetPolyphony(int argc, reg_t *argv, reg_t acc);
-	reg_t kDoSoundUpdate(int argc, reg_t *argv, reg_t acc);
-	reg_t kDoSoundUpdateCues(int argc, reg_t *argv, reg_t acc);
-	reg_t kDoSoundSendMidi(int argc, reg_t *argv, reg_t acc);
-	reg_t kDoSoundGlobalReverb(int argc, reg_t *argv, reg_t acc);
-	reg_t kDoSoundSetHold(int argc, reg_t *argv, reg_t acc);
-	reg_t kDoSoundDummy(int argc, reg_t *argv, reg_t acc);
-	reg_t kDoSoundGetAudioCapability(int argc, reg_t *argv, reg_t acc);
-	reg_t kDoSoundSetVolume(int argc, reg_t *argv, reg_t acc);
-	reg_t kDoSoundSetPriority(int argc, reg_t *argv, reg_t acc);
-	reg_t kDoSoundSetLoop(int argc, reg_t *argv, reg_t acc);
-	reg_t kDoSoundSuspend(int argc, reg_t *argv, reg_t acc);
+	bool isDigitalSamplePlaying() const;
+
+	reg_t kDoSoundInit(EngineState *s, int argc, reg_t *argv);
+	reg_t kDoSoundPlay(EngineState *s, int argc, reg_t *argv);
+	reg_t kDoSoundMute(EngineState *s, int argc, reg_t *argv);
+	reg_t kDoSoundPause(EngineState *s, int argc, reg_t *argv);
+	reg_t kDoSoundResumeAfterRestore(EngineState *s, int argc, reg_t *argv);
+	reg_t kDoSoundStop(EngineState *s, int argc, reg_t *argv);
+	reg_t kDoSoundStopAll(EngineState *s, int argc, reg_t *argv);
+	reg_t kDoSoundDispose(EngineState *s, int argc, reg_t *argv);
+	reg_t kDoSoundMasterVolume(EngineState *s, int argc, reg_t *argv);
+	reg_t kDoSoundFade(EngineState *s, int argc, reg_t *argv);
+	reg_t kDoSoundGetPolyphony(EngineState *s, int argc, reg_t *argv);
+	reg_t kDoSoundUpdate(EngineState *s, int argc, reg_t *argv);
+	reg_t kDoSoundUpdateCues(EngineState *s, int argc, reg_t *argv);
+	reg_t kDoSoundSendMidi(EngineState *s, int argc, reg_t *argv);
+	reg_t kDoSoundGlobalReverb(EngineState *s, int argc, reg_t *argv);
+	reg_t kDoSoundSetHold(EngineState *s, int argc, reg_t *argv);
+	reg_t kDoSoundGetAudioCapability(EngineState *s, int argc, reg_t *argv);
+	reg_t kDoSoundSetVolume(EngineState *s, int argc, reg_t *argv);
+	reg_t kDoSoundSetPriority(EngineState *s, int argc, reg_t *argv);
+	reg_t kDoSoundSetLoop(EngineState *s, int argc, reg_t *argv);
+	reg_t kDoSoundSuspend(EngineState *s, int argc, reg_t *argv);
 
 private:
-	//typedef Common::Array<MusicEntryCommand *> SoundCommandContainer;
-	//SoundCommandContainer _soundCommands;
 	ResourceManager *_resMan;
 	SegManager *_segMan;
 	Kernel *_kernel;
@@ -118,9 +119,16 @@ private:
 	void processInitSound(reg_t obj);
 	void processDisposeSound(reg_t obj);
 	void processUpdateCues(reg_t obj);
-	int getSoundResourceId(reg_t obj);
+	uint16 getSoundResourceId(reg_t obj);
+	
+	/**
+	 * Returns true if the sound is already playing and shouldn't be interrupted.
+	 * This is a workaround for known buggy scripts that accidentally rely on
+	 * the time it took Sierra's interpreter to load a sound and begin playing.
+	 */
+	bool isUninterruptableSoundPlaying(reg_t obj);
 };
 
 } // End of namespace Sci
 
-#endif // SCI_SOUNDCMD_H
+#endif // SCI_SOUND_SOUNDCMD_H

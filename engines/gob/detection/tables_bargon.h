@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,13 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ *
+ * This file is dual-licensed.
+ * In addition to the GPLv3 license mentioned above, this code is also
+ * licensed under LGPL 2.1. See LICENSES/COPYING.LGPL file for the
+ * full text of the license.
  *
  */
 
@@ -31,17 +36,16 @@
 	{
 		"bargon",
 		"",
-		AD_ENTRY1("intro.stk", "da3c54be18ab73fbdb32db24624a9c23"),
-		UNK_LANG,
+		AD_ENTRY1s("intro.stk", "da3c54be18ab73fbdb32db24624a9c23", 3181825),
+		EN_GRB,
 		kPlatformDOS,
 		ADGF_NO_FLAGS,
 		GUIO2(GUIO_NOSUBTITLES, GUIO_NOSPEECH)
 	},
-	kGameTypeBargon,
 	kFeaturesNone,
 	0, 0, 0
 },
-{ // Supplied by cesardark in bug #1681649
+{ // Supplied by cesardark in bug #3123
 	{
 		"bargon",
 		"",
@@ -51,11 +55,10 @@
 		ADGF_NO_FLAGS,
 		GUIO2(GUIO_NOSUBTITLES, GUIO_NOSPEECH)
 	},
-	kGameTypeBargon,
 	kFeaturesNone,
 	0, 0, 0
 },
-{ // Supplied by paul66 in bug #1692667
+{ // Supplied by paul66 in bug #3143
 	{
 		"bargon",
 		"",
@@ -65,11 +68,10 @@
 		ADGF_NO_FLAGS,
 		GUIO2(GUIO_NOSUBTITLES, GUIO_NOSPEECH)
 	},
-	kGameTypeBargon,
 	kFeaturesNone,
 	0, 0, 0
 },
-{ // Supplied by kizkoool in bugreport #2089734
+{ // Supplied by kizkoool in bugreport #3926
 	{
 		"bargon",
 		"",
@@ -79,11 +81,10 @@
 		ADGF_NO_FLAGS,
 		GUIO2(GUIO_NOSUBTITLES, GUIO_NOSPEECH)
 	},
-	kGameTypeBargon,
 	kFeaturesNone,
 	0, 0, 0
 },
-{ // Supplied by glorfindel in bugreport #1722142
+{ // Supplied by glorfindel in bugreport #3193
 	{
 		"bargon",
 		"Fanmade",
@@ -93,24 +94,48 @@
 		ADGF_NO_FLAGS,
 		GUIO2(GUIO_NOSUBTITLES, GUIO_NOSPEECH)
 	},
-	kGameTypeBargon,
+	kFeaturesNone,
+	0, 0, 0
+},
+{ // Russian fan translation by PRCA
+	{
+		"bargon",
+		"Fanmade",
+		AD_ENTRY1s("intro.stk", "0937f20c9177a9c4111e48f8916fea47", 3185593),
+		RU_RUS,
+		kPlatformDOS,
+		ADGF_NO_FLAGS,
+		GUIO2(GUIO_NOSUBTITLES, GUIO_NOSPEECH)
+	},
 	kFeaturesNone,
 	0, 0, 0
 },
 
 // -- Amiga --
 
-{ // Supplied by pwigren in bugreport #1764174
+{ // Supplied by pwigren in bugreport #3355
 	{
 		"bargon",
 		"",
 		AD_ENTRY1s("intro.stk", "569d679fe41d49972d34c9fce5930dda", 269825),
-		EN_ANY,
+		EN_GRB,
 		kPlatformAmiga,
 		ADGF_NO_FLAGS,
 		GUIO2(GUIO_NOSUBTITLES, GUIO_NOSPEECH)
 	},
-	kGameTypeBargon,
+	kFeaturesNone,
+	0, 0, 0
+},
+{ // Supplied by gabberhead in bugreport #15178
+	{
+		"bargon",
+		"",
+		AD_ENTRY1s("intro.stk", "e9ec1eebdec327794681b2b66a30f159", 270055),
+		DE_DEU,
+		kPlatformAmiga,
+		ADGF_NO_FLAGS,
+		GUIO2(GUIO_NOSUBTITLES, GUIO_NOSPEECH)
+	},
 	kFeaturesNone,
 	0, 0, 0
 },
@@ -127,7 +152,6 @@
 		ADGF_NO_FLAGS,
 		GUIO2(GUIO_NOSUBTITLES, GUIO_NOSPEECH)
 	},
-	kGameTypeBargon,
 	kFeaturesNone,
 	0, 0, 0
 },

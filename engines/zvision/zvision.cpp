@@ -4,19 +4,18 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
-
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -29,19 +28,22 @@
 #include "zvision/graphics/cursors/cursor_manager.h"
 #include "zvision/file/save_manager.h"
 #include "zvision/text/string_manager.h"
-#include "zvision/detection.h"
 #include "zvision/scripting/menu.h"
 #include "zvision/file/search_manager.h"
 #include "zvision/text/text.h"
 #include "zvision/text/truetype_font.h"
 #include "zvision/sound/midi.h"
-#include "zvision/file/zfs_archive.h"
+
+#include "backends/keymapper/keymap.h"
+#include "backends/keymapper/keymapper.h"
 
 #include "common/config-manager.h"
 #include "common/str.h"
 #include "common/debug.h"
 #include "common/debug-channels.h"
 #include "common/textconsole.h"
+#include "common/timer.h"
+#include "common/translation.h"
 #include "common/error.h"
 #include "common/system.h"
 #include "common/file.h"
@@ -77,6 +79,10 @@ struct zvisionIniSettings {
 	{"mpegmovies", StateKey_MPEGMovies, -1, true, true}		// Zork: Grand Inquisitor DVD hi-res MPEG movies (0 = normal, 1 = hires, 2 = disable option)
 };
 
+const char *mainKeymapId = "zvision";
+const char *gameKeymapId = "zvision-game";
+const char *cutscenesKeymapId = "zvision-cutscenes";
+
 ZVision::ZVision(OSystem *syst, const ZVisionGameDescription *gameDesc)
 	: Engine(syst),
 	  _gameDescription(gameDesc),
@@ -91,7 +97,6 @@ ZVision::ZVision(OSystem *syst, const ZVisionGameDescription *gameDesc)
 	  _cursorManager(nullptr),
 	  _midiManager(nullptr),
 	  _rnd(nullptr),
-	  _console(nullptr),
 	  _menu(nullptr),
 	  _searchManager(nullptr),
 	  _textRenderer(nullptr),
@@ -113,7 +118,6 @@ ZVision::~ZVision() {
 	debug(1, "ZVision::~ZVision");
 
 	// Dispose of resources
-	delete _console;
 	delete _cursorManager;
 	delete _stringManager;
 	delete _saveManager;
@@ -123,9 +127,6 @@ ZVision::~ZVision() {
 	delete _midiManager;
 
 	getTimerManager()->removeTimerProc(&fpsTimerCallback);
-
-	// Remove all of our debug levels
-	DebugMan.clearAllDebugChannels();
 }
 
 void ZVision::registerDefaultSettings() {
@@ -137,9 +138,6 @@ void ZVision::registerDefaultSettings() {
 				ConfMan.registerDefault(settingsKeys[i].name, settingsKeys[i].defaultBoolValue);
 		}
 	}
-
-	ConfMan.registerDefault("originalsaveload", false);
-	ConfMan.registerDefault("doublefps", false);
 }
 
 void ZVision::loadSettings() {
@@ -177,17 +175,17 @@ void ZVision::saveSettings() {
 }
 
 void ZVision::initialize() {
-	const Common::FSNode gameDataDir(ConfMan.get("path"));
+	const Common::FSNode gameDataDir(ConfMan.getPath("path"));
 
-	_searchManager = new SearchManager(ConfMan.get("path"), 6);
+	_searchManager = new SearchManager(ConfMan.getPath("path"), 6);
 
 	_searchManager->addDir("FONTS");
 	_searchManager->addDir("addon");
 
-	if (_gameDescription->gameId == GID_GRANDINQUISITOR) {
+	if (getGameId() == GID_GRANDINQUISITOR) {
 		if (!_searchManager->loadZix("INQUIS.ZIX"))
 			error("Unable to load file INQUIS.ZIX");
-	} else if (_gameDescription->gameId == GID_NEMESIS) {
+	} else if (getGameId() == GID_NEMESIS) {
 		if (!_searchManager->loadZix("NEMESIS.ZIX")) {
 			// The game might not be installed, try MEDIUM.ZIX instead
 			if (!_searchManager->loadZix("ZNEMSCR/MEDIUM.ZIX"))
@@ -195,7 +193,22 @@ void ZVision::initialize() {
 		}
 	}
 
+	Graphics::ModeList modes;
+	modes.push_back(Graphics::Mode(WINDOW_WIDTH, WINDOW_HEIGHT));
+#if defined(USE_MPEG2) && defined(USE_A52)
+	// For the DVD version of ZGI we can play high resolution videos
+	if (getGameId() == GID_GRANDINQUISITOR && (getFeatures() & ADGF_DVD))
+		modes.push_back(Graphics::Mode(HIRES_WINDOW_WIDTH, HIRES_WINDOW_HEIGHT));
+#endif
+	initGraphicsModes(modes);
+
 	initScreen();
+
+	Common::Keymapper *keymapper = _system->getEventManager()->getKeymapper();
+	_gameKeymap = keymapper->getKeymap(gameKeymapId);
+	_gameKeymap->setEnabled(true);
+	_cutscenesKeymap = keymapper->getKeymap(cutscenesKeymapId);
+	_cutscenesKeymap->setEnabled(false);
 
 	// Register random source
 	_rnd = new Common::RandomSource("zvision");
@@ -209,7 +222,7 @@ void ZVision::initialize() {
 	_textRenderer = new TextRenderer(this);
 	_midiManager = new MidiManager();
 
-	if (_gameDescription->gameId == GID_GRANDINQUISITOR)
+	if (getGameId() == GID_GRANDINQUISITOR)
 		_menu = new MenuZGI(this);
 	else
 		_menu = new MenuNemesis(this);
@@ -217,19 +230,19 @@ void ZVision::initialize() {
 	// Initialize the managers
 	_cursorManager->initialize();
 	_scriptManager->initialize();
-	_stringManager->initialize(_gameDescription->gameId);
+	_stringManager->initialize(getGameId());
 
 	registerDefaultSettings();
 
 	loadSettings();
 
-#ifndef USE_MPEG2
-	// libmpeg2 not loaded, disable the MPEG2 movies option
+#if !defined(USE_MPEG2) || !defined(USE_A52)
+	// libmpeg2 or liba52 not loaded, disable the MPEG2 movies option
 	_scriptManager->setStateValue(StateKey_MPEGMovies, 2);
 #endif
 
 	// Create debugger console. It requires GFX to be initialized
-	_console = new Console(this);
+	setDebugger(new Console(this));
 	_doubleFPS = ConfMan.getBool("doublefps");
 
 	// Initialize FPS timer callback
@@ -250,10 +263,8 @@ Common::Error ZVision::run() {
 	// Before starting, make absolutely sure that the user has copied the needed fonts
 	for (int i = 0; i < FONT_COUNT; i++) {
 		FontStyle curFont = getSystemFont(i);
-		Common::String freeFontBoldItalic = Common::String("Bold") + curFont.freeFontItalicName;
 
 		const char *fontSuffixes[4] = { "", "bd", "i", "bi" };
-		const char *freeFontSuffixes[4] = { "", "Bold", curFont.freeFontItalicName, freeFontBoldItalic.c_str() };
 		const char *liberationFontSuffixes[4] = { "-Regular", "-Bold", "-Italic", "-BoldItalic" };
 
 		for (int j = 0; j < 4; j++) {
@@ -270,17 +281,13 @@ Common::Error ZVision::run() {
 			if (fontName == "garai.ttf")
 				fontName = "garait.ttf";
 
-			Common::String freeFontName = curFont.freeFontBase;
-			freeFontName += freeFontSuffixes[j];
-			freeFontName += ".ttf";
-
 			Common::String liberationFontName = curFont.liberationFontBase;
 			liberationFontName += liberationFontSuffixes[j];
 			liberationFontName += ".ttf";
 
-			if (!Common::File::exists(fontName) && !_searchManager->hasFile(fontName) &&
-				!Common::File::exists(liberationFontName) && !_searchManager->hasFile(liberationFontName) &&
-				!Common::File::exists(freeFontName) && !_searchManager->hasFile(freeFontName)) {
+			if (!Common::File::exists(Common::Path(fontName)) && !_searchManager->hasFile(Common::Path(fontName)) &&
+				!Common::File::exists(Common::Path(liberationFontName)) && !_searchManager->hasFile(Common::Path(liberationFontName)) &&
+				!Common::File::exists("fonts.dat") && !_searchManager->hasFile("fonts.dat")) {
 				foundAllFonts = false;
 				break;
 			}
@@ -291,17 +298,16 @@ Common::Error ZVision::run() {
 	}
 
 	if (!foundAllFonts) {
-		GUI::MessageDialog dialog(
+		GUI::MessageDialog dialog(_(
 				"Before playing this game, you'll need to copy the required "
 				"fonts into ScummVM's extras directory, or into the game directory. "
 				"On Windows, you'll need the following font files from the Windows "
 				"font directory: Times New Roman, Century Schoolbook, Garamond, "
 				"Courier New and Arial. Alternatively, you can download the "
-				"Liberation Fonts or the GNU FreeFont package. You'll need all the "
-				"fonts from the font package you choose, i.e., LiberationMono, "
-				"LiberationSans and LiberationSerif, or FreeMono, FreeSans and "
-				"FreeSerif respectively."
-		);
+				"Liberation Fonts package. You'll need all the fonts from the "
+				"font package you choose, i.e., LiberationMono, LiberationSans "
+				"and LiberationSerif."
+		));
 		dialog.runModal();
 		quitGame();
 		return Common::kUnknownError;
@@ -344,10 +350,6 @@ Common::Error ZVision::run() {
 			delay >>= 1;
 		}
 
-		if (canSaveGameStateCurrently() && shouldPerformAutoSave(_saveManager->getLastSaveTime())) {
-			_saveManager->autoSave();
-		}
-
 		_system->delayMillis(delay);
 	}
 
@@ -364,20 +366,12 @@ void ZVision::pauseEngineIntern(bool pause) {
 	}
 }
 
-Common::String ZVision::generateSaveFileName(uint slot) {
-	return Common::String::format("%s.%03u", _targetName.c_str(), slot);
-}
-
 void ZVision::setRenderDelay(uint delay) {
 	_frameRenderDelay = delay;
 }
 
 bool ZVision::canRender() {
 	return _frameRenderDelay <= 0;
-}
-
-GUI::Debugger *ZVision::getDebugger() {
-	return _console;
 }
 
 void ZVision::syncSoundSettings() {
@@ -396,8 +390,8 @@ void ZVision::fpsTimer() {
 }
 
 void ZVision::initScreen() {
-	uint16 workingWindowWidth  = (_gameDescription->gameId == GID_NEMESIS) ? ZNM_WORKING_WINDOW_WIDTH  : ZGI_WORKING_WINDOW_WIDTH;
-	uint16 workingWindowHeight = (_gameDescription->gameId == GID_NEMESIS) ? ZNM_WORKING_WINDOW_HEIGHT : ZGI_WORKING_WINDOW_HEIGHT;
+	uint16 workingWindowWidth = (getGameId() == GID_NEMESIS) ? ZNM_WORKING_WINDOW_WIDTH : ZGI_WORKING_WINDOW_WIDTH;
+	uint16 workingWindowHeight = (getGameId() == GID_NEMESIS) ? ZNM_WORKING_WINDOW_HEIGHT : ZGI_WORKING_WINDOW_HEIGHT;
 	_workingWindow = Common::Rect(
 						 (WINDOW_WIDTH  -  workingWindowWidth) / 2,
 						 (WINDOW_HEIGHT - workingWindowHeight) / 2,
@@ -405,13 +399,13 @@ void ZVision::initScreen() {
 						((WINDOW_HEIGHT - workingWindowHeight) / 2) + workingWindowHeight
 					 );
 
-	initGraphics(WINDOW_WIDTH, WINDOW_HEIGHT, true, &_screenPixelFormat);
+	initGraphics(WINDOW_WIDTH, WINDOW_HEIGHT, &_screenPixelFormat);
 }
 
 void ZVision::initHiresScreen() {
 	_renderManager->upscaleRect(_workingWindow);
 
-	initGraphics(HIRES_WINDOW_WIDTH, HIRES_WINDOW_HEIGHT, true, &_screenPixelFormat);
+	initGraphics(HIRES_WINDOW_WIDTH, HIRES_WINDOW_HEIGHT, &_screenPixelFormat);
 }
 
 } // End of namespace ZVision

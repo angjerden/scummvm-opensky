@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,23 +15,19 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "image/iff.h"
 
-#include "common/iff_container.h"
+#include "common/formats/iff_container.h"
 #include "common/stream.h"
 #include "common/util.h"
 
 namespace Image {
 
-IFFDecoder::IFFDecoder() {
-	_surface = 0;
-	_palette = 0;
-
+IFFDecoder::IFFDecoder(): _surface(nullptr), _palette(0) {
 	// these 2 properties are not reset by destroy(), so the default is set here.
 	_numRelevantPlanes = 8;
 	_pixelPacking = false;
@@ -47,18 +43,14 @@ void IFFDecoder::destroy() {
 	if (_surface) {
 		_surface->free();
 		delete _surface;
-		_surface = 0;
+		_surface = nullptr;
 	}
 
-	if (_palette) {
-		delete[] _palette;
-		_palette = 0;
-	}
+	_palette.clear();
 
 	memset(&_header, 0, sizeof(Header));
 	_paletteRanges.clear();
 	_type = TYPE_UNKNOWN;
-	_paletteColorCount = 0;
 }
 
 bool IFFDecoder::loadStream(Common::SeekableReadStream &stream) {
@@ -82,6 +74,10 @@ bool IFFDecoder::loadStream(Common::SeekableReadStream &stream) {
 		case ID_PBM:
 			_type = TYPE_PBM;
 			break;
+		case TYPE_UNKNOWN:
+		default:
+			_type = TYPE_UNKNOWN;
+			break;
 	}
 
 	if (type == TYPE_UNKNOWN) {
@@ -90,8 +86,16 @@ bool IFFDecoder::loadStream(Common::SeekableReadStream &stream) {
 	}
 
 	while (1) {
+		if (stream.size() < stream.pos() + 8)
+			break;
+
 		const uint32 chunkType = stream.readUint32BE();
-		const uint32 chunkSize = stream.readUint32BE();
+		uint32 chunkSize = stream.readUint32BE();
+		// According to the format specs:
+		// "If ckData is an odd number of bytes long, a 0 pad byte follows which is not included in ckSize."
+		// => fix the length
+		if (chunkSize % 2)
+			chunkSize++;
 
 		if (stream.eos())
 			break;
@@ -110,6 +114,9 @@ bool IFFDecoder::loadStream(Common::SeekableReadStream &stream) {
 			loadBitmap(stream);
 			break;
 		default:
+			if (stream.size() < stream.pos() + (int32)chunkSize)
+				break;
+
 			stream.skip(chunkSize);
 		}
 	}
@@ -138,9 +145,14 @@ void IFFDecoder::loadHeader(Common::SeekableReadStream &stream) {
 }
 
 void IFFDecoder::loadPalette(Common::SeekableReadStream &stream, const uint32 size) {
-	_palette = new byte[size];
-	stream.read(_palette, size);
-	_paletteColorCount = size / 3;
+	_palette.resize(size / 3, false);
+	for (uint i = 0; i < _palette.size(); i++) {
+		byte r = stream.readByte();
+		byte g = stream.readByte();
+		byte b = stream.readByte();
+
+		_palette.set(i, r, g, b);
+	}
 }
 
 void IFFDecoder::loadPaletteRange(Common::SeekableReadStream &stream, const uint32 size) {

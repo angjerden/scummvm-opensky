@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,14 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ *
+ * This file is dual-licensed.
+ * In addition to the GPLv3 license mentioned above, MojoTouch has
+ * exclusively licensed this code on March 23th, 2024, to be used in
+ * closed-source products.
+ * Therefore, any contributions (commits) to it will also be dual-licensed.
  *
  */
 
@@ -46,9 +52,10 @@ class MemoryWriteStreamDynamic;
 struct ADGameDescription;
 
 #define TOON_DAT_VER_MAJ 0  // 1 byte
-#define TOON_DAT_VER_MIN 3  // 1 byte
-#define TOON_SAVEGAME_VERSION 4
+#define TOON_DAT_VER_MIN 4  // 1 byte
+#define TOON_SAVEGAME_VERSION 6
 #define DATAALIGNMENT 4
+#define MAX_SAVE_SLOT 99
 
 #define TOON_SCREEN_WIDTH 640
 #define TOON_SCREEN_HEIGHT 400
@@ -65,23 +72,36 @@ struct ADGameDescription;
  */
 namespace Toon {
 
+enum TOONAction {
+	kActionNone,
+	kActionEscape,
+	kActionStopCurrentVoice,
+	kActionSaveGame,
+	kActionLoadGame,
+	kActionSubtitles,
+	kActionMuteMusic,
+	kActionSpeechMute,
+	kActionSFXMute,
+	kActionShowOptions
+};
+
 enum ToonGameType {
 	GType_TOON = 1
 };
 
 enum ToonDebugChannels {
-	kDebugAnim      = 1 <<  0,
-	kDebugCharacter = 1 <<  1,
-	kDebugAudio     = 1 <<  2,
-	kDebugHotspot   = 1 <<  3,
-	kDebugFont      = 1 <<  4,
-	kDebugPath      = 1 <<  5,
-	kDebugMovie     = 1 <<  6,
-	kDebugPicture   = 1 <<  7,
-	kDebugResource  = 1 <<  8,
-	kDebugState     = 1 <<  9,
-	kDebugTools     = 1 << 10,
-	kDebugText      = 1 << 11
+	kDebugAnim = 1,
+	kDebugCharacter,
+	kDebugAudio,
+	kDebugHotspot,
+	kDebugFont,
+	kDebugPath,
+	kDebugMovie,
+	kDebugPicture,
+	kDebugResource,
+	kDebugState,
+	kDebugTools,
+	kDebugText,
 };
 
 class Picture;
@@ -98,7 +118,7 @@ class PathFinding;
 class ToonEngine : public Engine {
 public:
 	ToonEngine(OSystem *syst, const ADGameDescription *gameDescription);
-	~ToonEngine();
+	~ToonEngine() override;
 
 	const ADGameDescription *_gameDescription;
 	Common::Language _language;
@@ -108,10 +128,10 @@ public:
 	char **_locationDirVisited;
 	char **_specialInfoLine;
 
-	Common::Error run();
-	GUI::Debugger *getDebugger() { return _console; }
-	bool showMainmenu(bool &loadedGame);
+	Common::Error run() override;
+	bool showMainMenu(bool &loadedGame);
 	bool showOptions();
+	bool showQuitConfirmationDialogue();
 	void init();
 	bool loadToonDat();
 	char **loadTextsVariants(Common::File &in);
@@ -128,7 +148,7 @@ public:
 	void exitScene();
 	void loadCursor();
 	void setCursor(int32 type, bool inventory = false, int32 offsetX = 0, int offsetY = 0);
-	void loadAdditionalPalette(const Common::String &fileName, int32 mode);
+	void loadAdditionalPalette(const Common::Path &fileName, int32 mode);
 	void setupGeneralPalette();
 	void render();
 	void update(int32 timeIncrement);
@@ -169,7 +189,7 @@ public:
 	void rearrangeInventory();
 	void createMouseItem(int32 item);
 	void deleteMouseItem();
-	void showCutaway(const Common::String &cutawayPicture);
+	void showCutaway(const Common::Path &cutawayPicture);
 	void hideCutaway();
 	void drawPalette();
 	void newGame();
@@ -192,7 +212,7 @@ public:
 	int32 handleInventoryOnDrew(int32 itemId);
 	int32 pauseSceneAnimationScript(int32 animScriptId, int32 tickToWait);
 	void updateTimer(int32 timeIncrement);
-	Common::String createRoomFilename(const Common::String &name);
+	Common::Path createRoomFilename(const Common::String &name);
 	void createShadowLUT();
 	void playTalkAnimOnCharacter(int32 animID, int32 characterId, bool talker);
 	void updateScrolling(bool force, int32 timeIncrement);
@@ -203,17 +223,19 @@ public:
 	void makeLineNonWalkable(int32 x, int32 y, int32 x2, int32 y2);
 	void makeLineWalkable(int32 x, int32 y, int32 x2, int32 y2);
 	void renderInventory();
-	void viewInventoryItem(const Common::String &str, int32 lineId, int32 itemDest);
+	void viewInventoryItem(const Common::Path &str, int32 lineId, int32 itemDest);
 	void storePalette();
 	void restorePalette();
 	const char *getSpecialConversationMusic(int32 locationId);
 	void playRoomMusic();
 	void waitForScriptStep();
 	void doMagnifierEffect();
-
-	bool canSaveGameStateCurrently();
-	bool canLoadGameStateCurrently();
-	void pauseEngineIntern(bool pause);
+	void drawCustomText(int16 x, int16 y, const char *line, Graphics::Surface *frame, byte color);
+	bool showConversationText() const;
+	bool canSaveGameStateCurrently(Common::U32String *msg = nullptr) override;
+	bool canLoadGameStateCurrently(Common::U32String *msg = nullptr) override;
+	void pauseEngineIntern(bool pause) override;
+	void syncSoundSettings() override;
 
 	Resources *resources() {
 		return _resources;
@@ -311,23 +333,28 @@ public:
 		return _pathFinding;
 	}
 
+	bool isEnglishDemo() {
+		return _isEnglishDemo;
+	}
+
 	Common::WriteStream *getSaveBufferStream();
 
 	bool shouldQuitGame() const {
 		return _shouldQuit;
 	}
 
-	Common::Error saveGameState(int slot, const Common::String &desc) {
+	Common::Error saveGameState(int slot, const Common::String &desc, bool isAutosave = false) override {
 		return (saveGame(slot, desc) ? Common::kNoError : Common::kWritingFailed);
 	}
 
-	Common::Error loadGameState(int slot) {
+	Common::Error loadGameState(int slot) override {
 		return (loadGame(slot) ? Common::kNoError : Common::kReadingFailed);
 	}
 
-	bool hasFeature(EngineFeature f) const {
+	bool hasFeature(EngineFeature f) const override {
 		return
-			(f == kSupportsRTL) ||
+			(f == kSupportsSubtitleOptions) ||
+			(f == kSupportsReturnToLauncher) ||
 			(f == kSupportsLoadingDuringRuntime) ||
 			(f == kSupportsSavingDuringRuntime);
 	}
@@ -424,6 +451,7 @@ protected:
 	Animation *_fontToon;
 	Animation *_fontEZ;
 	Animation *_currentFont;
+	Common::String *_currentDemoFont;
 
 	AudioManager *_audioManager;
 
@@ -433,11 +461,12 @@ protected:
 
 	bool _firstFrame;
 	bool _isDemo;
+	bool _isEnglishDemo;
 	bool _showConversationText;
+	int  _textSpeed;
 	bool _useAlternativeFont;
 	bool _needPaletteFlush;
-private:
-	ToonConsole *_console;
+	bool _noMusicDriver; // If "Music Device" is set to "No Music" from Audio tab
 };
 
 } // End of namespace Toon

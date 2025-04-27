@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,61 +15,64 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  * Background handling code.
  */
 
 #include "tinsel/background.h"
 #include "tinsel/cliprect.h"	// object clip rect defs
+#include "tinsel/font.h"
 #include "tinsel/graphics.h"
+#include "tinsel/multiobj.h"
 #include "tinsel/sched.h"	// process sheduler defs
 #include "tinsel/object.h"
 #include "tinsel/pid.h"	// process identifiers
 #include "tinsel/tinsel.h"
+#include "tinsel/noir/spriter.h"
 
 namespace Tinsel {
 
-// FIXME: Avoid non-const global vars
-
-// current background
-const BACKGND *g_pCurBgnd = NULL;
+Background::Background(Font* font) : _font(font), _pCurBgnd(nullptr), _hBgPal(0), _BGspeed(0), _hBackground(0), _bDoFadeIn(false), _bgReels(0) {
+	for (int i = 0; i < MAX_BG; i++) {
+		_pBG[i] = nullptr;
+		_thisAnim[i].pObject = nullptr;
+	}
+}
 
 /**
  * Called to initialize a background.
- * @param pBgnd			Pointer to data struct for current background
  */
-
-void InitBackground(const BACKGND *pBgnd) {
-	int i;			// playfield counter
-	PLAYFIELD *pPlayfield;	// pointer to current playfield
-
+void Background::InitBackground() {
 	// set current background
-	g_pCurBgnd = pBgnd;
+	_pCurBgnd = new BACKGND();
+	_pCurBgnd->rgbSkyColor = BLACK;
+	_pCurBgnd->ptInitWorld = Common::Point(0, 0);
+	_pCurBgnd->rcScrollLimits = Common::Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+	_pCurBgnd->refreshRate = 0;	// no background update process
+	_pCurBgnd->pXscrollTable = nullptr;
+	_pCurBgnd->pYscrollTable = nullptr;
+	_pCurBgnd->bAutoErase = false;
+
+	int numPlayFields = 2;
+	if (TinselVersion == 3) {
+		numPlayFields = 9;
+	}
+	for (int i = 0; i < numPlayFields; ++i) {
+		PLAYFIELD playfield = {
+		    NULL,                                            // display list
+		    0,                                               // init field x
+		    0,                                               // init field y
+		    0,                                               // x vel
+		    0,                                               // y vel
+		    Common::Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT), // clip rect
+		    false                                            // moved flag
+		};
+		_pCurBgnd->fieldArray.push_back(playfield);
+	}
 
 	// init background sky color
-	SetBgndColor(pBgnd->rgbSkyColor);
-
-	// start of playfield array
-	pPlayfield = pBgnd->fieldArray;
-
-	// for each background playfield
-	for (i = 0; i < pBgnd->numPlayfields; i++, pPlayfield++) {
-		// init playfield pos
-		pPlayfield->fieldX = intToFrac(pBgnd->ptInitWorld.x);
-		pPlayfield->fieldY = intToFrac(pBgnd->ptInitWorld.y);
-
-		// no scrolling
-		pPlayfield->fieldXvel = intToFrac(0);
-		pPlayfield->fieldYvel = intToFrac(0);
-
-		// clear playfield display list
-		pPlayfield->pDispList = NULL;
-
-		// clear playfield moved flag
-		pPlayfield->bMoved = false;
-	}
+	SetBgndColor(_pCurBgnd->rgbSkyColor);
 }
 
 /**
@@ -79,17 +82,17 @@ void InitBackground(const BACKGND *pBgnd) {
  * @param newYpos		New y position
  */
 
-void PlayfieldSetPos(int which, int newXpos, int newYpos) {
+void Background::PlayfieldSetPos(unsigned int which, int newXpos, int newYpos) {
 	PLAYFIELD *pPlayfield;	// pointer to relavent playfield
 
 	// make sure there is a background
-	assert(g_pCurBgnd != NULL);
+	assert(_pCurBgnd != NULL);
 
 	// make sure the playfield number is in range
-	assert(which >= 0 && which < g_pCurBgnd->numPlayfields);
+	assert(which < _pCurBgnd->fieldArray.size());
 
 	// get playfield pointer
-	pPlayfield = g_pCurBgnd->fieldArray + which;
+	pPlayfield = &_pCurBgnd->fieldArray[which];
 
 	// set new integer position
 	pPlayfield->fieldX = intToFrac(newXpos);
@@ -106,17 +109,17 @@ void PlayfieldSetPos(int which, int newXpos, int newYpos) {
  * @param pYpos			Returns current y position
  */
 
-void PlayfieldGetPos(int which, int *pXpos, int *pYpos) {
+void Background::PlayfieldGetPos(unsigned int which, int *pXpos, int *pYpos) {
 	PLAYFIELD *pPlayfield;	// pointer to relavent playfield
 
 	// make sure there is a background
-	assert(g_pCurBgnd != NULL);
+	assert(_pCurBgnd != NULL);
 
 	// make sure the playfield number is in range
-	assert(which >= 0 && which < g_pCurBgnd->numPlayfields);
+	assert(which < _pCurBgnd->fieldArray.size());
 
 	// get playfield pointer
-	pPlayfield = g_pCurBgnd->fieldArray + which;
+	pPlayfield = &_pCurBgnd->fieldArray[which];
 
 	// get current integer position
 	*pXpos = fracToInt(pPlayfield->fieldX);
@@ -128,17 +131,17 @@ void PlayfieldGetPos(int which, int *pXpos, int *pYpos) {
  * @param which			Which playfield
  */
 
-int PlayfieldGetCenterX(int which) {
+int Background::PlayfieldGetCenterX(unsigned int which) {
 	PLAYFIELD *pPlayfield; // pointer to relavent playfield
 
 	// make sure there is a background
-	assert(g_pCurBgnd != NULL);
+	assert(_pCurBgnd != NULL);
 
 	// make sure the playfield number is in range
-	assert(which >= 0 && which < g_pCurBgnd->numPlayfields);
+	assert(which < _pCurBgnd->fieldArray.size());
 
 	// get playfield pointer
-	pPlayfield = g_pCurBgnd->fieldArray + which;
+	pPlayfield = &_pCurBgnd->fieldArray[which];
 
 	// get current integer position
 	return fracToInt(pPlayfield->fieldX) + SCREEN_WIDTH/2;
@@ -149,17 +152,17 @@ int PlayfieldGetCenterX(int which) {
  * @param which			Which playfield
  */
 
-OBJECT **GetPlayfieldList(int which) {
+OBJECT **Background::GetPlayfieldList(unsigned int which) {
 	PLAYFIELD *pPlayfield;	// pointer to relavent playfield
 
 	// make sure there is a background
-	assert(g_pCurBgnd != NULL);
+	assert(_pCurBgnd != NULL);
 
 	// make sure the playfield number is in range
-	assert(which >= 0 && which < g_pCurBgnd->numPlayfields);
+	assert(which < _pCurBgnd->fieldArray.size());
 
 	// get playfield pointer
-	pPlayfield = g_pCurBgnd->fieldArray + which;
+	pPlayfield = &_pCurBgnd->fieldArray[which];
 
 	// return the display list pointer for this playfield
 	return &pPlayfield->pDispList;
@@ -171,19 +174,18 @@ OBJECT **GetPlayfieldList(int which) {
  * to scroll each playfield before it is drawn.
  */
 
-void DrawBackgnd() {
-	int i;			// playfield counter
+void Background::DrawBackgnd() {
 	PLAYFIELD *pPlay;	// playfield pointer
 	int prevX, prevY;	// save interger part of position
 	Common::Point ptWin;	// window top left
 
-	if (g_pCurBgnd == NULL)
+	if (_pCurBgnd == NULL)
 		return;		// no current background
 
 	// scroll each background playfield
-	for (i = 0; i < g_pCurBgnd->numPlayfields; i++) {
+	for (unsigned int i = 0; i < _pCurBgnd->fieldArray.size(); i++) {
 		// get pointer to correct playfield
-		pPlay = g_pCurBgnd->fieldArray + i;
+		pPlay = &_pCurBgnd->fieldArray[i];
 
 		// save integer part of position
 		prevX = fracToInt(pPlay->fieldX);
@@ -217,27 +219,60 @@ void DrawBackgnd() {
 
 	// redraw all playfields within the clipping rectangles
 	const RectList &clipRects = GetClipRects();
-	for (RectList::const_iterator r = clipRects.begin(); r != clipRects.end(); ++r) {
-		// clear the clip rectangle on the virtual screen
-		// for each background playfield
-		for (i = 0; i < g_pCurBgnd->numPlayfields; i++) {
-			Common::Rect rcPlayClip;	// clip rect for this playfield
 
+	// Noir 3D model's cliprect is updated for rendering.
+	if (TinselVersion == 3) {
+		for (unsigned int i = 0; i < _pCurBgnd->fieldArray.size(); i++) {
 			// get pointer to correct playfield
-			pPlay = g_pCurBgnd->fieldArray + i;
+			pPlay = &_pCurBgnd->fieldArray[i];
 
 			// convert fixed point window pos to a int
 			ptWin.x = fracToInt(pPlay->fieldX);
 			ptWin.y = fracToInt(pPlay->fieldY);
 
-			if (IntersectRectangle(rcPlayClip, pPlay->rcClip, *r))
-				// redraw all objects within this clipping rect
-				UpdateClipRect(&pPlay->pDispList, &ptWin,	&rcPlayClip);
+			for (OBJECT* pObj = pPlay->pDispList; pObj != NULL; pObj = pObj->pNext) {
+				if (pObj->flags & DMA_3D) {
+					_vm->_spriter->Draw(0, 0, 0, 0, 0);
+					// TODO: fix clip rect after the Spriter updates them
+					//AddClipRect(SpriterGetModelRect());
+					//AddClipRect(SpriterGetShadowRect());
+					//MergeClipRect();
+				} else {
+					for (RectList::const_iterator r = clipRects.begin(); r != clipRects.end(); ++r)	{
+						Common::Rect rcPlayClip;	// clip rect for this playfield
+						if (IntersectRectangle(rcPlayClip, pPlay->rcClip, *r)) {
+							// redraw all objects within this clipping rect
+							UpdateClipRectSingle(pObj, &ptWin, &rcPlayClip);
+						}
+					}
+				}
+			}
+		}
+	} else {
+		for (RectList::const_iterator r = clipRects.begin(); r != clipRects.end(); ++r) {
+			// clear the clip rectangle on the virtual screen
+			// for each background playfield
+			for (unsigned int i = 0; i < _pCurBgnd->fieldArray.size(); i++) {
+				Common::Rect rcPlayClip;	// clip rect for this playfield
+
+				// get pointer to correct playfield
+				pPlay = &_pCurBgnd->fieldArray[i];
+
+				// convert fixed point window pos to a int
+				ptWin.x = fracToInt(pPlay->fieldX);
+				ptWin.y = fracToInt(pPlay->fieldY);
+
+				if (IntersectRectangle(rcPlayClip, pPlay->rcClip, *r))
+					// redraw all objects within this clipping rect
+					UpdateClipRect(&pPlay->pDispList, &ptWin,	&rcPlayClip);
+			}
 		}
 	}
 
-	// transfer any new palettes to the video DAC
-	PalettesToVideoDAC();
+	if (TinselVersion != 3) {
+		// transfer any new palettes to the video DAC
+		PalettesToVideoDAC();
+	}
 
 	// update the screen within the clipping rectangles
 	for (RectList::const_iterator r = clipRects.begin(); r != clipRects.end(); ++r) {
@@ -248,6 +283,48 @@ void DrawBackgnd() {
 
 	// delete all the clipping rectangles
 	ResetClipRect();
+}
+
+int Background::BgWidth() {
+	assert(_pBG[0]);
+	return MultiRightmost(_pBG[0]) + 1;
+}
+
+int Background::BgHeight() {
+	assert(_pBG[0]);
+	return MultiLowest(_pBG[0]) + 1;
+}
+
+void Background::SetBackPal(SCNHANDLE hPal) {
+	_hBgPal = hPal;
+
+	_font->FettleFontPal(_hBgPal);
+	CreateTranslucentPalette(_hBgPal);
+}
+
+void Background::DropBackground() {
+	_pBG[0] = nullptr;	// No background
+
+	if (TinselVersion <= 1)
+		_hBgPal = 0;	// No background palette
+}
+
+void Background::ChangePalette(SCNHANDLE hPal) {
+	SwapPalette(FindPalette(_hBgPal), hPal);
+	SetBackPal(hPal);
+}
+
+void Background::WaitForBG(CORO_PARAM) {
+	CORO_BEGIN_CONTEXT;
+	CORO_END_CONTEXT(_ctx);
+
+	CORO_BEGIN_CODE(_ctx);
+
+	while (_pBG[0] == nullptr) {
+		CORO_SLEEP(1);
+	}
+
+	CORO_END_CODE;
 }
 
 } // End of namespace Tinsel

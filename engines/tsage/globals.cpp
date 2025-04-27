@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -27,6 +26,7 @@
 #include "tsage/ringworld/ringworld_logic.h"
 #include "tsage/ringworld2/ringworld2_logic.h"
 #include "tsage/ringworld2/ringworld2_scenes0.h"
+#include "tsage/sherlock/sherlock_logo.h"
 #include "tsage/staticres.h"
 
 namespace TsAGE {
@@ -50,15 +50,17 @@ static SavedObject *classFactoryProc(const Common::String &className) {
 	if (className == "PaletteFader") return new PaletteFader();
 	if (className == "SceneText") return new SceneText();
 
+#ifdef ENABLE_RINGWORLD2
 	// Return to Ringworld specific classes
 	if (className == "Scene205_Star") return new Ringworld2::Star();
+#endif
 
 	return NULL;
 }
 
 /*--------------------------------------------------------------------------*/
 
-Globals::Globals() : _dialogCenter(160, 140), _gfxManagerInstance(_screenSurface),
+Globals::Globals() : _dialogCenter(160, 140), _gfxManagerInstance(_screen),
 		_randomSource("tsage"), _color1(0), _color2(255), _color3(255) {
 	reset();
 	_stripNum = 0;
@@ -118,7 +120,7 @@ Globals::Globals() : _dialogCenter(160, 140), _gfxManagerInstance(_screenSurface
 		_color3 = 4;
 		_dialogCenter.y = 100;
 	}
-	_screenSurface.setScreenSurface();
+
 	_gfxManagers.push_back(&_gfxManagerInstance);
 
 	_sceneObjects = &_sceneObjectsInstance;
@@ -135,6 +137,7 @@ Globals::Globals() : _dialogCenter(160, 140), _gfxManagerInstance(_screenSurface
 	_sceneHandler = nullptr;
 
 	switch (g_vm->getGameID()) {
+#ifdef ENABLE_RINGWORLD
 	case GType_Ringworld:
 		if (!(g_vm->getFeatures() & GF_DEMO)) {
 			_inventory = new Ringworld::RingworldInvObjectList();
@@ -144,17 +147,29 @@ Globals::Globals() : _dialogCenter(160, 140), _gfxManagerInstance(_screenSurface
 		}
 		_sceneHandler = new SceneHandler();
 		break;
-
+#endif
+#ifdef ENABLE_BLUEFORCE
 	case GType_BlueForce:
 		_game = new BlueForce::BlueForceGame();
 		_inventory = new BlueForce::BlueForceInvObjectList();
 		_sceneHandler = new BlueForce::SceneHandlerExt();
 		break;
-
+#endif
+#ifdef ENABLE_RINGWORLD2
 	case GType_Ringworld2:
 		_inventory = new Ringworld2::Ringworld2InvObjectList();
 		_game = new Ringworld2::Ringworld2Game();
 		_sceneHandler = new Ringworld2::SceneHandlerExt();
+		break;
+#endif
+#ifdef TSAGE_SHERLOCK_ENABLED
+	case GType_Sherlock1:
+		_inventory = nullptr;
+		_sceneHandler = new Sherlock::SherlockSceneHandler();
+		_game = new Sherlock::SherlockLogo();
+		break;
+#endif
+	default:
 		break;
 	}
 
@@ -238,6 +253,8 @@ void TsAGE2Globals::synchronize(Serializer &s) {
 }
 
 /*--------------------------------------------------------------------------*/
+
+#ifdef ENABLE_BLUEFORCE
 
 namespace BlueForce {
 
@@ -410,6 +427,10 @@ bool BlueForceGlobals::removeFlag(int flagNum) {
 }
 
 } // end of namespace BlueForce
+
+#endif
+
+#ifdef ENABLE_RINGWORLD2
 
 namespace Ringworld2 {
 
@@ -664,5 +685,7 @@ void Ringworld2Globals::synchronize(Serializer &s) {
 }
 
 } // end of namespace Ringworld2
+
+#endif
 
 } // end of namespace TsAGE

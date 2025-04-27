@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -114,16 +113,16 @@ static const SelectorRemap sciSelectorRemap[] = {
 	{        SCI_VERSION_1_1,        SCI_VERSION_1_1, "cantBeHere",   54 },
 	// The following are not really needed. They've only been defined to
 	// ease game debugging.
-	{        SCI_VERSION_1_1,        SCI_VERSION_2_1,    "-objID-", 4096 },
-	{        SCI_VERSION_1_1,        SCI_VERSION_2_1,     "-size-", 4097 },
-	{        SCI_VERSION_1_1,        SCI_VERSION_2_1, "-propDict-", 4098 },
-	{        SCI_VERSION_1_1,        SCI_VERSION_2_1, "-methDict-", 4099 },
-	{        SCI_VERSION_1_1,        SCI_VERSION_2_1, "-classScript-", 4100 },
-	{        SCI_VERSION_1_1,        SCI_VERSION_2_1,   "-script-", 4101 },
-	{        SCI_VERSION_1_1,        SCI_VERSION_2_1,    "-super-", 4102 },
+	{        SCI_VERSION_1_1,        SCI_VERSION_2_1_LATE,    "-objID-", 4096 },
+	{        SCI_VERSION_1_1,        SCI_VERSION_2_1_LATE,     "-size-", 4097 },
+	{        SCI_VERSION_1_1,        SCI_VERSION_2_1_LATE, "-propDict-", 4098 },
+	{        SCI_VERSION_1_1,        SCI_VERSION_2_1_LATE, "-methDict-", 4099 },
+	{        SCI_VERSION_1_1,        SCI_VERSION_2_1_LATE, "-classScript-", 4100 },
+	{        SCI_VERSION_1_1,        SCI_VERSION_2_1_LATE,   "-script-", 4101 },
+	{        SCI_VERSION_1_1,        SCI_VERSION_2_1_LATE,    "-super-", 4102 },
 	//
-	{        SCI_VERSION_1_1,        SCI_VERSION_2_1,     "-info-", 4103 },
-	{ SCI_VERSION_NONE,             SCI_VERSION_NONE,            0,    0 }
+	{        SCI_VERSION_1_1,        SCI_VERSION_2_1_LATE,     "-info-", 4103 },
+	{        SCI_VERSION_NONE,           SCI_VERSION_NONE,      nullptr,    0 }
 };
 
 struct ClassReference {
@@ -151,6 +150,13 @@ static const ClassReference classReferences[] = {
 	{ 999,    "Script",        "init",   kSelectorMethod,  0 },
 	{ 999,    "Script",     "dispose",   kSelectorMethod,  2 },
 	{ 999,    "Script", "changeState",   kSelectorMethod,  3 }
+#ifdef ENABLE_SCI32
+	,
+	{ 64929,    "Sync",    "syncTime", kSelectorVariable,  2 },
+	{ 64929,    "Sync",     "syncCue", kSelectorVariable,  3 },
+	{ 64999,     "Obj",        "init",   kSelectorMethod,  1 },
+	{ 64999,     "Obj",        "doit",   kSelectorMethod,  2 }
+#endif
 };
 
 Common::StringArray Kernel::checkStaticSelectorNames() {
@@ -202,6 +208,12 @@ Common::StringArray Kernel::checkStaticSelectorNames() {
 
 	findSpecificSelectors(names);
 
+	// HACK for LB2 floppy, for saving via GMM
+	if (g_sci->getGameId() == GID_LAURABOW2) {
+		names[342] = "input";
+		names[343] = "controls";
+	}
+
 	for (const SelectorRemap *selectorRemap = sciSelectorRemap; selectorRemap->slot; ++selectorRemap) {
 		if (getSciVersion() >= selectorRemap->minVersion && getSciVersion() <= selectorRemap->maxVersion) {
 			const uint32 slot = selectorRemap->slot;
@@ -217,32 +229,43 @@ Common::StringArray Kernel::checkStaticSelectorNames() {
 void Kernel::findSpecificSelectors(Common::StringArray &selectorNames) {
 	// Now, we need to find out selectors which keep changing place...
 	// We do that by dissecting game objects, and looking for selectors at
-	// specified locations.
+	// specified locations. We need to load some game scripts here to
+	// find these selectors, but all of the loaded scripts will be
+	// purged at the end of this function, as the segment manager will be
+	// reset.
 
 	// We need to initialize script 0 here, to make sure that it's always
 	// located at segment 1.
-	_segMan->instantiateScript(0);
-	uint16 sci2Offset = (getSciVersion() >= SCI_VERSION_2) ? 64000 : 0;
+	_segMan->instantiateScript(0, false);
 
 	// The Actor class contains the init, xLast and yLast selectors, which
 	// we reference directly. It's always in script 998, so we need to
 	// explicitly load it here.
-	if ((getSciVersion() >= SCI_VERSION_1_EGA_ONLY)) {
+	if (getSciVersion() >= SCI_VERSION_1_EGA_ONLY) {
 		uint16 actorScript = 998;
+#ifdef ENABLE_SCI32
+		if (getSciVersion() >= SCI_VERSION_2) {
+			actorScript += 64000;
+		}
+#endif
 
-		if (_resMan->testResource(ResourceId(kResourceTypeScript, actorScript + sci2Offset))) {
-			_segMan->instantiateScript(actorScript + sci2Offset);
+		if (_resMan->testResource(ResourceId(kResourceTypeScript, actorScript))) {
+			_segMan->instantiateScript(actorScript, false);
 
 			const Object *actorClass = _segMan->getObject(_segMan->findObjectByName("Actor"));
 
 			if (actorClass) {
 				// Find the xLast and yLast selectors, used in kDoBresen
 
-				const int offset = (getSciVersion() < SCI_VERSION_1_1) ? 3 : 0;
-				const int offset2 = (getSciVersion() >= SCI_VERSION_2) ? 12 : 0;
+				int offset = (getSciVersion() < SCI_VERSION_1_1) ? 3 : 0;
+#ifdef ENABLE_SCI32
+				if (getSciVersion() >= SCI_VERSION_2) {
+					offset += 12;
+				}
+#endif
 				// xLast and yLast always come between illegalBits and xStep
-				int illegalBitsSelectorPos = actorClass->locateVarSelector(_segMan, 15 + offset + offset2);	// illegalBits
-				int xStepSelectorPos = actorClass->locateVarSelector(_segMan, 51 + offset + offset2);	// xStep
+				int illegalBitsSelectorPos = actorClass->locateVarSelector(_segMan, 15 + offset);	// illegalBits
+				int xStepSelectorPos = actorClass->locateVarSelector(_segMan, 51 + offset);	// xStep
 				if (xStepSelectorPos - illegalBitsSelectorPos != 3) {
 					error("illegalBits and xStep selectors aren't found in "
 							"known locations. illegalBits = %d, xStep = %d",
@@ -257,25 +280,25 @@ void Kernel::findSpecificSelectors(Common::StringArray &selectorNames) {
 
 				selectorNames[xLastSelectorPos] = "xLast";
 				selectorNames[yLastSelectorPos] = "yLast";
-			}	// if (actorClass)
+			}
 
-			_segMan->uninstantiateScript(998);
-		}	// if (_resMan->testResource(ResourceId(kResourceTypeScript, 998)))
-	}	// if ((getSciVersion() >= SCI_VERSION_1_EGA_ONLY))
+			_segMan->uninstantiateScript(actorScript);
+		}
+	}
 
 	// Find selectors from specific classes
 
 	for (int i = 0; i < ARRAYSIZE(classReferences); i++) {
-		if (!_resMan->testResource(ResourceId(kResourceTypeScript, classReferences[i].script + sci2Offset)))
+		if (!_resMan->testResource(ResourceId(kResourceTypeScript, classReferences[i].script)))
 			continue;
 
-		_segMan->instantiateScript(classReferences[i].script + sci2Offset);
+		_segMan->instantiateScript(classReferences[i].script, false);
 
 		const Object *targetClass = _segMan->getObject(_segMan->findObjectByName(classReferences[i].className));
-		int targetSelectorPos = 0;
 		uint selectorOffset = classReferences[i].selectorOffset;
 
 		if (targetClass) {
+			int targetSelectorPos;
 			if (classReferences[i].selectorType == kSelectorMethod) {
 				if (targetClass->getMethodCount() < selectorOffset + 1)
 					error("The %s class has less than %d methods (%d)",
@@ -303,7 +326,6 @@ void Kernel::findSpecificSelectors(Common::StringArray &selectorNames) {
 		}
 	}
 
-	// Reset the segment manager
 	_segMan->resetSegMan();
 }
 

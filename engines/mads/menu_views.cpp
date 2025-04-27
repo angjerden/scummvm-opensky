@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -71,7 +70,8 @@ void MenuView::display() {
 }
 
 bool MenuView::onEvent(Common::Event &event) {
-	if (event.type == Common::EVENT_KEYDOWN || event.type == Common::EVENT_LBUTTONDOWN) {
+	if (event.type == Common::EVENT_CUSTOM_ENGINE_ACTION_START || event.type == Common::EVENT_KEYDOWN
+			|| event.type == Common::EVENT_JOYBUTTON_DOWN || event.type == Common::EVENT_LBUTTONDOWN) {
 		_breakFlag = true;
 		_vm->_dialogs->_pendingDialog = DIALOG_MAIN_MENU;
 		return true;
@@ -81,7 +81,7 @@ bool MenuView::onEvent(Common::Event &event) {
 }
 
 Common::String MenuView::getResourceName() {
-	Common::String s(_filename);
+	Common::String s(_filename.baseName());
 	s.toLowercase();
 	while (s.contains('.'))
 		s.deleteLastChar();
@@ -97,9 +97,9 @@ char TextView::_resourceName[100];
 #define TV_NUM_FADE_STEPS 40
 #define TV_FADE_DELAY_MILLI 50
 
-void TextView::execute(MADSEngine *vm, const Common::String &resName) {
-	assert(resName.size() < 100);
-	Common::strlcpy(_resourceName, resName.c_str(), sizeof(_resourceName));
+void TextView::execute(MADSEngine *vm, const Common::Path &resName) {
+	assert(resName.toString('/').size() < 100);
+	Common::strlcpy(_resourceName, resName.toString('/').c_str(), sizeof(_resourceName));
 	vm->_dialogs->_pendingDialog = DIALOG_TEXTVIEW;
 }
 
@@ -128,8 +128,8 @@ TextView::~TextView() {
 }
 
 void TextView::load() {
-	Common::String scriptName(_resourceName);
-	scriptName += ".txr";
+	Common::Path scriptName(_resourceName);
+	scriptName.appendInPlace(".txr");
 
 	_filename = scriptName;
 	if (!_script.open(scriptName))
@@ -253,7 +253,8 @@ void TextView::processCommand() {
 		SceneInfo *sceneInfo = SceneInfo::init(_vm);
 		sceneInfo->_width = MADS_SCREEN_WIDTH;
 		sceneInfo->_height = MADS_SCENE_HEIGHT;
-		_spareScreens[spareIndex].setSize(MADS_SCREEN_WIDTH, MADS_SCENE_HEIGHT);
+		_spareScreens[spareIndex].create(MADS_SCREEN_WIDTH, MADS_SCENE_HEIGHT);
+
 		sceneInfo->loadMadsV1Background(screenId, "", SCENEFLAG_TRANSLATE,
 			_spareScreens[spareIndex]);
 		delete sceneInfo;
@@ -310,7 +311,7 @@ void TextView::processText() {
 		// Delete the @ character and shift back the remainder of the string
 		char *p = centerP + 1;
 		if (*p == ' ') ++p;
-		strcpy(centerP, p);
+		Common::strcpy_s(centerP, 80 - (centerP - _currentLine), p);
 
 	} else {
 		int lineWidth = _font->getWidth(_currentLine);
@@ -345,19 +346,17 @@ void TextView::doFrame() {
 
 	// If a screen transition is in progress and it's time for another column, handle it
 	if (_spareScreen) {
-		byte *srcP = _spareScreen->getBasePtr(_translationX, 0);
-		byte *bgP = scene._backgroundSurface.getBasePtr(_translationX, 0);
-		byte *screenP = (byte *)_vm->_screen.getBasePtr(_translationX, 0);
+		const byte *srcP = (const byte *)_spareScreen->getBasePtr(_translationX, 0);
+		byte *bgP = (byte *)scene._backgroundSurface.getBasePtr(_translationX, 0);
+
+		Graphics::Surface dest = _vm->_screen->getSubArea(Common::Rect(_translationX, 0, _translationX + 1, 0));
+		byte *screenP = (byte *)dest.getBasePtr(0, 0);
 
 		for (int y = 0; y < MADS_SCENE_HEIGHT; ++y, srcP += MADS_SCREEN_WIDTH,
 			bgP += MADS_SCREEN_WIDTH, screenP += MADS_SCREEN_WIDTH) {
 			*bgP = *srcP;
 			*screenP = *srcP;
 		}
-
-		// Flag the column of the screen is modified
-		_vm->_screen.copyRectToScreen(Common::Rect(_translationX, 0,
-			_translationX + 1, MADS_SCENE_HEIGHT));
 
 		// Keep moving the column to copy to the right
 		if (++_translationX == MADS_SCREEN_WIDTH) {
@@ -456,9 +455,9 @@ void TextView::scriptDone() {
 
 char AnimationView::_resourceName[100];
 
-void AnimationView::execute(MADSEngine *vm, const Common::String &resName) {
-	assert(resName.size() < 100);
-	Common::strlcpy(_resourceName, resName.c_str(), sizeof(_resourceName));
+void AnimationView::execute(MADSEngine *vm, const Common::Path &resName) {
+	assert(resName.toString('/').size() < 100);
+	Common::strlcpy(_resourceName, resName.toString('/').c_str(), sizeof(_resourceName));
 	vm->_dialogs->_pendingDialog = DIALOG_ANIMVIEW;
 }
 
@@ -502,13 +501,13 @@ AnimationView::~AnimationView() {
 }
 
 void AnimationView::load() {
-	Common::String resName(_resourceName);
-	if (!resName.hasSuffix("."))
-		resName += ".res";
+	Common::Path resName(_resourceName);
+	if (!resName.baseName().hasSuffix("."))
+		resName.appendInPlace(".res");
 
 	_filename = resName;
 	if (!_script.open(resName))
-		error("Could not open resource %s", resName.c_str());
+		error("Could not open resource %s", resName.toString().c_str());
 
 	processLines();
 }
@@ -527,7 +526,7 @@ void AnimationView::display() {
 
 bool AnimationView::onEvent(Common::Event &event) {
 	// Wait for the Escape key or a mouse press
-	if (((event.type == Common::EVENT_KEYDOWN) && (event.kbd.keycode == Common::KEYCODE_ESCAPE)) ||
+	if (((event.type == Common::EVENT_CUSTOM_ENGINE_ACTION_START) && (event.customType == kActionEscape)) ||
 			(event.type == Common::EVENT_LBUTTONUP)) {
 		scriptDone();
 		return true;
@@ -570,6 +569,7 @@ void AnimationView::doFrame() {
 void AnimationView::loadNextResource() {
 	Scene &scene = _vm->_game->_scene;
 	Palette &palette = *_vm->_palette;
+	Screen &screen = *_vm->_screen;
 	ResourceEntry &resEntry = _resources[_resourceIndex];
 	Common::Array<PaletteCycle> paletteCycles;
 
@@ -586,12 +586,15 @@ void AnimationView::loadNextResource() {
 	// Handle the bars at the top/bottom
 	if (resEntry._showWhiteBars) {
 		// For animations the screen has been clipped to the middle 156 rows.
-		// So although it's slightly messy, bypass our screen class entirely,
-		// and draw the horizontal lines directly on the physiacl screen surface
-		Graphics::Surface *s = g_system->lockScreen();
-		s->hLine(0, 20, MADS_SCREEN_WIDTH, 253);
-		s->hLine(0, 179, MADS_SCREEN_WIDTH, 253);
-		g_system->unlockScreen();
+		// So although it's slightly messy, temporarily reset clip bounds
+		// so we can redraw the white lines
+		Common::Rect clipBounds = screen.getClipBounds();
+		screen.resetClipBounds();
+
+		screen.hLine(0, 20, MADS_SCREEN_WIDTH, 253);
+		screen.hLine(0, 179, MADS_SCREEN_WIDTH, 253);
+
+		screen.setClipBounds(clipBounds);
 	}
 
 	// Load the new animation
@@ -626,7 +629,7 @@ void AnimationView::loadNextResource() {
 	// Set the sound data for the animation
 	_vm->_sound->setEnabled(resEntry._soundFlag);
 
-	Common::String dsrName = _currentAnimation->_header._dsrName;
+	Common::Path dsrName(_currentAnimation->_header._dsrName);
 	if (!dsrName.empty())
 		_vm->_audio->setSoundGroup(dsrName);
 
@@ -702,7 +705,7 @@ void AnimationView::processLines() {
 				}
 
 				// Add resource into list along with any set state information
-				_resources.push_back(ResourceEntry(resName, _sfx, _soundFlag,
+				_resources.push_back(ResourceEntry(Common::Path(resName), _sfx, _soundFlag,
 					_bgLoadFlag, _showWhiteBars));
 
 				// Fx resets between resource entries
@@ -793,6 +796,42 @@ int AnimationView::getParameter() {
 	}
 
 	return result;
+}
+
+void AnimationView::checkResource(const Common::String &resourceName) {
+	//bool hasSuffix = false;
+
+}
+
+int AnimationView::scanResourceIndex(const Common::String &resourceName) {
+	int foundIndex = -1;
+
+	if (_v1) {
+		const char *chP = strchr(resourceName.c_str(), '\\');
+		if (!chP) {
+			chP = strchr(resourceName.c_str(), '*');
+		}
+
+		Common::String resName = chP ? Common::String(chP + 1) : resourceName;
+
+		if (_v2 != 3) {
+			assert(_resIndex.size() == 0);
+		}
+
+		// Scan for the resource name
+		for (uint resIndex = 0; resIndex < _resIndex.size(); ++resIndex) {
+			ResIndexEntry &resEntry = _resIndex[resIndex];
+			if (resEntry._resourceName.compareToIgnoreCase(resourceName)) {
+				foundIndex = resIndex;
+				break;
+			}
+		}
+	}
+
+	if (foundIndex >= 0) {
+		// TODO
+	}
+	return -1;
 }
 
 } // End of namespace MADS

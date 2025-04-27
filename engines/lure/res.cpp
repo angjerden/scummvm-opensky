@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -30,7 +29,7 @@
 
 namespace Lure {
 
-static Resources *int_resources = NULL;
+static Resources *int_resources = nullptr;
 
 Resources &Resources::getReference() {
 	return *int_resources;
@@ -44,6 +43,10 @@ Resources::Resources() : _rnd(LureEngine::getReference().rnd()) {
 	MemoryBlock *mb = Disk::getReference().getEntry(STRING_LIST_RESOURCE_ID);
 	_stringList.load(mb);
 	delete mb;
+
+	// WORKAROUND: In Spanish the look "Obsevar" should be "Observar"
+	if (!Common::String(_stringList.getString(LOOK)).compareTo("Obsevar"))
+		_stringList.setString(LOOK, "Observar");
 }
 
 Resources::~Resources() {
@@ -83,7 +86,7 @@ void Resources::freeData() {
 }
 
 struct AnimRecordTemp {
-	uint16 *offset;
+	uint16 offset;
 	MovementDataList *list;
 };
 
@@ -93,7 +96,7 @@ void Resources::reset() {
 	_fieldList.reset();
 	_barmanLists.reset();
 	_talkState = TALK_NONE;
-	_activeTalkData = NULL;
+	_activeTalkData = nullptr;
 
 	reloadData();
 }
@@ -108,7 +111,7 @@ void Resources::reloadData() {
 	uint16 *v;
 
 	// Get the palette subset data
-	_paletteSubset = isEGA ? NULL : new Palette(ALT_PALETTE_RESOURCE_ID);
+	_paletteSubset = isEGA ? nullptr : new Palette(ALT_PALETTE_RESOURCE_ID);
 
 	// Load room data
 	mb = d.getEntry(ROOM_DATA_RESOURCE_ID);
@@ -231,12 +234,12 @@ void Resources::reloadData() {
 
 		// Handle any direction frames
 		AnimRecordTemp dirEntries[4] = {
-			{&animRec->leftOffset, &newEntry->leftFrames},
-			{&animRec->rightOffset, &newEntry->rightFrames},
-			{&animRec->upOffset, &newEntry->upFrames},
-			{&animRec->downOffset, &newEntry->downFrames}};
+			{FROM_LE_16(animRec->leftOffset), &newEntry->leftFrames},
+			{FROM_LE_16(animRec->rightOffset), &newEntry->rightFrames},
+			{FROM_LE_16(animRec->upOffset), &newEntry->upFrames},
+			{FROM_LE_16(animRec->downOffset), &newEntry->downFrames}};
 		for (int dirCtr = 0; dirCtr < 4; ++dirCtr) {
-			offsetVal = READ_LE_UINT16(dirEntries[dirCtr].offset);
+			offsetVal = dirEntries[dirCtr].offset;
 			if (offsetVal != 0) {
 				MovementResource *moveRec = (MovementResource *)
 					(mb->data() + offsetVal);
@@ -355,7 +358,7 @@ void Resources::reloadData() {
 	_messagesData = d.getEntry(MESSAGES_LIST_RESOURCE_ID);
 	_talkDialogData = d.getEntry(TALK_DIALOG_RESOURCE_ID);
 
-	_activeTalkData = NULL;
+	_activeTalkData = nullptr;
 	_currentAction = NONE;
 	_talkState = TALK_NONE;
 	_talkSelection = 0;
@@ -373,7 +376,7 @@ RoomExitJoinData *Resources::getExitJoin(uint16 hotspotId) {
 			return rec;
 	}
 
-	return NULL;
+	return nullptr;
 }
 
 uint16 Resources::getHotspotScript(uint16 index) {
@@ -388,7 +391,7 @@ RoomData *Resources::getRoom(uint16 roomNumber) {
 		if (rec->roomNumber == roomNumber) return rec;
 	}
 
-	return NULL;
+	return nullptr;
 }
 
 bool Resources::checkHotspotExtent(HotspotData *hotspot) {
@@ -444,7 +447,7 @@ HotspotData *Resources::getHotspot(uint16 hotspotId) {
 		if (rec->hotspotId == hotspotId) return rec;
 	}
 
-	return NULL;
+	return nullptr;
 }
 
 Hotspot *Resources::getActiveHotspot(uint16 hotspotId) {
@@ -455,7 +458,7 @@ Hotspot *Resources::getActiveHotspot(uint16 hotspotId) {
 		if (rec->hotspotId() == hotspotId) return rec;
 	}
 
-	return NULL;
+	return nullptr;
 }
 
 
@@ -467,7 +470,7 @@ HotspotOverrideData *Resources::getHotspotOverride(uint16 hotspotId) {
 		if (rec->hotspotId == hotspotId) return rec;
 	}
 
-	return NULL;
+	return nullptr;
 }
 
 HotspotAnimData *Resources::getAnimation(uint16 animRecordId) {
@@ -478,7 +481,7 @@ HotspotAnimData *Resources::getAnimation(uint16 animRecordId) {
 		if (rec->animRecordId == animRecordId) return rec;
 	}
 
-	return NULL;
+	return nullptr;
 }
 
 int Resources::getAnimationIndex(HotspotAnimData *animData) {
@@ -508,7 +511,7 @@ TalkHeaderData *Resources::getTalkHeader(uint16 hotspotId) {
 		TalkHeaderData *rec = (*i).get();
 		if (rec->characterId == hotspotId) return rec;
 	}
-	return NULL;
+	return nullptr;
 }
 
 HotspotActionList *Resources::getHotspotActions(uint16 actionsOffset) {
@@ -544,12 +547,12 @@ uint16 englishLoadOffsets[] = {0x3afe, 0x41BD, 0x7167, 0x7172, 0x8617, 0x88ac, 0
 Hotspot *Resources::activateHotspot(uint16 hotspotId) {
 	Resources &resources = Resources::getReference();
 	HotspotData *res = getHotspot(hotspotId);
-	if (!res) return NULL;
+	if (!res) return nullptr;
 	res->roomNumber &= 0x7fff; // clear any suppression bit in room #
 
 	// Make sure that the hotspot isn't already active
 	Hotspot *h = getActiveHotspot(hotspotId);
-	if (h != NULL)
+	if (h != nullptr)
 		return h;
 
 	// If it's NPC with a schedule, then activate the schedule
@@ -611,7 +614,7 @@ Hotspot *Resources::activateHotspot(uint16 hotspotId) {
 			assert(hotspot);
 
 			// Special post-load handling
-			if (res->loadOffset == 3) hotspot->setPersistant(true);
+			if (res->loadOffset == 3) hotspot->setPersistent(true);
 			if (res->loadOffset == 5) hotspot->handleTalkDialog();
 			if (hotspotId == CASTLE_SKORL_ID) {
 				// The Castle skorl has a default room #99, so it needs to be adjusted dynamically
@@ -646,7 +649,7 @@ Hotspot *Resources::activateHotspot(uint16 hotspotId) {
 		}
 	}
 
-	return NULL;
+	return nullptr;
 }
 
 Hotspot *Resources::addHotspot(uint16 hotspotId) {
@@ -729,7 +732,7 @@ void Resources::copyCursorTo(Surface *s, uint8 cursorNum, int16 x, int16 y) {
 
 void Resources::setTalkData(uint16 offset) {
 	if (offset == 0) {
-		_activeTalkData = NULL;
+		_activeTalkData = nullptr;
 		return;
 	}
 
@@ -755,7 +758,7 @@ void Resources::saveToStream(Common::WriteStream *stream) {
 		HotspotData const &rec = **i;
 		if (!rec.npcSchedule.isEmpty()) {
 			Hotspot *h = getActiveHotspot(rec.hotspotId);
-			if (h == NULL) {
+			if (h == nullptr) {
 				stream->writeUint16LE(rec.hotspotId);
 				rec.npcSchedule.saveToStream(stream);
 			}
@@ -786,7 +789,7 @@ void Resources::loadFromStream(Common::ReadStream *stream) {
 	}
 
 	_talkState = TALK_NONE;
-	_activeTalkData = NULL;
+	_activeTalkData = nullptr;
 
 	if (saveVersion >= 31) {
 		// Load in any schedules for non-active NPCS

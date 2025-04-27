@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -30,23 +29,27 @@
 #include "common/savefile.h"
 #include "common/serializer.h"
 #include "common/util.h"
+
 #include "engines/engine.h"
+
 #include "graphics/surface.h"
+
 #include "access/animation.h"
 #include "access/bubble_box.h"
 #include "access/char.h"
 #include "access/data.h"
-#include "access/debugger.h"
 #include "access/events.h"
 #include "access/files.h"
 #include "access/font.h"
 #include "access/inventory.h"
 #include "access/player.h"
+#include "access/resources.h"
 #include "access/room.h"
 #include "access/screen.h"
 #include "access/scripts.h"
 #include "access/sound.h"
 #include "access/video.h"
+#include "access/detection.h"
 
 /**
  * This is the namespace of the Access engine.
@@ -58,20 +61,12 @@
  */
 namespace Access {
 
-enum {
-	GType_Amazon = 1,
-	GType_MartianMemorandum = 2,
-	GType_Noctropolis = 3
-};
-
 enum AccessDebugChannels {
-	kDebugPath      = 1 << 0,
-	kDebugScripts	= 1 << 1,
-	kDebugGraphics	= 1 << 2,
-	kDebugSound     = 1 << 3
+	kDebugPath = 1,
+	kDebugScripts,
+	kDebugGraphics,
+	kDebugSound,
 };
-
-struct AccessGameDescription;
 
 extern const char *const _estTable[];
 
@@ -111,19 +106,13 @@ protected:
 	void doRoom();
 
 	/**
-	* Support method that generates a savegame name
-	* @param slot		Slot number
-	*/
-	Common::String generateSaveName(int slot);
-
-	/**
 	 * Play back an entire video
 	 */
 	void playVideo(int videoNum, const Common::Point &pt);
 
 	// Engine APIs
-	virtual Common::Error run();
-	virtual bool hasFeature(EngineFeature f) const;
+	Common::Error run() override;
+	bool hasFeature(EngineFeature f) const override;
 protected:
 	/**
 	 * Play the game
@@ -137,12 +126,16 @@ protected:
 public:
 	AnimationManager *_animation;
 	BubbleBox *_bubbleBox;
+	BubbleBox *_helpBox;
+	BubbleBox *_travelBox;
+	BubbleBox *_invBox;
+	BubbleBox *_aboutBox;
 	CharManager *_char;
-	Debugger *_debugger;
 	EventsManager *_events;
 	FileManager *_files;
 	InventoryManager *_inventory;
 	Player *_player;
+	Resources *_res;
 	Room *_room;
 	Screen *_screen;
 	Scripts *_scripts;
@@ -150,8 +143,8 @@ public:
 	MusicManager *_midi;
 	VideoPlayer *_video;
 
-	ASurface *_destIn;
-	ASurface *_current;
+	BaseSurface *_destIn;
+	BaseSurface *_current;
 	ASurface _buffer1;
 	ASurface _buffer2;
 	ASurface _vidBuf;
@@ -173,10 +166,9 @@ public:
 	ImageEntryList _images;
 	int _mouseMode;
 
+	uint8 _playerDataCount;
 	int _currentManOld;
 	int _converseMode;
-	int _startAboutBox;
-	int _startTravelBox;
 	bool _currentCharFlag;
 	bool _boxSelect;
 	int _scale;
@@ -204,6 +196,26 @@ public:
 	uint32 _newDate;
 	int _flags[256];
 
+	// Fields used by MM
+	// TODO: Refactor
+	int _travel[60];
+	int _ask[40];
+	int _startTravelItem;
+	int _startTravelBox;
+	int _startAboutItem;
+	int _startAboutBox;
+	int _boxDataStart;
+	bool _boxDataEnd;
+	int _boxSelectY;
+	int _boxSelectYOld;
+	int _numLines;
+	byte _byte26CB5;
+	int _bcnt;
+	byte *_tempList;
+	int _pictureTaken;
+	//
+
+	bool _vidEnd;
 	bool _clearSummaryFlag;
 	bool _cheatFl;
 	bool _restartFl;
@@ -214,7 +226,7 @@ public:
 
 public:
 	AccessEngine(OSystem *syst, const AccessGameDescription *gameDesc);
-	virtual ~AccessEngine();
+	~AccessEngine() override;
 
 	virtual void dead(int deathId) = 0;
 
@@ -250,45 +262,48 @@ public:
 
 	void copyBF2Vid();
 
-	void doLoadSave();
-
 	void freeChar();
 
 	/**
 	 * Draw a string on a given surface and update text positioning
 	 */
-	void printText(ASurface *s, const Common::String &msg);
-	void speakText(ASurface *s, const Common::String &msg);
+	void printText(BaseSurface *s, const Common::String &msg);
+	void speakText(BaseSurface *s, const Common::String &msg);
 
 	/**
 	 * Load a savegame
 	 */
-	virtual Common::Error loadGameState(int slot);
+	Common::Error loadGameState(int slot) override;
 
 	/**
 	 * Save the game
 	 */
-	virtual Common::Error saveGameState(int slot, const Common::String &desc);
+	Common::Error saveGameState(int slot, const Common::String &desc, bool isAutosave = false) override;
 
 	/**
 	 * Returns true if a savegame can currently be loaded
 	 */
-	bool canLoadGameStateCurrently();
+	bool canLoadGameStateCurrently(Common::U32String *msg = nullptr) override;
 
 	/**
 	* Returns true if the game can currently be saved
 	*/
-	bool canSaveGameStateCurrently();
+	bool canSaveGameStateCurrently(Common::U32String *msg = nullptr) override;
 
 	/**
 	 * Read in a savegame header
 	 */
-	static bool readSavegameHeader(Common::InSaveFile *in, AccessSavegameHeader &header);
+	WARN_UNUSED_RESULT static bool readSavegameHeader(Common::InSaveFile *in, AccessSavegameHeader &header, bool skipThumbnail = true);
 
 	/**
 	 * Write out a savegame header
 	 */
 	void writeSavegameHeader(Common::OutSaveFile *out, AccessSavegameHeader &header);
+
+	void SPRINTCHR(char c, int fontNum);
+	void PRINTCHR(Common::String msg, int fontNum);
+
+	bool playMovie(const Common::Path &filename, const Common::Point &pos);
 };
 
 } // End of namespace Access

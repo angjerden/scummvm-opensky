@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -97,6 +96,23 @@ IsoMap::IsoMap(SagaEngine *vm) : _vm(vm) {
 	_viewScroll.x = (128 - 8) * 16;
 	_viewScroll.y = (128 - 8) * 16 - 64;
 	_viewDiff = 1;
+	_platformHeight = 0;
+	_queueCount = _readCount = 0;
+
+	for (int i = 0; i < SAGA_DRAGON_SEARCH_DIAMETER; i++)
+		for (int j = 0; j < SAGA_DRAGON_SEARCH_DIAMETER; j++)
+			_dragonSearchArray.cell[i][j].visited = _dragonSearchArray.cell[i][j].direction = 0;
+
+	for (int i = 0; i < SAGA_SEARCH_DIAMETER; i++)
+		for (int j = 0; j < SAGA_SEARCH_DIAMETER; j++)
+			_searchArray.cell[i][j].visited = _searchArray.cell[i][j].direction = 0;
+
+	for (int i = 0; i < SAGA_SEARCH_QUEUE_SIZE; i++) {
+		memset(&_dragonSearchArray.queue[i], 0, sizeof(DragonTilePoint));
+		memset(&_searchArray.queue[i], 0, sizeof(TilePoint));
+	}
+
+	memset(&_tileMap, 0, sizeof(TileMapData));
 }
 
 void IsoMap::loadImages(const ByteArray &resourceData) {
@@ -108,11 +124,12 @@ void IsoMap::loadImages(const ByteArray &resourceData) {
 		error("IsoMap::loadImages wrong resourceLength");
 	}
 
+	bool longOffset = _vm->isAGA() || _vm->isECS();
 
 	ByteArrayReadStreamEndian readS(resourceData, _vm->isBigEndian());
 	readS.readUint16(); // skip
-	i = readS.readUint16();
-	i = i / SAGA_ISOTILEDATA_LEN;
+	i = longOffset ? readS.readUint32() : readS.readUint16();
+	i = i / (longOffset ? 10 : 8);
 	_tilesTable.resize(i);
 	Common::Array<size_t> tempOffsets;
 	tempOffsets.resize(_tilesTable.size());
@@ -123,7 +140,7 @@ void IsoMap::loadImages(const ByteArray &resourceData) {
 		tileData = &_tilesTable[i];
 		tileData->height = readS.readByte();
 		tileData->attributes = readS.readSByte();
-		tempOffsets[i] = readS.readUint16();
+		tempOffsets[i] = longOffset ? readS.readUint32() : readS.readUint16();
 		tileData->terrainMask = readS.readUint16();
 		tileData->FGDBGDAttr = readS.readByte();
 		readS.readByte(); //skip
@@ -136,6 +153,7 @@ void IsoMap::loadImages(const ByteArray &resourceData) {
 
 	for (i = 0; i < _tilesTable.size(); i++) {
 		_tilesTable[i].tilePointer = _tileData.getBuffer() + tempOffsets[i] - offsetDiff;
+		_tilesTable[i].tileSize = i + 1 == (int)_tilesTable.size() ? resourceData.size() - tempOffsets[i] : tempOffsets[i+1] - tempOffsets[i];
 	}
 }
 
@@ -287,18 +305,8 @@ void IsoMap::adjustScroll(bool jump) {
 	maxScrollPos.y = playerPoint.y + SAGA_SCROLL_LIMIT_Y2;
 
 	if (jump) {
-		if (_viewScroll.y < minScrollPos.y) {
-			_viewScroll.y = minScrollPos.y;
-		}
-		if (_viewScroll.y > maxScrollPos.y) {
-			_viewScroll.y = maxScrollPos.y;
-		}
-		if (_viewScroll.x < minScrollPos.x) {
-			_viewScroll.x = minScrollPos.x;
-		}
-		if (_viewScroll.x > maxScrollPos.x) {
-			_viewScroll.x = maxScrollPos.x;
-		}
+		_viewScroll.x = CLIP(_viewScroll.x, minScrollPos.x, maxScrollPos.x);
+		_viewScroll.y = CLIP(_viewScroll.y, minScrollPos.y, maxScrollPos.y);
 	} else {
 		_viewScroll.y = smoothSlide(_viewScroll.y, minScrollPos.y, maxScrollPos.y);
 		_viewScroll.x = smoothSlide(_viewScroll.x, minScrollPos.x, maxScrollPos.x);
@@ -362,7 +370,7 @@ int16 IsoMap::findMulti(int16 tileIndex, int16 absU, int16 absV, int16 absH) {
 void IsoMap::draw() {
 	_tileClip = _vm->_scene->getSceneClip();
 	_vm->_gfx->drawRect(_tileClip, 0);
-	drawTiles(NULL);
+	drawTiles(nullptr);
 }
 
 void IsoMap::setMapPosition(int x, int y) {
@@ -436,10 +444,11 @@ void IsoMap::drawTiles(const Location *location) {
 
 			if (uc != u2 || vc != v2) {
 				metaTileIndex = 0;
-				switch ( _tileMap.edgeType) {
+				switch (_tileMap.edgeType) {
 				case kEdgeTypeBlack:
 					continue;
 				case kEdgeTypeFill0:
+				default:
 					break;
 				case kEdgeTypeFill1:
 					metaTileIndex = 1;
@@ -457,7 +466,7 @@ void IsoMap::drawTiles(const Location *location) {
 				metaTileIndex = _tileMap.tilePlatforms[uc][vc];
 			}
 
-			if (location != NULL) {
+			if (location != nullptr) {
 				rLocation.u() = location->u() - (u2 << 7);
 				rLocation.v() = location->v() - (v2 << 7);
 				rLocation.z = location->z;
@@ -480,10 +489,11 @@ void IsoMap::drawTiles(const Location *location) {
 
 			if (uc != u2 || vc != v2) {
 				metaTileIndex = 0;
-				switch ( _tileMap.edgeType) {
+				switch (_tileMap.edgeType) {
 				case kEdgeTypeBlack:
 					continue;
 				case kEdgeTypeFill0:
+				default:
 					break;
 				case kEdgeTypeFill1:
 					metaTileIndex = 1;
@@ -501,7 +511,7 @@ void IsoMap::drawTiles(const Location *location) {
 				metaTileIndex = _tileMap.tilePlatforms[uc][vc];
 			}
 
-			if (location != NULL) {
+			if (location != nullptr) {
 				rLocation.u() = location->u() - (u2 << 7);
 				rLocation.v() = location->v() - (v2 << 7);
 				rLocation.z = location->z;
@@ -669,7 +679,7 @@ void IsoMap::drawPlatform(uint16 platformIndex, const Point &point, int16 absU, 
 						tileIndex = findMulti(tileIndex, absU + u, absV + v, absH);
 					}
 
-					drawTile(tileIndex, s, NULL);
+					drawTile(tileIndex, s, nullptr);
 				}
 			}
 		}
@@ -718,7 +728,7 @@ void IsoMap::drawTile(uint16 tileIndex, const Point &point, const Location *loca
 		return;
 	}
 
-	if (location != NULL) {
+	if (location != nullptr) {
 		if (location->z <= -16) {
 			if (location->z <= -48) {
 				if (location->u() < -THRESH8 || location->v() < -THRESH8) {
@@ -733,10 +743,11 @@ void IsoMap::drawTile(uint16 tileIndex, const Point &point, const Location *loca
 			if (location->z >= 16) {
 				return;
 			} else {
-				switch (_tilesTable[tileIndex].GetMaskRule()) {
+				switch (_tilesTable[tileIndex].getMaskRule()) {
 				case kMaskRuleNever:
 					return;
 				case kMaskRuleAlways:
+				default:
 					break;
 				case kMaskRuleUMIN:
 					if (location->u() < THRESH0) {
@@ -810,6 +821,40 @@ void IsoMap::drawTile(uint16 tileIndex, const Point &point, const Location *loca
 
 	readPointer = tilePointer;
 	lowBound = MIN((int)(drawPoint.y + height), (int)_tileClip.bottom);
+
+	if (_vm->isAGA() || _vm->isECS()) {
+		if (height == 0)
+			return;
+		int pitchLine = _tilesTable[tileIndex].tileSize / height;
+		int pitchPlane = _vm->isAGA() ? pitchLine / 8 : pitchLine / 5;
+		int width = pitchPlane * 8;
+		int bitnum = _vm->isAGA() ? 8 : 5;
+		Common::Rect bounds(
+			MAX((int)drawPoint.x, (int)_tileClip.left),
+			MAX((int)drawPoint.y, (int)_tileClip.top),
+			MIN((int)drawPoint.x + width, (int)_tileClip.right),
+			MIN((int)drawPoint.y + height, (int)_tileClip.bottom)
+			);
+		for (row = bounds.top; row < bounds.bottom; row++)
+			for (col = bounds.left; col < bounds.right; col++) {
+				int sourceX = (col - drawPoint.x);
+				int sourceY = (row - drawPoint.y);
+				byte res = 0;
+
+				for (int bit = 0; bit < bitnum; bit++) {
+				        unsigned inOff = sourceY * pitchLine + sourceX / 8 + pitchPlane * bit;
+					if (inOff >= _tilesTable[tileIndex].tileSize) {
+					  //warning("Overrun sourceX=%d, sourceY=%d, pitch=%d, height=%d", sourceX, sourceY, pitchLine, height);
+						continue;
+					}
+					res |= ((tilePointer[inOff] >> (7 - sourceX % 8)) & 1) << bit;
+				}
+				if (res != 0)
+					_vm->_gfx->getBackBufferPixels()[col + (row * _vm->_gfx->getBackBufferPitch())] = res;
+			}
+		return;
+	}
+
 	for (row = drawPoint.y; row < lowBound; row++) {
 		widthCount = 0;
 		if (row >= _tileClip.top) {
@@ -998,10 +1043,11 @@ int16 IsoMap::getTileIndex(int16 u, int16 v, int16 z) {
 
 	if ((uc != mtileU) || (vc != mtileV)) {
 		metaTileIndex = 0;
-		switch ( _tileMap.edgeType) {
+		switch (_tileMap.edgeType) {
 		case kEdgeTypeBlack:
 			return 0;
 		case kEdgeTypeFill0:
+		default:
 			break;
 		case kEdgeTypeFill1:
 			metaTileIndex = 1;
@@ -1041,7 +1087,7 @@ IsoTileData *IsoMap::getTile(int16 u, int16 v, int16 z) {
 	tileIndex = getTileIndex(u, v, z);
 
 	if (tileIndex == 0) {
-		return NULL;
+		return nullptr;
 	}
 
 	if (tileIndex & SAGA_MULTI_TILE) {
@@ -1071,8 +1117,8 @@ void IsoMap::testPossibleDirections(int16 u, int16 v, uint16 terraComp[8], int s
 #define TEST_TILE_PROLOG(offsetU, offsetV)						\
 	tile = getTile(u + offsetU, v + offsetV , _platformHeight);	\
 	if (tile != NULL) {											\
-		fgdMask = tile->GetFGDMask();							\
-		bgdMask = tile->GetBGDMask();							\
+		fgdMask = tile->getFGDMask();							\
+		bgdMask = tile->getBGDMask();							\
 		mask = tile->terrainMask;
 
 #define TEST_TILE_EPILOG(index)									\
@@ -1176,7 +1222,7 @@ void IsoMap::placeOnTileMap(const Location &start, Location &result, int16 dista
 
 	_platformHeight = _vm->_actor->_protagonist->_location.z / 8;
 
-	memset( &_searchArray, 0, sizeof(_searchArray));
+	memset(&_searchArray, 0, sizeof(_searchArray));
 
 	for (ActorDataArray::const_iterator actor = _vm->_actor->_actors.begin(); actor != _vm->_actor->_actors.end(); ++actor) {
 		if (!actor->_inScene) continue;
@@ -1231,7 +1277,7 @@ void IsoMap::placeOnTileMap(const Location &start, Location &result, int16 dista
 				}
 			}
 
-			pushPoint(tilePoint.u + tdir->u,tilePoint.v + tdir->v, tilePoint.cost + tdir->cost, dir);
+			pushPoint(tilePoint.u + tdir->u, tilePoint.v + tdir->v, tilePoint.cost + tdir->cost, dir);
 		}
 	}
 
@@ -1246,35 +1292,35 @@ bool IsoMap::findNearestChasm(int16 &u0, int16 &v0, uint16 &direction) {
 	v = v0;
 
 	for (i = 1; i < 5; i++) {
-		if (getTile( u - i, v, 6) == NULL) {
+		if (getTile(u - i, v, 6) == nullptr) {
 			u0 = u - i - 1;
 			v0 = v;
 			direction = kDirDownLeft;
 			return true;
 		}
 
-		if (getTile( u, v - i, 6) == NULL) {
+		if (getTile(u, v - i, 6) == nullptr) {
 			u0 = u;
 			v0 = v - i - 1;
 			direction = kDirDownRight;
 			return true;
 		}
 
-		if (getTile( u - i, v - i, 6) == NULL) {
+		if (getTile(u - i, v - i, 6) == nullptr) {
 			u0 = u - i - 1;
 			v0 = v - i - 1;
 			direction = kDirDown;
 			return true;
 		}
 
-		if (getTile( u + i, v - i, 6) == NULL) {
+		if (getTile(u + i, v - i, 6) == nullptr) {
 			u0 = u + i + 1;
 			v0 = v - i - 1;
 			direction = kDirDownRight;
 			return true;
 		}
 
-		if (getTile( u - i, v + i, 6) == NULL) {
+		if (getTile(u - i, v + i, 6) == nullptr) {
 			u0 = u + i + 1;
 			v0 = v - i - 1;
 			direction = kDirLeft;
@@ -1283,21 +1329,21 @@ bool IsoMap::findNearestChasm(int16 &u0, int16 &v0, uint16 &direction) {
 	}
 
 	for (i = 1; i < 5; i++) {
-		if (getTile( u + i, v, 6) == NULL) {
+		if (getTile(u + i, v, 6) == nullptr) {
 			u0 = u + i + 1;
 			v0 = v;
 			direction = kDirUpRight;
 			return true;
 		}
 
-		if (getTile( u, v + i, 6) == NULL) {
+		if (getTile(u, v + i, 6) == nullptr) {
 			u0 = u;
 			v0 = v + i + 1;
 			direction = kDirUpLeft;
 			return true;
 		}
 
-		if (getTile( u + i, v + i, 6) == NULL) {
+		if (getTile(u + i, v + i, 6) == nullptr) {
 			u0 = u + i + 1;
 			v0 = v + i + 1;
 			direction = kDirUp;
@@ -1307,7 +1353,7 @@ bool IsoMap::findNearestChasm(int16 &u0, int16 &v0, uint16 &direction) {
 	return false;
 }
 
-void IsoMap::findDragonTilePath(ActorData* actor,const Location &start, const Location &end, uint16 initialDirection) {
+void IsoMap::findDragonTilePath(ActorData* actor, const Location &start, const Location &end, uint16 initialDirection) {
 	byte *res;
 	int i;
 	int16 u;
@@ -1333,7 +1379,7 @@ void IsoMap::findDragonTilePath(ActorData* actor,const Location &start, const Lo
 	bool first;
 
 	bestDistance = SAGA_DRAGON_SEARCH_DIAMETER;
-	bestU = SAGA_DRAGON_SEARCH_CENTER,
+	bestU = SAGA_DRAGON_SEARCH_CENTER;
 	bestV = SAGA_DRAGON_SEARCH_CENTER;
 
 	uBase = (start.u() >> 4) - SAGA_DRAGON_SEARCH_CENTER;
@@ -1343,7 +1389,7 @@ void IsoMap::findDragonTilePath(ActorData* actor,const Location &start, const Lo
 
 	_platformHeight = _vm->_actor->_protagonist->_location.z / 8;
 
-	memset( &_dragonSearchArray, 0, sizeof(_dragonSearchArray));
+	memset(&_dragonSearchArray, 0, sizeof(_dragonSearchArray));
 
 	for (u = 0; u < SAGA_DRAGON_SEARCH_DIAMETER; u++) {
 		for (v = 0; v < SAGA_DRAGON_SEARCH_DIAMETER; v++) {
@@ -1359,10 +1405,10 @@ void IsoMap::findDragonTilePath(ActorData* actor,const Location &start, const Lo
 			}
 
 			tile = getTile(u1, v1, _platformHeight);
-			if (tile != NULL) {
+			if (tile != nullptr) {
 				mask = tile->terrainMask;
-				if (((mask != 0) && (tile->GetFGDAttr() >= kTerrBlock)) ||
-					((mask != 0xFFFF) && (tile->GetBGDAttr() >= kTerrBlock))) {
+				if (((mask != 0     ) && (tile->getFGDAttr() >= kTerrBlock)) ||
+				    ((mask != 0xFFFF) && (tile->getBGDAttr() >= kTerrBlock))) {
 					pcell->visited = 1;
 				}
 			} else {
@@ -1373,7 +1419,7 @@ void IsoMap::findDragonTilePath(ActorData* actor,const Location &start, const Lo
 
 	first = true;
 	_queueCount = _readCount = 0;
-	pushDragonPoint( SAGA_DRAGON_SEARCH_CENTER, SAGA_DRAGON_SEARCH_CENTER, initialDirection);
+	pushDragonPoint(SAGA_DRAGON_SEARCH_CENTER, SAGA_DRAGON_SEARCH_CENTER, initialDirection);
 
 	while (_queueCount != _readCount) {
 
@@ -1397,40 +1443,42 @@ void IsoMap::findDragonTilePath(ActorData* actor,const Location &start, const Lo
 
 		switch (tilePoint->direction) {
 			case kDirUpRight:
-				if (checkDragonPoint( tilePoint->u + 1, tilePoint->v + 0, kDirUpRight)) {
-					pushDragonPoint( tilePoint->u + 2, tilePoint->v + 0, kDirUpRight);
-					pushDragonPoint( tilePoint->u + 1, tilePoint->v + 1, kDirUpLeft);
-					pushDragonPoint( tilePoint->u + 1, tilePoint->v - 1, kDirDownRight);
+				if (checkDragonPoint(tilePoint->u + 1, tilePoint->v + 0, kDirUpRight)) {
+					pushDragonPoint(tilePoint->u + 2, tilePoint->v + 0, kDirUpRight);
+					pushDragonPoint(tilePoint->u + 1, tilePoint->v + 1, kDirUpLeft);
+					pushDragonPoint(tilePoint->u + 1, tilePoint->v - 1, kDirDownRight);
 				}
 				break;
 			case kDirDownRight:
-				if (checkDragonPoint( tilePoint->u + 0, tilePoint->v - 1, kDirDownRight)) {
-					pushDragonPoint( tilePoint->u + 0, tilePoint->v - 2, kDirDownRight);
-					pushDragonPoint( tilePoint->u + 1, tilePoint->v - 1, kDirUpRight);
-					pushDragonPoint( tilePoint->u - 1, tilePoint->v - 1, kDirDownLeft);
+				if (checkDragonPoint(tilePoint->u + 0, tilePoint->v - 1, kDirDownRight)) {
+					pushDragonPoint(tilePoint->u + 0, tilePoint->v - 2, kDirDownRight);
+					pushDragonPoint(tilePoint->u + 1, tilePoint->v - 1, kDirUpRight);
+					pushDragonPoint(tilePoint->u - 1, tilePoint->v - 1, kDirDownLeft);
 				}
 				break;
 			case kDirDownLeft:
-				if (checkDragonPoint( tilePoint->u - 1, tilePoint->v + 0, kDirDownLeft)) {
-					pushDragonPoint( tilePoint->u - 2, tilePoint->v + 0, kDirDownLeft);
-					pushDragonPoint( tilePoint->u - 1, tilePoint->v - 1, kDirDownRight);
-					pushDragonPoint( tilePoint->u - 1, tilePoint->v + 1, kDirUpLeft);
+				if (checkDragonPoint(tilePoint->u - 1, tilePoint->v + 0, kDirDownLeft)) {
+					pushDragonPoint(tilePoint->u - 2, tilePoint->v + 0, kDirDownLeft);
+					pushDragonPoint(tilePoint->u - 1, tilePoint->v - 1, kDirDownRight);
+					pushDragonPoint(tilePoint->u - 1, tilePoint->v + 1, kDirUpLeft);
 				}
 				break;
 			case kDirUpLeft:
-				if (checkDragonPoint( tilePoint->u + 0, tilePoint->v + 1, kDirUpLeft)) {
-					pushDragonPoint( tilePoint->u + 0, tilePoint->v + 2, kDirUpLeft);
-					pushDragonPoint( tilePoint->u - 1, tilePoint->v + 1, kDirDownLeft);
-					pushDragonPoint( tilePoint->u + 1, tilePoint->v + 1, kDirUpRight);
+				if (checkDragonPoint(tilePoint->u + 0, tilePoint->v + 1, kDirUpLeft)) {
+					pushDragonPoint(tilePoint->u + 0, tilePoint->v + 2, kDirUpLeft);
+					pushDragonPoint(tilePoint->u - 1, tilePoint->v + 1, kDirDownLeft);
+					pushDragonPoint(tilePoint->u + 1, tilePoint->v + 1, kDirUpRight);
 				}
+				break;
+			default:
 				break;
 		}
 
 		if (first && (_queueCount == _readCount)) {
-			pushDragonPoint( tilePoint->u + 1, tilePoint->v + 0, kDirUpRight);
-			pushDragonPoint( tilePoint->u + 0, tilePoint->v - 1, kDirDownRight);
-			pushDragonPoint( tilePoint->u - 1, tilePoint->v + 0, kDirDownLeft);
-			pushDragonPoint( tilePoint->u + 0, tilePoint->v + 1, kDirUpLeft);
+			pushDragonPoint(tilePoint->u + 1, tilePoint->v + 0, kDirUpRight);
+			pushDragonPoint(tilePoint->u + 0, tilePoint->v - 1, kDirDownRight);
+			pushDragonPoint(tilePoint->u - 1, tilePoint->v + 0, kDirDownLeft);
+			pushDragonPoint(tilePoint->u + 0, tilePoint->v + 1, kDirUpLeft);
 		}
 		first = false;
 	}
@@ -1488,7 +1536,7 @@ void IsoMap::findTilePath(ActorData* actor, const Location &start, const Locatio
 
 
 	bestDistance = SAGA_SEARCH_DIAMETER;
-	bestU = SAGA_SEARCH_CENTER,
+	bestU = SAGA_SEARCH_CENTER;
 	bestV = SAGA_SEARCH_CENTER;
 
 	uBase = (start.u() >> 4) - SAGA_SEARCH_CENTER;
@@ -1500,7 +1548,7 @@ void IsoMap::findTilePath(ActorData* actor, const Location &start, const Locatio
 
 
 
-	memset( &_searchArray, 0, sizeof(_searchArray));
+	memset(&_searchArray, 0, sizeof(_searchArray));
 
 	if (!(actor->_actorFlags & kActorNoCollide) &&
 		(_vm->_scene->currentSceneResourceId() != ITE_SCENE_OVERMAP)) {
@@ -1641,7 +1689,7 @@ bool IsoMap::nextTileTarget(ActorData* actor) {
 
 void IsoMap::screenPointToTileCoords(const Point &position, Location &location) {
 	Point mPos(position);
-	int x,y;
+	int x, y;
 
 	if (_vm->_scene->currentSceneResourceId() == ITE_SCENE_OVERMAP){
 		if (mPos.y < 16) {

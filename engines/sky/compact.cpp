@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -28,7 +27,6 @@
 #include "common/translation.h"
 #include "sky/compact.h"
 #include "gui/message.h"
-#include <stddef.h>	// for ptrdiff_t
 
 namespace Sky {
 
@@ -126,11 +124,12 @@ static const uint32 turnTableOffsets[] = {
 
 SkyCompact::SkyCompact() {
 	_cptFile = new Common::File();
-	if (!_cptFile->open("sky.cpt")) {
-		GUI::MessageDialog dialog(_("Unable to find \"sky.cpt\" file!\n"
-								  "Please download it from www.scummvm.org"), _("OK"), NULL);
-		dialog.runModal();
-		error("Unable to find \"sky.cpt\" file\nPlease download it from www.scummvm.org");
+	Common::String filename = "sky.cpt";
+	if (!_cptFile->open(filename.c_str())) {
+		const char *msg = _s("Unable to locate the '%s' engine data file.");
+		Common::U32String errorMessage = Common::U32String::format(_(msg), filename.c_str());
+		GUIErrorMessage(errorMessage);
+		error(msg, filename.c_str());
 	}
 
 	uint16 fileVersion = _cptFile->readUint16LE();
@@ -138,9 +137,9 @@ SkyCompact::SkyCompact() {
 		error("unknown \"sky.cpt\" version");
 
 	if (SKY_CPT_SIZE != _cptFile->size()) {
-		GUI::MessageDialog dialog(_("The \"sky.cpt\" file has an incorrect size.\nPlease (re)download it from www.scummvm.org"), _("OK"), NULL);
+		GUI::MessageDialog dialog(_("The \"sky.cpt\" engine data file has an incorrect size."), _("OK"));
 		dialog.runModal();
-		error("Incorrect sky.cpt size (%d, expected: %d)", _cptFile->size(), SKY_CPT_SIZE);
+		error("Incorrect sky.cpt size (%d, expected: %d)", (int)_cptFile->size(), SKY_CPT_SIZE);
 	}
 
 	// set the necessary data structs up...
@@ -215,7 +214,7 @@ SkyCompact::SkyCompact() {
 	uint16 diffSize = _cptFile->readUint16LE();
 	uint16 *diffBuf = (uint16 *)malloc(diffSize * sizeof(uint16));
 	_cptFile->read(diffBuf, diffSize * sizeof(uint16));
-	if (SkyEngine::_systemVars.gameVersion == 288) {
+	if (SkyEngine::_systemVars->gameVersion == 288) {
 		uint16 *diffPos = diffBuf;
 		for (cnt = 0; cnt < numDiffs; cnt++) {
 			uint16 cptId = READ_LE_UINT16(diffPos++);
@@ -236,6 +235,8 @@ SkyCompact::SkyCompact() {
 	for (cnt = 0; cnt < _numSaveIds; cnt++)
 		_saveIds[cnt] = FROM_LE_16(_saveIds[cnt]);
 	_resetDataPos = _cptFile->pos();
+
+	checkAndFixOfficerBluntError();
 }
 
 SkyCompact::~SkyCompact() {
@@ -257,6 +258,21 @@ SkyCompact::~SkyCompact() {
 	delete _cptFile;
 }
 
+/* WORKAROUND for bug #2687:
+	The first release of scummvm with externalized, binary compact data has one broken 16 bit reference.
+	When talking to Officer Blunt on ground level while in a crouched position, the game enters an
+	unfinishable state because Blunt jumps into the lake and can no longer be interacted with.
+	This fixes the problem when playing with a broken sky.cpt */
+#define SCUMMVM_BROKEN_TALK_INDEX 158
+void SkyCompact::checkAndFixOfficerBluntError() {
+	// Retrieve the table with the animation ids to use for talking
+	uint16 *talkTable = (uint16*)fetchCpt(CPT_TALK_TABLE_LIST);
+	if (talkTable[SCUMMVM_BROKEN_TALK_INDEX] == ID_SC31_GUARD_TALK) {
+		debug(1, "SKY.CPT with Officer Blunt bug encountered, fixing talk gfx.");
+		talkTable[SCUMMVM_BROKEN_TALK_INDEX] = ID_SC31_GUARD_TALK2;
+	}
+}
+
 // needed for some workaround where the engine has to check if it's currently processing joey, for example
 bool SkyCompact::cptIsId(Compact *cpt, uint16 id) {
 	return (cpt == fetchCpt(id));
@@ -272,7 +288,7 @@ Compact *SkyCompact::fetchCpt(uint16 cptId) {
 	return _compacts[cptId >> 12][cptId & 0xFFF];
 }
 
-Compact *SkyCompact::fetchCptInfo(uint16 cptId, uint16 *elems, uint16 *type, char *name) {
+Compact *SkyCompact::fetchCptInfo(uint16 cptId, uint16 *elems, uint16 *type, char *name, size_t nameSize) {
 	assert(((cptId >> 12) < _numDataLists) && ((cptId & 0xFFF) < _dataListLen[cptId >> 12]));
 	if (elems)
 		*elems = _cptSizes[cptId >> 12][cptId & 0xFFF];
@@ -280,9 +296,9 @@ Compact *SkyCompact::fetchCptInfo(uint16 cptId, uint16 *elems, uint16 *type, cha
 		*type  = _cptTypes[cptId >> 12][cptId & 0xFFF];
 	if (name) {
 		if (_cptNames[cptId >> 12][cptId & 0xFFF] != NULL)
-			strcpy(name, _cptNames[cptId >> 12][cptId & 0xFFF]);
+			Common::strcpy_s(name, nameSize, _cptNames[cptId >> 12][cptId & 0xFFF]);
 		else
-			strcpy(name, "(null)");
+			Common::strcpy_s(name, nameSize, "(null)");
 	}
 	return fetchCpt(cptId);
 }
@@ -294,24 +310,55 @@ const char *SkyCompact::nameForType(uint16 type) {
 		return _typeNames[type];
 }
 
-uint16 *SkyCompact::getSub(Compact *cpt, uint16 mode) {
+uint16 SkyCompact::getSub(Compact *cpt, uint16 mode) {
 	switch (mode) {
 	case 0:
-		return &(cpt->baseSub);
+		return cpt->baseSub;
 	case 2:
-		return &(cpt->baseSub_off);
+		return cpt->baseSub_off;
 	case 4:
-		return &(cpt->actionSub);
+		return cpt->actionSub;
 	case 6:
-		return &(cpt->actionSub_off);
+		return cpt->actionSub_off;
 	case 8:
-		return &(cpt->getToSub);
+		return cpt->getToSub;
 	case 10:
-		return &(cpt->getToSub_off);
+		return cpt->getToSub_off;
 	case 12:
-		return &(cpt->extraSub);
+		return cpt->extraSub;
 	case 14:
-		return &(cpt->extraSub_off);
+		return cpt->extraSub_off;
+	default:
+		error("Invalid Mode (%d)", mode);
+	}
+}
+
+void SkyCompact::setSub(Compact *cpt, uint16 mode, uint16 value) {
+	switch (mode) {
+	case 0:
+		cpt->baseSub = value;
+		return;
+	case 2:
+		cpt->baseSub_off = value;
+		return;
+	case 4:
+		cpt->actionSub = value;
+		return;
+	case 6:
+		cpt->actionSub_off = value;
+		return;
+	case 8:
+		cpt->getToSub = value;
+		return;
+	case 10:
+		cpt->getToSub_off = value;
+		return;
+	case 12:
+		cpt->extraSub = value;
+		return;
+	case 14:
+		cpt->extraSub_off = value;
+		return;
 	default:
 		error("Invalid Mode (%d)", mode);
 	}

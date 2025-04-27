@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -35,10 +34,10 @@ private:
 	double *_userDataD;
 public:
 	LogicHErace(ScummEngine_v90he *vm);
-	~LogicHErace();
+	~LogicHErace() override;
 
-	int versionID();
-	int32 dispatch(int op, int numArgs, int32 *args);
+	int versionID() override;
+	int32 dispatch(int op, int numArgs, int32 *args) override;
 
 private:
 	int32 op_1003(int32 *args);
@@ -256,7 +255,7 @@ int32 LogicHErace::op_1102(int32 *args) {
 }
 
 int32 LogicHErace::op_1103(int32 *args) {
-	double angle = args[0] / args[1] * DEG2RAD;
+	double angle = (double)args[0] / (double)args[1] * DEG2RAD;
 
 	writeScummVar(108, (int32)(sin(angle) * args[2]));
 	writeScummVar(109, (int32)(cos(angle) * args[2]));

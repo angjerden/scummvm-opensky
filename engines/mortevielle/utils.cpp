@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -51,8 +50,6 @@ bool MortevielleEngine::keyPressed() {
 		_lastGameFrame = g_system->getMillis();
 
 		_screenSurface->updateScreen();
-
-		_debugger->onFrame();
 	}
 
 	// Delay briefly to keep CPU usage down
@@ -118,12 +115,7 @@ void MortevielleEngine::addKeypress(Common::Event &evt) {
 	// Character to add
 	char ch = evt.kbd.ascii;
 
-	// Check for debugger
-	if ((evt.kbd.keycode == Common::KEYCODE_d) && (evt.kbd.flags & Common::KBD_CTRL)) {
-		// Attach to the debugger
-		_debugger->attach();
-		_debugger->onFrame();
-	} else if ((evt.kbd.keycode >= Common::KEYCODE_a) && (evt.kbd.keycode <= Common::KEYCODE_z)) {
+	if ((evt.kbd.keycode >= Common::KEYCODE_a) && (evt.kbd.keycode <= Common::KEYCODE_z)) {
 		// Handle alphabetic keys
 		if (evt.kbd.hasFlags(Common::KBD_CTRL))
 			ch = evt.kbd.keycode - Common::KEYCODE_a + 1;
@@ -239,8 +231,6 @@ void MortevielleEngine::delay(int amount) {
 		if (g_system->getMillis() > (_lastGameFrame + GAME_FRAME_DELAY)) {
 			_lastGameFrame = g_system->getMillis();
 			_screenSurface->updateScreen();
-
-			_debugger->onFrame();
 		}
 
 		g_system->delayMillis(10);
@@ -1330,7 +1320,6 @@ void MortevielleEngine::displayDiningRoom() {
  * @remarks	Originally called 'sparl'
  */
 void MortevielleEngine::startDialog(int16 rep) {
-	const int haut[9] = { 0, 0, 1, -3, 6, -2, 2, 7, -1 };
 	int key;
 
 	assert(rep >= 0);
@@ -1342,7 +1331,7 @@ void MortevielleEngine::startDialog(int16 rep) {
 
 	key = 0;
 	do {
-		_soundManager->startSpeech(rep, haut[_caff - 69], 0);
+		_soundManager->startSpeech(rep, _caff - 69, 0);
 		key = _dialogManager->waitForF3F8();
 		if (shouldQuit())
 			return;
@@ -1728,12 +1717,12 @@ void MortevielleEngine::showMoveMenuAlert() {
 void MortevielleEngine::showConfigScreen() {
 	// FIXME: need a DOS palette, index 9 (light blue). Also we should show DOS font here
 	Common::String tmpStr;
-	int width, cy = 0;
+	int cy = 0;
 	clearScreen();
  	do {
  		++cy;
  		tmpStr = getString(cy + kStartingScreenStringIndex);
- 		width = _screenSurface->getStringWidth(tmpStr);
+ 		int width = _screenSurface->getStringWidth(tmpStr);
  		_text->displayStr(tmpStr, 320 - width / 2, cy * 8, 80, 1, 2);
  	} while (cy != 20);
 
@@ -1882,13 +1871,11 @@ Common::String MortevielleEngine::getString(int num) {
 	} else {
 		int hint = _dialogHintArray[num]._hintId;
 		byte point = _dialogHintArray[num]._point;
-		int length = 0;
 		bool endFl = false;
 		char let;
 		do {
 			endFl = decryptNextChar(let, hint, point);
 			wrkStr += let;
-			++length;
 		} while (!endFl);
 	}
 
@@ -2115,8 +2102,12 @@ void MortevielleEngine::music() {
 	_reloadCFIEC = true;
 
 	Common::File f;
-	if (!f.open("mort.img"))
-		error("Missing file - mort.img");
+	if (!f.open("mort.img")) {
+		// Some DOS versions use MORTP2 instead of MORT.IMG
+		// Some have both and they are identical
+		if (!f.open("mortp2"))
+			error("Missing file - mort.img");
+	}
 
 	int size = f.size();
 	byte *compMusicBuf = (byte *)malloc(sizeof(byte) * size);
@@ -2286,6 +2277,8 @@ void MortevielleEngine::prepareRoom() {
 				break;
 			case CHAPEL:
 				setRandomPresenceChapel(_coreVar._faithScore);
+				break;
+			default:
 				break;
 			}
 			if ((_savedBitIndex != 0) && (_currBitIndex != 10))
@@ -2487,7 +2480,7 @@ int MortevielleEngine::getAnimOffset(int frameNum, int animNum) {
  */
 void MortevielleEngine::displayTextInDescriptionBar(int x, int y, int nb, int mesgId) {
 	Common::String tmpStr = getString(mesgId);
-	if ((y == 182) && ((int) tmpStr.size() > nb))
+	if ((y == 182) && ((int)tmpStr.size() > nb))
 		y = 176;
 	_text->displayStr(tmpStr, x, y, nb, 20, _textColor);
 }
@@ -2500,7 +2493,7 @@ void MortevielleEngine::handleDescriptionText(int f, int mesgId) {
 	if ((mesgId > 499) && (mesgId < 563)) {
 		Common::String tmpStr = getString(mesgId - 501 + kInventoryStringIndex);
 
-		if ((int) tmpStr.size() > ((58 + (kResolutionScaler - 1) * 37) << 1))
+		if ((int)tmpStr.size() > ((58 + (kResolutionScaler - 1) * 37) << 1))
 			_largestClearScreen = true;
 		else
 			_largestClearScreen = false;
@@ -2827,6 +2820,8 @@ int MortevielleEngine::getPresence(int roomId) {
 			case CHAPEL:
 				pres = getPresenceStatsChapel(h);
 				break;
+			default:
+				break;
 			}
 			pres += _coreVar._faithScore;
 			rand = getRandomNumber(1, 100);
@@ -2852,6 +2847,8 @@ int MortevielleEngine::getPresence(int roomId) {
 					break;
 				case CHAPEL:
 					pres = setPresenceChapel(h);
+					break;
+				default:
 					break;
 				}
 				retVal = pres;
@@ -2936,6 +2933,8 @@ void MortevielleEngine::drawPicture() {
 			case WELL:
 				if (_coreVar._wellObjectId != 0)
 					displayAnimFrame(1, 1);
+				break;
+			default:
 				break;
 			}
 		}

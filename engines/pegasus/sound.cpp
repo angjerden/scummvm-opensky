@@ -7,19 +7,18 @@
  * Additional copyright for this file:
  * Copyright (C) 1995-1997 Presto Studios, Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
-
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -35,9 +34,9 @@
 namespace Pegasus {
 
 Sound::Sound() {
-	_stream = 0;
+	_stream = nullptr;
 	_volume = 0xFF;
-	_fader = 0;
+	_fader = nullptr;
 }
 
 Sound::~Sound() {
@@ -46,34 +45,42 @@ Sound::~Sound() {
 
 void Sound::disposeSound() {
 	stopSound();
-	delete _stream; _stream = 0;
+	delete _stream; _stream = nullptr;
 }
 
-void Sound::initFromAIFFFile(const Common::String &fileName) {
+void Sound::initFromAIFFFile(const Common::Path &fileName) {
 	disposeSound();
 
 	Common::File *file = new Common::File();
 	if (!file->open(fileName)) {
-		warning("Failed to open AIFF file '%s'", fileName.c_str());
+		warning("Failed to open AIFF file '%s'", fileName.toString().c_str());
 		delete file;
 		return;
 	}
 
-	_stream = Audio::makeAIFFStream(file, DisposeAfterUse::YES);
+	Audio::RewindableAudioStream *stream = Audio::makeAIFFStream(file, DisposeAfterUse::YES);
+
+	_stream = dynamic_cast<Audio::SeekableAudioStream *>(stream);
+
+	if (!_stream) {
+		delete stream;
+		warning("AIFF stream '%s' is not seekable", fileName.toString().c_str());
+		return;
+	}
 }
 
-void Sound::initFromQuickTime(const Common::String &fileName) {
+void Sound::initFromQuickTime(const Common::Path &fileName) {
 	disposeSound();
 
 	_stream = Audio::makeQuickTimeStream(fileName);
 
 	if (!_stream)
-		warning("Failed to open QuickTime file '%s'", fileName.c_str());
+		warning("Failed to open QuickTime file '%s'", fileName.toString().c_str());
 }
 
 void Sound::attachFader(SoundFader *fader) {
 	if (_fader)
-		_fader->attachSound(0);
+		_fader->attachSound(nullptr);
 
 	_fader = fader;
 
@@ -140,7 +147,7 @@ bool Sound::isPlaying() {
 }
 
 bool Sound::isSoundLoaded() const {
-	return _stream != 0;
+	return _stream != nullptr;
 }
 
 SoundTimeBase::SoundTimeBase() {

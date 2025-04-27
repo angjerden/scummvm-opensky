@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,13 +15,20 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ *
+ * This file is dual-licensed.
+ * In addition to the GPLv3 license mentioned above, MojoTouch has
+ * exclusively licensed this code on March 23th, 2024, to be used in
+ * closed-source products.
+ * Therefore, any contributions (commits) to it will also be dual-licensed.
  *
  */
 
 #include "common/debug.h"
 #include "common/rect.h"
+#include "common/unicode-bidi.h"
 
 #include "toon/font.h"
 
@@ -34,9 +41,12 @@ FontRenderer::FontRenderer(ToonEngine *vm) : _vm(vm) {
 	_currentFontColor[3] = 0xce;
 
 	_currentFont = nullptr;
+	_currentDemoFont = nullptr;
 }
 
 FontRenderer::~FontRenderer() {
+	if (_currentDemoFont)
+		delete _currentDemoFont;
 }
 
 // mapping extended characters required for foreign versions to font (animation)
@@ -51,6 +61,17 @@ static const byte map_textToFont[0x80] = {
 	0x23, 0x08, 0x23, 0x06, 0x15, 0x23, 0x1b, 0x23, 0x23, 0x16, 0x07, 0x17, 0x1c, 0x23, 0x23, 0x23  // 0xFx
 };
 
+static const byte hebrew_map_textToFont[0x80] = {
+	 '?',  '?',  '?',  '?', 0x03,  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?', // 0x8x
+	 '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?', // 0x9x
+	 '?', 0x09,  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?', // 0xAx
+	 '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?', 0x0a, // 0xBx
+	 '?',  '?',  '?',  '?', 0x1d,  '?',  '?', 0x02,  '?',  '?',  '?',  '?',  '?',  '?',  '?',  '?', // 0xCx
+	 '?', 0x0b,  '?',  '?',  '?',  '?', 0x1e,  '?',  '?',  '?',  '?', 0x20, 0x1f,  '?',  '?', 0x19, // 0xDx
+	0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, // 0xEx
+	0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x17, 0x1c, 0x23, 0x23, 0x23  // 0xFx
+};
+
 byte FontRenderer::textToFont(byte c) {
 	// No need to remap simple characters.
 	if (c < 0x80)
@@ -62,6 +83,9 @@ byte FontRenderer::textToFont(byte c) {
 	// special case for it.
 	if (_vm->_language == Common::ES_ESP && c == 0xe9)
 		return 0x10;
+
+	if (_vm->_language == Common::HE_ISR)
+		return hebrew_map_textToFont[c - 0x80];
 
 	// Use the common map to convert the extended characters.
 	return map_textToFont[c - 0x80];
@@ -90,6 +114,10 @@ void FontRenderer::renderText(int16 x, int16 y, const Common::String &origText, 
 	int32 height = 0;
 
 	const byte *text = (const byte *)origText.c_str();
+
+	if (_vm->_language == Common::HE_ISR)
+		text = (const byte *)Common::convertBiDiString((const char *) text, Common::kWindows1255).c_str();
+
 	while (*text) {
 		byte curChar = *text;
 		if (curChar == 13) {
@@ -98,9 +126,15 @@ void FontRenderer::renderText(int16 x, int16 y, const Common::String &origText, 
 			curX = x;
 		} else {
 			curChar = textToFont(curChar);
-			_currentFont->drawFontFrame(_vm->getMainSurface(), curChar, curX, curY, _currentFontColor);
-			curX = curX + MAX<int32>(_currentFont->getFrameWidth(curChar) - 2, 0);
-			height = MAX<int32>(height, _currentFont->getFrameHeight(curChar));
+			if (_currentFont) {
+				_currentFont->drawFontFrame(_vm->getMainSurface(), curChar, curX, curY, _currentFontColor);
+			} else {
+				_currentDemoFont->drawGlyph(_vm->getMainSurface(), curChar, curX, curY, _currentFontColor);
+			}
+			curX = curX + MAX<int32>((_currentFont ? _currentFont->getFrameWidth(curChar) :
+				_currentDemoFont->getGlyphWidth(curChar)) - 2, 0);
+			height = MAX<int32>(height, _currentFont ? _currentFont->getFrameHeight(curChar) :
+				_currentDemoFont->getHeight());
 		}
 		text++;
 	}
@@ -129,8 +163,10 @@ void FontRenderer::computeSize(const Common::String &origText, int16 *retX, int1
 			continue;
 		} else {
 			curChar = textToFont(curChar);
-			int16 charWidth = _currentFont->getFrameWidth(curChar) - 1;
-			int16 charHeight = _currentFont->getFrameHeight(curChar);
+			int16 charWidth = (_currentFont ? _currentFont->getFrameWidth(curChar) :
+				_currentDemoFont->getGlyphWidth(curChar)) - 1;
+			int16 charHeight = _currentFont ? _currentFont->getFrameHeight(curChar) :
+				_currentDemoFont->getHeight();
 			lineWidth += charWidth;
 			lineHeight = MAX(lineHeight, charHeight);
 
@@ -139,7 +175,9 @@ void FontRenderer::computeSize(const Common::String &origText, int16 *retX, int1
 			// assume we only need to take the lower bound into
 			// consideration.
 			//Common::Rect charRect = _currentFont->getFrameRect(curChar);
-			lastLineHeight = MAX(lastLineHeight, _currentFont->getHeight());
+			lastLineHeight = MAX(lastLineHeight, _currentFont ? _currentFont->getHeight() :
+				(int16)_currentDemoFont->getHeight());
+
 		}
 		text++;
 	}
@@ -185,22 +223,26 @@ void FontRenderer::setFontColorByCharacter(int32 characterId) {
 void FontRenderer::setFontColor(int32 fontColor1, int32 fontColor2, int32 fontColor3) {
 	debugC(5, kDebugFont, "setFontColor(%d, %d, %d)", fontColor1, fontColor2, fontColor3);
 
+	// The English demo uses a different palette assignment.
 	_currentFontColor[0] = 0;
-	_currentFontColor[1] = fontColor1;
-	_currentFontColor[2] = fontColor2;
-	_currentFontColor[3] = fontColor3;
+	_currentFontColor[1] = _currentFont ? fontColor1 : fontColor3;
+	_currentFontColor[2] = _currentFont ? fontColor2 : fontColor1;
+	_currentFontColor[3] = _currentFont ? fontColor3 : fontColor2;
 }
 
-void FontRenderer::renderMultiLineText(int16 x, int16 y, const Common::String &origText, int32 mode) {
+void FontRenderer::renderMultiLineText(int16 x, int16 y, const Common::String &origText, int32 mode, Graphics::Surface &frame) {
 	debugC(5, kDebugFont, "renderMultiLineText(%d, %d, %s, %d)", x, y, origText.c_str(), mode);
 
 	// divide the text in several lines
 	// based on number of characters or size of lines.
 	byte text[1024];
+	memset(text, 0, 1024);
 	Common::strlcpy((char *)text, origText.c_str(), 1024);
 
 	byte *lines[16];
+	memset(lines, 0, 16 * sizeof(byte *));
 	int32 lineSize[16];
+	memset(lineSize, 0, 16 * sizeof(int32));
 	int32 numLines = 0;
 
 	byte *it = text;
@@ -223,8 +265,9 @@ void FontRenderer::renderMultiLineText(int16 x, int16 y, const Common::String &o
 			} else
 				curChar = textToFont(curChar);
 
-			int width = _currentFont->getFrameWidth(curChar);
-			curWidth += MAX(width - 2, 0);
+			int width = (_currentFont ? _currentFont->getFrameWidth(curChar) :
+				_currentDemoFont->getGlyphWidth(curChar)) - 2;
+			curWidth += MAX(width, 0);
 			it++;
 			curLetterNr++;
 		}
@@ -261,7 +304,7 @@ void FontRenderer::renderMultiLineText(int16 x, int16 y, const Common::String &o
 	//numLines++;
 
 	// get font height (assumed to be constant)
-	int16 height = _currentFont->getHeight();
+	int16 height = _currentFont ? _currentFont->getHeight() : _currentDemoFont->getHeight();
 	int32 textSize = (height - 2) * numLines;
 	y = y - textSize;
 	if (y < 30)
@@ -284,17 +327,185 @@ void FontRenderer::renderMultiLineText(int16 x, int16 y, const Common::String &o
 
 	for (int32 i = 0; i < numLines; i++) {
 		const byte *line = lines[i];
+
+		if (_vm->_language == Common::HE_ISR)
+			line = (const byte *)Common::convertBiDiString((const char *) line, Common::kWindows1255).c_str();
+
 		curX = x - lineSize[i] / 2;
 		_vm->addDirtyRect(curX + _vm->state()->_currentScrollValue, curY, curX + lineSize[i] + _vm->state()->_currentScrollValue + 2, curY + height);
 
 		while (*line) {
 			byte curChar = textToFont(*line);
-			if (curChar != 32) _currentFont->drawFontFrame(_vm->getMainSurface(), curChar, curX + _vm->state()->_currentScrollValue, curY, _currentFontColor);
-			curX = curX + MAX<int32>(_currentFont->getFrameWidth(curChar) - 2, 0);
+			if (curChar != 32) {
+				if (_currentFont) {
+					_currentFont->drawFontFrame(frame, curChar, curX + _vm->state()->_currentScrollValue, curY, _currentFontColor);
+				} else {
+					_currentDemoFont->drawGlyph(frame, curChar, curX + _vm->state()->_currentScrollValue, curY, _currentFontColor);
+				}
+			}
+			curX = curX + MAX<int32>((_currentFont ? _currentFont->getFrameWidth(curChar) : _currentDemoFont->getGlyphWidth(curChar)) - 2, 0);
 			//height = MAX(height, _currentFont->getFrameHeight(curChar));
 			line++;
 		}
 		curY += height;
+	}
+}
+
+bool FontRenderer::loadDemoFont(const Common::Path &filename) {
+	uint32 fileSize = 0;
+	uint8 *fileData = _vm->resources()->getFileData(filename, &fileSize);
+	if (!fileData)
+		return false;
+
+	uint16 dataSize = READ_LE_UINT16(fileData);
+	if (dataSize != fileSize)
+		return false;
+
+	// Offsets of the various parts of the font.
+	uint16 fontDataOffset = READ_LE_UINT16(fileData + 4);
+	uint16 glyphOffsetTableOffset = READ_LE_UINT16(fileData + 6);
+	uint16 glyphWidthDataOffset = READ_LE_UINT16(fileData + 8);
+	uint16 glyphDataOffset = READ_LE_UINT16(fileData + 10);
+	uint16 glyphHeightDataOffset = READ_LE_UINT16(fileData + 12);
+
+	// Generic font data.
+	uint8 numGlyphs = *(fileData + fontDataOffset + 3);
+	uint8 glyphWidth = *(fileData + fontDataOffset + 4);
+	uint8 glyphHeight = *(fileData + fontDataOffset + 5);
+
+	if (_currentDemoFont)
+		delete _currentDemoFont;
+
+	_currentDemoFont = new DemoFont(glyphWidth, glyphHeight, numGlyphs);
+
+	// Copy the data for each glyph to the DemoFont.
+	for (int i = 0; i < numGlyphs; i++) {
+		// Read glyph dimensions.
+		GlyphDimensions dimensions;
+		dimensions.width = *(fileData + glyphWidthDataOffset + i);
+		dimensions.heightOffset = *(fileData + glyphHeightDataOffset + (2 * i));
+		dimensions.height = *(fileData + glyphHeightDataOffset + (2 * i) + 1);
+		_currentDemoFont->setGlyphDimensions(i, dimensions);
+
+		// Determine start of data for this glyph.
+		uint16 currentGlyphDataOffset = READ_LE_UINT16(fileData + glyphOffsetTableOffset + (i * 2));
+		assert(currentGlyphDataOffset >= glyphDataOffset);
+		// Get pointers for the file and DemoFont data for this glyph.
+		uint8 *srcGlyphDataPtr = fileData + currentGlyphDataOffset;
+		uint8 *dstGlyphDataPtr = _currentDemoFont->getGlyphData(i);
+
+		// Pad the glyph data with zeroes at the start for the height offset.
+		uint16 offsetBytes = dimensions.heightOffset * dimensions.width;
+		memset(dstGlyphDataPtr, 0, offsetBytes);
+		dstGlyphDataPtr += offsetBytes;
+
+		// Read each line of pixels.
+		for (int j = 0; j < dimensions.height; j++) {
+			// Each nibble has data for one pixel, so alternately read the low
+			// and high nibble. If the number of pixels in a line is odd, one
+			// nibble is discarded.
+			bool lowNibble = true;
+			uint8 glyphByte = 0;
+			// Read each pixel in this line.
+			for (int k = 0; k < dimensions.width; k++) {
+				if (lowNibble) {
+					// Copy the data byte.
+					glyphByte = *srcGlyphDataPtr++;
+					// Read the low nibble.
+					*dstGlyphDataPtr++ = glyphByte & 0xF;
+				} else {
+					// Read the high nibble.
+					*dstGlyphDataPtr++ = glyphByte >> 4;
+				}
+				// Switch to the other nibble.
+				lowNibble = !lowNibble;
+			}
+		}
+	}
+
+	return true;
+}
+
+DemoFont::DemoFont(uint8 glyphWidth, uint8 glyphHeight, uint16 numGlyphs) {
+	_glyphWidth = glyphWidth;
+	_glyphHeight = glyphHeight;
+	_numGlyphs = numGlyphs;
+
+	// Allocate room for the full height and width for each glyph. A glyph
+	// might not need this if the width is less, but it makes lookup easier.
+	_glyphData = new uint8[_numGlyphs * _glyphWidth * _glyphHeight];
+	_glyphDimensions = new GlyphDimensions[_numGlyphs];
+}
+
+DemoFont::~DemoFont() {
+	delete[] _glyphData;
+	delete[] _glyphDimensions;
+}
+
+uint8 *DemoFont::getGlyphData() {
+	return _glyphData;
+}
+
+uint8 *DemoFont::getGlyphData(uint8 glyphNum) {
+	assert(glyphNum < _numGlyphs);
+	return _glyphData + (glyphNum * _glyphWidth * _glyphHeight);
+}
+
+uint8 DemoFont::getGlyphWidth(uint8 glyphNum) {
+	assert(glyphNum < _numGlyphs);
+	return _glyphDimensions[glyphNum].width;
+}
+
+uint8 DemoFont::getHeight() {
+	return _glyphHeight;
+}
+
+void DemoFont::setGlyphDimensions(uint8 glyphNum, GlyphDimensions &glyphOffsets) {
+	assert(glyphNum < _numGlyphs);
+	_glyphDimensions[glyphNum] = glyphOffsets;
+}
+
+void DemoFont::drawGlyph(Graphics::Surface &surface, int32 glyphNum, int16 xx, int16 yy, byte *colorMap) {
+	debugC(4, kDebugFont, "drawGlyph(surface, %d, %d, %d, colorMap)", glyphNum, xx, yy);
+	// Clip character into range.
+	if (glyphNum < 0)
+		glyphNum = 0;
+
+	if (glyphNum >= _numGlyphs)
+		glyphNum = _numGlyphs - 1;
+
+	if (_numGlyphs == 0)
+		return;
+
+	int16 rectX = getGlyphWidth(glyphNum);
+	int16 rectY = getHeight();
+
+	// Clip glyph dimensions to surface.
+	if (rectX + xx >= surface.w)
+		rectX = surface.w - xx;
+
+	if (rectX < 0)
+		return;
+
+	if (rectY + yy >= surface.h)
+		rectY = surface.h - yy;
+
+	if (rectY < 0)
+		return;
+
+	// Copy the glyph data to the surface.
+	int32 destPitch = surface.pitch;
+	uint8 *c = getGlyphData(glyphNum);
+	uint8 *curRow = (uint8 *)surface.getBasePtr(xx, yy);
+	for (int16 y = 0; y < rectY; y++) {
+		unsigned char *cur = curRow;
+		for (int16 x = 0; x < rectX; x++) {
+			if (*c && *c < 4)
+				*cur = colorMap[*c];
+			c++;
+			cur++;
+		}
+		curRow += destPitch;
 	}
 }
 

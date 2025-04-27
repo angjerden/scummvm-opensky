@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,29 +15,24 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "common/config-manager.h"
-#include "common/timer.h"
 #include "common/util.h"
 #include "common/ptr.h"
 #include "common/substream.h"
 
 #include "scumm/actor.h"
-#include "scumm/cdda.h"
 #include "scumm/file.h"
-#include "scumm/imuse/imuse.h"
-#include "scumm/imuse_digi/dimuse.h"
+#include "scumm/imuse_digi/dimuse_engine.h"
 #include "scumm/players/player_towns.h"
 #include "scumm/resource.h"
 #include "scumm/scumm.h"
 #include "scumm/sound.h"
-#include "scumm/util.h"
 
-#include "audio/decoders/adpcm.h"
+#include "audio/audiostream.h"
 #include "audio/decoders/flac.h"
 #include "audio/mididrv.h"
 #include "audio/mixer.h"
@@ -45,7 +40,6 @@
 #include "audio/decoders/raw.h"
 #include "audio/decoders/voc.h"
 #include "audio/decoders/vorbis.h"
-#include "audio/decoders/wave.h"
 
 namespace Scumm {
 
@@ -57,74 +51,90 @@ struct MP3OffsetTable {					/* Compressed Sound (.SO3) */
 };
 
 
-Sound::Sound(ScummEngine *parent, Audio::Mixer *mixer)
+Sound::Sound(ScummEngine *parent, Audio::Mixer *mixer, bool useReplacementAudioTracks)
 	:
 	_vm(parent),
 	_mixer(mixer),
-	_soundQuePos(0),
-	_soundQue2Pos(0),
-	_sfxFilename(),
+	_speechTimerMod(0),
+	_midiQueuePos(0),
+	_soundQueuePos(0),
 	_sfxFileEncByte(0),
-	_offsetTable(0),
+	_offsetTable(nullptr),
 	_numSoundEffects(0),
 	_soundMode(kVOCMode),
-	_talk_sound_a1(0),
-	_talk_sound_a2(0),
-	_talk_sound_b1(0),
-	_talk_sound_b2(0),
-	_talk_sound_mode(0),
-	_talk_sound_channel(0),
+	_queuedSfxOffset(0),
+	_queuedTalkieOffset(0),
+	_queuedSfxLen(0),
+	_queuedTalkieLen(0),
+	_queuedSoundMode(DIGI_SND_MODE_EMPTY),
+	_queuedSfxChannel(0),
 	_mouthSyncMode(false),
 	_endOfMouthSync(false),
 	_curSoundPos(0),
-	_currentCDSound(0),
 	_currentMusic(0),
 	_lastSound(0),
 	_soundsPaused(false),
-	_sfxMode(0) {
+	_digiSndMode(DIGI_SND_MODE_EMPTY) {
 
-	memset(_soundQue, 0, sizeof(_soundQue));
-	memset(_soundQue2, 0, sizeof(_soundQue2));
+	memset(_midiQueue, 0, sizeof(_midiQueue));
+	memset(_soundQueue, 0, sizeof(_soundQueue));
 	memset(_mouthSyncTimes, 0, sizeof(_mouthSyncTimes));
 
 	_musicType = MDT_NONE;
 
-	_loomSteamCD.playing = false;
-	_loomSteamCD.track = 0;
-	_loomSteamCD.start = 0;
-	_loomSteamCD.duration = 0;
-	_loomSteamCD.numLoops = 0;
-	_loomSteamCD.volume = Audio::Mixer::kMaxChannelVolume;
-	_loomSteamCD.balance = 0;
+	_talkChannelHandle = new Audio::SoundHandle();
 
-	_isLoomSteam = _vm->_game.id == GID_LOOM && Common::File::exists("CDDA.SOU");
+	// Initialize the SE sound engine for all doublefine packed games,
+	// except for Maniac Mansion (within DOTT), which doesn't have
+	// associated SE resources in the PAK file.
+	if (_vm->_game.features & GF_DOUBLEFINE_PAK && _vm->_game.id != GID_MANIAC) {
+		_soundSE = new SoundSE(_vm, _mixer);
+		_useRemasteredAudio = ConfMan.getBool("use_remastered_audio");
+		if (_vm->_game.id == GID_MONKEY || _vm->_game.id == GID_MONKEY2)
+			_enableAmbienceSounds = ConfMan.getBool("enable_ambience_sounds");
+	}
+
+	_soundCD = new SoundCD(_vm, _mixer, _soundSE, useReplacementAudioTracks);
+
+	// This timer targets every talkie game, except for LOOM CD
+	// which is handled differently, and except for COMI which
+	// handles lipsync within Digital iMUSE.
+	if (_vm->_game.version >= 5 && _vm->_game.version <= 7 && _vm->_game.heversion == 0) {
+		startSpeechTimer();
+	}
 }
 
 Sound::~Sound() {
-	stopCDTimer();
-	stopCD();
+	if (_enableAmbienceSounds)
+		_soundSE->stopAmbience();
+
 	free(_offsetTable);
+	delete _talkChannelHandle;
+	delete _soundSE;
+	delete _soundCD;
+	if (_vm->_game.version >= 5 && _vm->_game.version <= 7 && _vm->_game.heversion == 0) {
+		stopSpeechTimer();
+	}
 }
 
-void Sound::addSoundToQueue(int sound, int heOffset, int heChannel, int heFlags) {
+void Sound::startSound(int sound, int offset, int channel, int flags, int freq, int pan, int volume) {
 	if (_vm->VAR_LAST_SOUND != 0xFF)
 		_vm->VAR(_vm->VAR_LAST_SOUND) = sound;
 	_lastSound = sound;
 
-	// HE music resources are in separate file
-	if (sound <= _vm->_numSounds)
-		_vm->ensureResourceLoaded(rtSound, sound);
-
-	addSoundToQueue2(sound, heOffset, heChannel, heFlags);
+	addSoundToQueue(sound, offset, channel, flags, freq, pan, volume);
 }
 
-void Sound::addSoundToQueue2(int sound, int heOffset, int heChannel, int heFlags) {
-	assert(_soundQue2Pos < ARRAYSIZE(_soundQue2));
-	_soundQue2[_soundQue2Pos].sound = sound;
-	_soundQue2[_soundQue2Pos].offset = heOffset;
-	_soundQue2[_soundQue2Pos].channel = heChannel;
-	_soundQue2[_soundQue2Pos].flags = heFlags;
-	_soundQue2Pos++;
+void Sound::addSoundToQueue(int sound, int offset, int channel, int flags, int freq, int pan, int volume) {
+	assert(_soundQueuePos < ARRAYSIZE(_soundQueue));
+	_soundQueue[_soundQueuePos].sound = sound;
+	_soundQueue[_soundQueuePos].offset = offset;
+	_soundQueue[_soundQueuePos].channel = channel;
+	_soundQueue[_soundQueuePos].flags = flags;
+	_soundQueue[_soundQueuePos].freq = freq;
+	_soundQueue[_soundQueuePos].pan = pan;
+	_soundQueue[_soundQueuePos].vol = volume;
+	_soundQueuePos++;
 }
 
 void Sound::processSound() {
@@ -143,23 +153,23 @@ void Sound::processSoundQueues() {
 	int snd;
 	int data[16];
 
-	while (_soundQue2Pos) {
-		_soundQue2Pos--;
-		snd = _soundQue2[_soundQue2Pos].sound;
+	while (_soundQueuePos) {
+		_soundQueuePos--;
+		snd = _soundQueue[_soundQueuePos].sound;
 		if (snd)
-			playSound(snd);
+			triggerSound(snd);
 	}
 
-	while (i < _soundQuePos) {
-		num = _soundQue[i++];
-		if (i + num > _soundQuePos) {
+	while (i < _midiQueuePos) {
+		num = _midiQueue[i++];
+		if (i + num > _midiQueuePos) {
 			error("processSoundQues: invalid num value");
 			break;
 		}
 		memset(data, 0, sizeof(data));
 		if (num > 0) {
 			for (int j = 0; j < num; j++)
-				data[j] = _soundQue[i + j];
+				data[j] = _midiQueue[i + j];
 			i += num;
 
 			debugC(DEBUG_IMUSE, "processSoundQues(%d,%d,%d,%d,%d,%d,%d,%d,%d)",
@@ -172,75 +182,37 @@ void Sound::processSoundQueues() {
 				_vm->VAR(_vm->VAR_SOUNDRESULT) = (short)_vm->_imuse->doCommand(num, data);
 		}
 	}
-	_soundQuePos = 0;
+	_midiQueuePos = 0;
 }
 
-void Sound::playSound(int soundID) {
+void Sound::triggerSound(int soundID) {
 	byte *ptr;
 	byte *sound;
 	Audio::AudioStream *stream;
 	int size = -1;
 	int rate;
+	uint32 soundTag;
 
-	if (_vm->_game.id == GID_LOOM && _vm->_game.platform == Common::kPlatformPCEngine) {
-		if (soundID >= 13 && soundID <= 32) {
-			static const char tracks[20] = {3, 4, 5, 7, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 21, 19, 20, 21};
-
-			_currentCDSound = soundID;
-
-			// The original game had hard-coded lengths for all
-			// tracks, but this one track is the only one (as far
-			// as we know) where this actually matters. See bug
-			// #3024173 - LOOM-PCE: Music stops prematurely.
-
-			int track = tracks[soundID - 13];
-			if (track == 6) {
-				playCDTrack(track, 1, 0, 260);
-			} else {
-				playCDTrack(track, 1, 0, 0);
-			}
-		} else {
-			if (_vm->_musicEngine) {
-				_vm->_musicEngine->startSound(soundID);
-			}
-		}
+	if (_soundCD->triggerCDSound(soundID))
 		return;
-	}
 
-	debugC(DEBUG_SOUND, "playSound #%d", soundID);
+	debugC(DEBUG_SOUND, "triggerSound #%d", soundID);
 
 	ptr = _vm->getResourceAddress(rtSound, soundID);
 
-	if (!ptr) {
+	if (!ptr)
 		return;
-	}
 
-	// Support for SFX in Monkey Island 1, Mac version
-	// This is rather hackish right now, but works OK. SFX are not sounding
-	// 100% correct, though, not sure right now what is causing this.
-	else if (READ_BE_UINT32(ptr) == MKTAG('M','a','c','1')) {
-		// Read info from the header
-		size = READ_BE_UINT32(ptr+0x60);
-		rate = READ_BE_UINT16(ptr+0x64);
+	soundTag = READ_BE_UINT32(ptr);
 
-		// Skip over the header (fixed size)
-		ptr += 0x72;
-
-		// Allocate a sound buffer, copy the data into it, and play
-		sound = (byte *)malloc(size);
-		memcpy(sound, ptr, size);
-
-		stream = Audio::makeRawStream(sound, size, rate, Audio::FLAG_UNSIGNED);
-		_mixer->playStream(Audio::Mixer::kSFXSoundType, NULL, stream, soundID);
-	}
-	// WORKAROUND bug # 1311447
-	else if (READ_BE_UINT32(ptr) == 0x460e200d) {
+	// WORKAROUND bug #2221
+	if (soundTag == 0x460e200d) {
 		// This sound resource occurs in the Macintosh version of Monkey Island.
 		// I do now know whether it is used in any place other than the one
 		// mentioned in the bug report above; in case it is, I put a check here.
 		assert(soundID == 39);
 
-		// The samplerate is copied from the sound resouce 39 of the PC CD/VGA
+		// The sample rate is copied from the sound resource 39 of the PC CD/VGA
 		// version of Monkey Island.
 
 		// Read info from the header
@@ -254,20 +226,26 @@ void Sound::playSound(int soundID) {
 		sound = (byte *)malloc(size);
 		memcpy(sound, ptr, size);
 		stream = Audio::makeRawStream(sound, size, rate, Audio::FLAG_UNSIGNED);
-		_mixer->playStream(Audio::Mixer::kSFXSoundType, NULL, stream, soundID);
+		_mixer->playStream(Audio::Mixer::kSFXSoundType, nullptr, stream, soundID);
 	}
 	// Support for sampled sound effects in Monkey Island 1 and 2
 	else if (_vm->_game.platform != Common::kPlatformFMTowns
-	         // The Macintosh m68k versions of MI2/Indy4 just ignore SBL effects.
-	         && !_vm->isMacM68kIMuse()
-	         && READ_BE_UINT32(ptr) == MKTAG('S','B','L',' ')) {
+	         && _vm->_game.platform != Common::kPlatformMacintosh
+	         && soundTag == MKTAG('S','B','L',' ')) {
 		debugC(DEBUG_SOUND, "Using SBL sound effect");
+
+		if (shouldInjectMISEAudio()) {
+			stream = _soundSE->getAudioStreamFromIndex(soundID, kSoundSETypeSFX);
+			if (stream)
+				_mixer->playStream(Audio::Mixer::kSFXSoundType, nullptr, stream, soundID);
+			return;
+		}
 
 		// SBL resources essentially contain VOC sound data.
 		// There are at least two main variants: in one,
 		// there are two subchunks AUhd and AUdt, in the other
 		// the chunks are called WVhd and WVdt. Besides that,
-		// the two variants seem pretty similiar.
+		// the two variants seem pretty similar.
 
 		// The first subchunk (AUhd resp. WVhd) seems to always
 		// contain three bytes (00 00 80) of unknown meaning.
@@ -294,7 +272,12 @@ void Sound::playSound(int soundID) {
 		// 80 80 80 80 80 80 80 80  |........|
 		// 80 80 80 80 80 80 80 80  |........|
 
-		size = READ_BE_UINT32(ptr + 4) - 27;
+		// Skip to the VOC header, and adjust the size. Note that while
+		// ptr points to the beginning of the resource, 'size' refers
+		// to the size of the SBL data. That is why there it an eight
+		// byte difference. See bug #15369.
+
+		size = READ_BE_UINT32(ptr + 4) - 19;
 		ptr += 27;
 
 		// Fingolfin says: after eyeballing a single SEGA
@@ -329,9 +312,8 @@ void Sound::playSound(int soundID) {
 		sound = (byte *)malloc(size);
 		memcpy(sound, ptr + 6, size);
 		stream = Audio::makeRawStream(sound, size, rate, Audio::FLAG_UNSIGNED);
-		_mixer->playStream(Audio::Mixer::kSFXSoundType, NULL, stream, soundID);
-	}
-	else if (_vm->_game.platform != Common::kPlatformFMTowns && READ_BE_UINT32(ptr) == MKTAG('S','O','U','N')) {
+		_mixer->playStream(Audio::Mixer::kSFXSoundType, nullptr, stream, soundID);
+	} else if (_vm->_game.platform != Common::kPlatformFMTowns && soundTag == MKTAG('S','O','U','N')) {
 		if (_vm->_game.version != 3)
 			ptr += 2;
 
@@ -339,136 +321,116 @@ void Sound::playSound(int soundID) {
 
 		if (type == 2) {
 			// CD track resource
-			ptr += 0x16;
-			if (soundID == _currentCDSound && pollCD() == 1)
+			if (soundID == _soundCD->_currentCDSound && _soundCD->pollCD() == 1)
 				return;
 
-			int track = ptr[0];
-			int loops = ptr[1];
-			int start = (ptr[2] * 60 + ptr[3]) * 75 + ptr[4];
-			int end = (ptr[5] * 60 + ptr[6]) * 75 + ptr[7];
+			int track = _soundCD->playCDTrackFromSoundID(soundID);
 
-			playCDTrack(track, loops == 0xff ? -1 : loops, start, end <= start ? 0 : end - start);
-			_currentCDSound = soundID;
+			if (_vm->_game.id == GID_MONKEY && _enableAmbienceSounds) {
+				_soundSE->startAmbience(track);
+			}
 		} else {
 			// All other sound types are ignored
-			warning("Scumm::Sound::playSound: encountered audio resoure with chunk type 'SOUN' and sound type %d", type);
+			warning("Scumm::Sound::triggerSound: encountered audio resource with chunk type 'SOUN' and sound type %d", type);
 		}
-	}
-	else if ((_vm->_game.platform == Common::kPlatformMacintosh) && (_vm->_game.id == GID_INDY3) && READ_BE_UINT16(ptr + 8) == 0x1C) {
-		// Sound format as used in Indy3 EGA Mac.
-		// It seems to be closely related to the Amiga format, see player_v3a.cpp
-		// The following is known:
-		// offset 0, 16 LE: total size
-		// offset 2-7: ?
-		// offset 8, 16BE: offset to sound data (0x1C = 28 -> header size 28?)
-		// offset 10-11: ? another offset, maybe related to looping?
-		// offset 12, 16BE: size of sound data
-		// offset 14-15: ? often the same as 12-13: maybe loop size/end?
-		// offset 16-19: ? all 0?
-		// offset 20, 16BE: rate divisor
-		// offset 22-23: ? often identical to the rate divisior? (but not in sound 8, which loops)
-		// offset 24, byte (?): volume
-		// offset 25: ? same as volume -- maybe left vs. right channel?
-		// offset 26: ?  if != 0: stop current sound?
-		// offset 27: ?  loopcount? 0xff == -1 for infinite?
-
-		size = READ_BE_UINT16(ptr + 12);
-		assert(size);
-
-		rate = 3579545 / READ_BE_UINT16(ptr + 20);
-		sound = (byte *)malloc(size);
-		int vol = ptr[24] * 4;
-		int loopStart = 0, loopEnd = 0;
-		int loopcount = ptr[27];
-
-		memcpy(sound, ptr + READ_BE_UINT16(ptr + 8), size);
-		Audio::SeekableAudioStream *plainStream = Audio::makeRawStream(sound, size, rate, 0);
-
-		if (loopcount > 1) {
-			loopStart = READ_BE_UINT16(ptr + 10) - READ_BE_UINT16(ptr + 8);
-			loopEnd = READ_BE_UINT16(ptr + 14);
-
-			// TODO: Currently we will only ever play till "loopEnd", even when we only have
-			// a finite repetition count.
-			stream = new Audio::SubLoopingAudioStream(plainStream, loopcount == 255 ? 0 : loopcount, Audio::Timestamp(0, loopStart, rate), Audio::Timestamp(0, loopEnd, rate));
-		} else {
-			stream = plainStream;
-		}
-
-		_mixer->playStream(Audio::Mixer::kSFXSoundType, NULL, stream, soundID, vol, 0);
-	}
-	else {
-
+	} else {
 		if (_vm->_game.id == GID_MONKEY_VGA || _vm->_game.id == GID_MONKEY_EGA) {
 			// Works around the fact that in some places in MonkeyEGA/VGA,
 			// the music is never explicitly stopped.
 			// Rather it seems that starting a new music is supposed to
 			// automatically stop the old song.
 			if (_vm->_imuse) {
-				if (READ_BE_UINT32(ptr) != MKTAG('A','S','F','X'))
+				if (soundTag != MKTAG('A','S','F','X'))
 					_vm->_imuse->stopAllSounds();
 			}
 		}
 
-		if (_vm->_musicEngine) {
-			_vm->_musicEngine->startSound(soundID);
+		if (shouldInjectMISEAudio() && soundTag == MKTAG('S','P','K',' ')) {
+			stream = _soundSE->getAudioStreamFromIndex(soundID, kSoundSETypeSFX);
+			if (stream)
+				_mixer->playStream(Audio::Mixer::kSFXSoundType, nullptr, stream, soundID);
+			return;
 		}
 
+		if (_vm->_musicEngine)
+			_vm->_musicEngine->startSound(soundID);
+
 		if (_vm->_townsPlayer)
-			_currentCDSound = _vm->_townsPlayer->getCurrentCdaSound();
+			_soundCD->_currentCDSound = _vm->_townsPlayer->getCurrentCdaSound();
 	}
 }
 
 void Sound::processSfxQueues() {
 
-	if (_talk_sound_mode != 0) {
-		if (_talk_sound_mode & 1)
-			startTalkSound(_talk_sound_a1, _talk_sound_b1, 1);
-		if (_talk_sound_mode & 2)
-			startTalkSound(_talk_sound_a2, _talk_sound_b2, 2, &_talkChannelHandle);
-		_talk_sound_mode = 0;
+	if (_queuedSoundMode != DIGI_SND_MODE_EMPTY) {
+		if (_queuedSoundMode & DIGI_SND_MODE_SFX)
+			startTalkSound(_queuedSfxOffset, _queuedSfxLen, 1);
+		if (_queuedSoundMode & DIGI_SND_MODE_TALKIE)
+			startTalkSound(_queuedTalkieOffset, _queuedTalkieLen, 2, _talkChannelHandle);
+		_queuedSoundMode = DIGI_SND_MODE_EMPTY;
 	}
 
 	const int act = _vm->getTalkingActor();
-	if ((_sfxMode & 2) && act != 0) {
+	if ((_digiSndMode & DIGI_SND_MODE_TALKIE) && act != 0) {
 		Actor *a;
 		bool finished;
 
 		if (_vm->_imuseDigital) {
 			finished = !isSoundRunning(kTalkSoundID);
+			if (_vm->_game.id == GID_CMI) {
+#if defined(ENABLE_SCUMM_7_8)
+				_curSoundPos = _vm->_imuseDigital->getSoundElapsedTimeInMs(kTalkSoundID) * 60 / 1000;
+#endif
+			}
 		} else if (_vm->_game.heversion >= 60) {
-			finished = !isSoundRunning(1);
+			finished = !isSoundInUse(1);
 		} else {
-			finished = !_mixer->isSoundHandleActive(_talkChannelHandle);
+			finished = !_mixer->isSoundHandleActive(*_talkChannelHandle);
 		}
 
-		if ((uint) act < 0x80 && ((_vm->_game.version == 8) || (_vm->_game.version <= 7 && !_vm->_string[0].no_talk_anim))) {
+		if (_vm->_game.heversion == 0 &&
+			((uint)act < 0x80 && ((_vm->_game.version == 8) || (_vm->_game.version <= 7 && !_vm->_string[0].no_talk_anim)))) {
 			a = _vm->derefActor(act, "processSfxQueues");
 			if (a->isInCurrentRoom()) {
-				if (isMouthSyncOff(_curSoundPos) && !_mouthSyncMode) {
-					if (!_endOfMouthSync)
-						a->runActorTalkScript(a->_talkStopFrame);
+				if (finished || (isMouthSyncOff(_curSoundPos) && _mouthSyncMode)) {
+					a->runActorTalkScript(a->_talkStopFrame);
 					_mouthSyncMode = 0;
-				} else  if (isMouthSyncOff(_curSoundPos) == 0 && !_mouthSyncMode) {
+				} else if (isMouthSyncOff(_curSoundPos) == 0 && !_mouthSyncMode) {
 					a->runActorTalkScript(a->_talkStartFrame);
 					_mouthSyncMode = 1;
 				}
-
-				if (_vm->_game.version <= 6 && finished)
-					a->runActorTalkScript(a->_talkStopFrame);
 			}
+#if defined(ENABLE_SCUMM_7_8)
+			if (_vm->_imuseDigital && !_vm->_imuseDigital->isFTSoundEngine()) {
+				int volume = a->_talkVolume;
+				int frequency = a->_talkFrequency;
+				int pan = a->_talkPan;
+				if (_vm->_imuseDigital->isSoundRunning(kTalkSoundID)) {
+					if (_vm->VAR(_vm->VAR_VOICE_MODE) == 2)
+						volume = 0;
+					if (_vm->_imuseDigital->getCurSpeechVolume() != volume) {
+						_vm->_imuseDigital->setVolume(kTalkSoundID, volume);
+					}
+					if (_vm->_imuseDigital->getCurSpeechFrequency() != frequency) {
+						_vm->_imuseDigital->setFrequency(kTalkSoundID, frequency);
+					}
+					if (_vm->_imuseDigital->getCurSpeechPan() != pan) {
+						_vm->_imuseDigital->setPan(kTalkSoundID, pan);
+					}
+				}
+			}
+#endif
 		}
 
-		if ((!ConfMan.getBool("subtitles") && finished) || (finished && _vm->_talkDelay == 0)) {
+		if (finished && (!ConfMan.getBool("subtitles") || _vm->_talkDelay == 0)) {
 			if (!(_vm->_game.version == 8 && _vm->VAR(_vm->VAR_HAVE_MSG) == 0))
 				_vm->stopTalk();
 		}
 	}
 
-	if (_sfxMode & 1) {
+	if (_digiSndMode & DIGI_SND_MODE_SFX) {
 		if (isSfxFinished()) {
-			_sfxMode &= ~1;
+			_digiSndMode &= ~DIGI_SND_MODE_SFX;
 		}
 	}
 }
@@ -477,58 +439,88 @@ static int compareMP3OffsetTable(const void *a, const void *b) {
 	return ((const MP3OffsetTable *)a)->org_offset - ((const MP3OffsetTable *)b)->org_offset;
 }
 
-void Sound::startTalkSound(uint32 offset, uint32 b, int mode, Audio::SoundHandle *handle) {
+static Audio::AudioStream *checkForBrokenIndy4Sample(Common::SeekableReadStream *file, uint32 offset) {
+	byte vocHeader[32];
+
+	file->read(vocHeader, 32);
+	// If the bogus VOC header isn't found, don't apply the workaround
+	if (memcmp(vocHeader, "Creative Voice File\x1a\x1a\x00\x0a\x01\x29\x11\x01\x02\x50\x01\xa6\x00", 32) != 0) {
+		file->seek(-32, SEEK_CUR);
+		return nullptr;
+	}
+
+	const int size = 86016; // size of speech sample
+	offset += 32; // size of VOC header
+	return Audio::makeRawStream(
+		new Common::SeekableSubReadStream(
+			file,
+			offset,
+			offset + size,
+			DisposeAfterUse::YES
+		),
+		44100,
+		Audio::FLAG_16BITS,
+		DisposeAfterUse::YES
+	);
+}
+
+void Sound::startTalkSound(uint32 offset, uint32 length, int mode, Audio::SoundHandle *handle) {
 	int num = 0, i;
 	int id = -1;
-#if defined(USE_FLAC) || defined(USE_VORBIS) || defined(USE_MAD)
 	int size = 0;
-#endif
 	Common::ScopedPtr<ScummFile> file;
+	uint32 origOffset = offset;
 
-	if (_vm->_game.id == GID_CMI) {
-		_sfxMode |= mode;
+	if (_vm->_game.id == GID_CMI || (_vm->_game.id == GID_DIG && !(_vm->_game.features & GF_DEMO))) {
+		// COMI (full & demo), DIG (full)
+		_digiSndMode |= mode;
+
+		if (_vm->_game.id == GID_DIG)
+			resetSpeechTimer();
+
 		return;
-	} else if (_vm->_game.id == GID_DIG) {
-		_sfxMode |= mode;
-		if (!(_vm->_game.features & GF_DEMO))
-			return;
+	} else if (_vm->_game.id == GID_DIG && (_vm->_game.features & GF_DEMO) &&
+			   _vm->_voiceMode != 2) {
+		_digiSndMode |= mode;
 
 		char filename[30];
 		char roomname[10];
+		int roomNumber = offset;
+		int fileNumber = length;
 
-		if (offset == 1)
-			strcpy(roomname, "logo");
-		else if (offset == 15)
-			strcpy(roomname, "canyon");
-		else if (offset == 17)
-			strcpy(roomname, "pig");
-		else if (offset == 18)
-			strcpy(roomname, "derelict");
-		else if (offset == 19)
-			strcpy(roomname, "wreck");
-		else if (offset == 20)
-			strcpy(roomname, "grave");
-		else if (offset == 23)
-			strcpy(roomname, "nexus");
-		else if (offset == 79)
-			strcpy(roomname, "newton");
+		if (roomNumber == 1)
+			Common::strlcpy(roomname, "logo", sizeof(roomname));
+		else if (roomNumber == 15)
+			Common::strlcpy(roomname, "canyon", sizeof(roomname));
+		else if (roomNumber == 17)
+			Common::strlcpy(roomname, "pig", sizeof(roomname));
+		else if (roomNumber == 18)
+			Common::strlcpy(roomname, "derelict", sizeof(roomname));
+		else if (roomNumber == 19)
+			Common::strlcpy(roomname, "wreck", sizeof(roomname));
+		else if (roomNumber == 20)
+			Common::strlcpy(roomname, "grave", sizeof(roomname));
+		else if (roomNumber == 23)
+			Common::strlcpy(roomname, "nexus", sizeof(roomname));
+		else if (roomNumber == 79)
+			Common::strlcpy(roomname, "newton", sizeof(roomname));
 		else {
-			warning("startTalkSound: dig demo: unknown room number: %d", offset);
+			warning("startTalkSound: dig demo: unknown room number: %d", roomNumber);
 			return;
 		}
 
-		file.reset(new ScummFile());
+		file.reset(new ScummFile(_vm));
 		if (!file)
 			error("startTalkSound: Out of memory");
 
-		sprintf(filename, "audio/%s.%u/%u.voc", roomname, offset, b);
+		Common::sprintf_s(filename, "audio/%s.%u/%u.voc", roomname, roomNumber, fileNumber);
 		if (!_vm->openFile(*file, filename)) {
-			sprintf(filename, "audio/%s_%u/%u.voc", roomname, offset, b);
+			Common::sprintf_s(filename, "audio/%s_%u/%u.voc", roomname, roomNumber, fileNumber);
 			_vm->openFile(*file, filename);
 		}
 
 		if (!file->isOpen()) {
-			sprintf(filename, "%u.%u.voc", offset, b);
+			Common::sprintf_s(filename, "%u.%u.voc", roomNumber, fileNumber);
 			_vm->openFile(*file, filename);
 		}
 
@@ -536,7 +528,121 @@ void Sound::startTalkSound(uint32 offset, uint32 b, int mode, Audio::SoundHandle
 			warning("startTalkSound: dig demo: voc file not found");
 			return;
 		}
+
+		file->seek(0, SEEK_END);
+#if defined(ENABLE_SCUMM_7_8)
+		int fileSize = file->pos();
+		_vm->_imuseDigital->startVoice(filename, file.release(), 0, fileSize);
+#endif
+		return;
+	} else if (_vm->_game.id == GID_FT) {
+		int totalOffset, soundSize, fileSize, headerTag, vctlBlockSize;
+
+		if (_vm->_voiceMode != 2) {
+			// Don't read the index of the PAK file, as we cached the
+			// location and size of monster.sou, which is the only file
+			// we need at this point. We do this to avoid reading the
+			// whole PAK file index for each speech sound.
+			ScummFile *scummFile = _vm->instantiateScummFile(false);
+			if (_vm->_game.features & GF_DOUBLEFINE_PAK) {
+				PAKFile tmpPak;
+				tmpPak.start = _cachedSfxLocationInPak;
+				tmpPak.len = _cachedSfxLengthInPak;
+				dynamic_cast<ScummPAKFile *>(scummFile)->setPAKFileIndex(_sfxFilename, tmpPak);
+			}
+			file.reset(scummFile);
+
+			if (!file)
+				error("startTalkSound: Out of memory");
+
+			if (!_vm->openFile(*file, Common::Path(_sfxFilename))) {
+				warning("startTalkSound: could not open sfx file %s", _sfxFilename.c_str());
+				return;
+			}
+
+			// File format for each speech file:
+			// - VCTL block; containing:
+			//   - "VCTL" string (4 bytes);
+			//   - The size of said block (4 bytes);
+			//   - A variable number of mouth sync timestamps (2 bytes each);
+			//     subtracting 8 from the size of the block, and dividing by 2,
+			//     yields the number of mouth syncs available for the current file.
+			//     Curiously, the number of syncs is already given as an argument
+			//     to this function, coming from the control codes of the current
+			//     dialog string.
+			//
+			// - VTLK block; containing:
+			//   - "VTLK" string (4 bytes);
+			//   - The size of said block (4 bytes);
+			//   - A full VOC file (complete with each header).
+			//
+			// The engine also allows for a VOC file without a VTLK header.
+
+			file->setEnc(_sfxFileEncByte);
+			file->seek(offset + 4 + 4, SEEK_SET); // Skip "VCTL" and the block size
+			vctlBlockSize = length;
+
+			if (vctlBlockSize > 8) {
+				num = (vctlBlockSize - 8) >> 1;
+			}
+
+			if (num >= 50)
+				num = 48;
+
+			assert(num + 1 < (int)ARRAYSIZE(_mouthSyncTimes));
+			for (i = 0; i < num; i++)
+				_mouthSyncTimes[i] = file->readUint16BE();
+
+			_mouthSyncTimes[i] = 0xFFFF;
+			_digiSndMode |= mode;
+			resetSpeechTimer();
+			_mouthSyncMode = true;
+
+			totalOffset = offset + vctlBlockSize;
+			file->seek(totalOffset, SEEK_SET);
+			headerTag = file->readUint32BE();
+			soundSize = file->readUint32BE() - 8;
+			fileSize = soundSize;
+			if (headerTag == MKTAG('C','r','e','a')) {
+				file->seek(totalOffset + 27, SEEK_SET);
+				fileSize = 31;
+				fileSize += file->readUint32LE() >> 8;
+#if defined(ENABLE_SCUMM_7_8)
+				_vm->_imuseDigital->startVoice(_sfxFilename.c_str(), file.release(), totalOffset, fileSize);
+#else
+				(void)fileSize;
+#endif
+			} else if (headerTag == MKTAG('V','T','L','K')) {
+#if defined(ENABLE_SCUMM_7_8)
+				_vm->_imuseDigital->startVoice(_sfxFilename.c_str(), file.release(), totalOffset + 8, soundSize);
+#endif
+			} else {
+				file.release()->close();
+			}
+		}
+		return;
+	} else if (shouldInjectMISEAudio()) {
+		// MI1 and MI2 SE
+		if (_soundSE && !_soundsPaused && _mixer->isReady()) {
+			Audio::AudioStream *input = _soundSE->getAudioStreamFromOffset(
+				offset,
+				mode == DIGI_SND_MODE_SFX ? kSoundSETypeSFX : kSoundSETypeSpeech);
+
+			_digiSndMode |= mode;
+
+			if (input) {
+				if (mode == DIGI_SND_MODE_SFX)
+					_mixer->playStream(Audio::Mixer::kSFXSoundType, handle, input, id);
+				else
+					_mixer->playStream(Audio::Mixer::kSpeechSoundType, handle, input, id);
+			}
+		}
+
+		return;
 	} else {
+		// This has been verified for INDY4, DOTT and SAM
+		if (_vm->_voiceMode == 2 && _vm->_game.version <= 6)
+			return;
 
 		if (_sfxFilename.empty()) {
 			warning("startTalkSound: SFX file not found");
@@ -547,28 +653,28 @@ void Sound::startTalkSound(uint32 offset, uint32 b, int mode, Audio::SoundHandle
 		// automatically stop any other that may be playing at that time. So
 		// that is what we do here, but we make an exception for speech.
 
-		if (mode == 1 && (_vm->_game.id == GID_TENTACLE || _vm->_game.id == GID_SAMNMAX)) {
-			id = 777777 + _talk_sound_channel;
+		if (mode == DIGI_SND_MODE_SFX && (_vm->_game.id == GID_TENTACLE || _vm->_game.id == GID_SAMNMAX)) {
+			id = 777777 + _queuedSfxChannel;
 			_mixer->stopID(id);
 		}
 
-		if (b > 8) {
-			num = (b - 8) >> 1;
+		if (length > 8) {
+			num = (length - 8) >> 1;
 		}
 
-		if (_offsetTable != NULL) {
-			MP3OffsetTable *result = NULL, key;
+		if (_offsetTable != nullptr) {
+			MP3OffsetTable *result = nullptr, key;
 
 			key.org_offset = offset;
 			result = (MP3OffsetTable *)bsearch(&key, _offsetTable, _numSoundEffects,
 													sizeof(MP3OffsetTable), compareMP3OffsetTable);
 
-			if (result == NULL) {
+			if (result == nullptr) {
 				warning("startTalkSound: did not find sound at offset %d", offset);
 				return;
 			}
 			if (2 * num != result->num_tags) {
-				warning("startTalkSound: number of tags do not match (%d - %d)", b,
+				warning("startTalkSound: number of tags do not match (%d - %d)", length,
 								result->num_tags);
 				num = result->num_tags;
 			}
@@ -578,16 +684,25 @@ void Sound::startTalkSound(uint32 offset, uint32 b, int mode, Audio::SoundHandle
 #endif
 		} else {
 			offset += 8;
-#if defined(USE_FLAC) || defined(USE_VORBIS) || defined(USE_MAD)
-			size = -1;
-#endif
 		}
 
-		file.reset(new ScummFile());
+		// Don't read the index of the PAK file, as we cached the
+		// location and size of monster.sou, which is the only file
+		// we need at this point. We do this to avoid reading the
+		// whole PAK file index for each speech sound.
+		ScummFile *scummFile = _vm->instantiateScummFile(false);
+		if (_vm->_game.features & GF_DOUBLEFINE_PAK) {
+			PAKFile tmpPak;
+			tmpPak.start = _cachedSfxLocationInPak;
+			tmpPak.len = _cachedSfxLengthInPak;
+			dynamic_cast<ScummPAKFile *>(scummFile)->setPAKFileIndex(_sfxFilename, tmpPak);
+		}
+		file.reset(scummFile);
+		
 		if (!file)
 			error("startTalkSound: Out of memory");
 
-		if (!_vm->openFile(*file, _sfxFilename)) {
+		if (!_vm->openFile(*file, Common::Path(_sfxFilename))) {
 			warning("startTalkSound: could not open sfx file %s", _sfxFilename.c_str());
 			return;
 		}
@@ -609,13 +724,13 @@ void Sound::startTalkSound(uint32 offset, uint32 b, int mode, Audio::SoundHandle
 		//	size -= num * 2;
 
 		_mouthSyncTimes[i] = 0xFFFF;
-		_sfxMode |= mode;
-		_curSoundPos = 0;
+		_digiSndMode |= mode;
+		resetSpeechTimer();
 		_mouthSyncMode = true;
 	}
 
 	if (!_soundsPaused && _mixer->isReady()) {
-		Audio::AudioStream *input = NULL;
+		Audio::AudioStream *input = nullptr;
 
 		switch (_soundMode) {
 		case kMP3Mode:
@@ -643,7 +758,34 @@ void Sound::startTalkSound(uint32 offset, uint32 b, int mode, Audio::SoundHandle
 #endif
 			break;
 		default:
-			input = Audio::makeVOCStream(file.release(), Audio::FLAG_UNSIGNED, DisposeAfterUse::YES);
+			// WORKAROUND: Check for original Indy4 MONSTER.SOU bug
+			// The speech sample at VCTL offset 0x76ccbca ("Hey you!") which is used
+			// when Indy gets caught on the German submarine seems to not be a VOC
+			// but raw PCM s16be at (this is a guess) 44.1 kHz with a bogus VOC header.
+			// To work around this we skip the VOC header and decode the raw PCM data.
+			// Fixes Trac#10559
+			//
+			// We use `kEnhGameBreakingBugFixes` because the original bug causes some terrible
+			// harsh white noise which could damage one's ears when wearing headphones.
+			if (mode == 2 && _vm->_game.id == GID_INDY4 && offset == 0x76ccbd4 && _vm->enhancementEnabled(kEnhGameBreakingBugFixes))
+				input = checkForBrokenIndy4Sample(file.release(), offset);
+
+			// Play remastered audio for DOTT
+			if (!input && _soundSE && _useRemasteredAudio) {
+				input = _soundSE->getAudioStreamFromOffset(
+					origOffset,
+					mode == DIGI_SND_MODE_SFX ? kSoundSETypeSFX : kSoundSETypeSpeech
+				);
+			}
+
+			if (!input) {
+				input = Audio::makeVOCStream(
+					file.release(),
+					Audio::FLAG_UNSIGNED,
+					DisposeAfterUse::YES
+				);
+			}
+
 			break;
 		}
 
@@ -652,13 +794,8 @@ void Sound::startTalkSound(uint32 offset, uint32 b, int mode, Audio::SoundHandle
 			return;
 		}
 
-		if (_vm->_imuseDigital) {
-#ifdef ENABLE_SCUMM_7_8
-			//_vm->_imuseDigital->stopSound(kTalkSoundID);
-			_vm->_imuseDigital->startVoice(kTalkSoundID, input);
-#endif
-		} else {
-			if (mode == 1) {
+		if (!_vm->_imuseDigital) {
+			if (mode == DIGI_SND_MODE_SFX) {
 				_mixer->playStream(Audio::Mixer::kSFXSoundType, handle, input, id);
 			} else {
 				_mixer->playStream(Audio::Mixer::kSpeechSoundType, handle, input, id);
@@ -668,7 +805,7 @@ void Sound::startTalkSound(uint32 offset, uint32 b, int mode, Audio::SoundHandle
 }
 
 void Sound::stopTalkSound() {
-	if (_sfxMode & 2) {
+	if (_digiSndMode & DIGI_SND_MODE_TALKIE) {
 		if (_vm->_imuseDigital) {
 #ifdef ENABLE_SCUMM_7_8
 			_vm->_imuseDigital->stopSound(kTalkSoundID);
@@ -676,9 +813,9 @@ void Sound::stopTalkSound() {
 		} else if (_vm->_game.heversion >= 60) {
 			stopSound(1);
 		} else {
-			_mixer->stopHandle(_talkChannelHandle);
+			_mixer->stopHandle(*_talkChannelHandle);
 		}
-		_sfxMode &= ~2;
+		_digiSndMode &= ~DIGI_SND_MODE_TALKIE;
 	}
 }
 
@@ -686,6 +823,12 @@ bool Sound::isMouthSyncOff(uint pos) {
 	uint j;
 	bool val = true;
 	uint16 *ms = _mouthSyncTimes;
+	uint delay = (_vm->_game.version == 6) ? 10 : 0;
+
+	if (_vm->_game.id == GID_DIG && !(_vm->_game.features & GF_DEMO)) {
+		pos = 1000 * pos / 60;
+		val = false;
+	}
 
 	_endOfMouthSync = false;
 	do {
@@ -695,18 +838,24 @@ bool Sound::isMouthSyncOff(uint pos) {
 			_endOfMouthSync = true;
 			break;
 		}
-	} while (pos > j);
-	return val;
+	} while (pos + delay > j);
+
+	if (_vm->_game.version < 7) {
+		return val;
+	} else {
+		return (j != 0xFFFF) ? val : false;
+	}
 }
 
 int Sound::isSoundRunning(int sound) const {
 #ifdef ENABLE_SCUMM_7_8
-	if (_vm->_imuseDigital)
-		return (_vm->_imuseDigital->getSoundStatus(sound) != 0);
+	if (_vm->_imuseDigital) {
+		return (_vm->_imuseDigital->isSoundRunning(sound) != 0);
+	}
 #endif
 
-	if (sound == _currentCDSound)
-		return pollCD();
+	if (sound == _soundCD->_currentCDSound)
+		return _soundCD->pollCD();
 
 	if (_mixer->isSoundIDActive(sound))
 		return 1;
@@ -725,24 +874,33 @@ int Sound::isSoundRunning(int sound) const {
 
 /**
  * Check whether the sound resource with the specified ID is still
- * used. This is invoked by ScummEngine::isResourceInUse, to determine
+ * used. This is invoked by ScummEngine::isResourceInUse(), to determine
  * which resources can be expired from memory.
- * Technically, this works very similar to isSoundRunning, however it
+ * Technically, this works very similar to isSoundRunning(), however it
  * calls IMuse::get_sound_active() instead of IMuse::getSoundStatus().
  * The difference between those two is in how they treat sounds which
  * are being faded out: get_sound_active() returns true even when the
  * sound is being faded out, while getSoundStatus() returns false in
  * that case.
+ *
+ * Another difference is that isSoundRunning() checks if sound is greater
+ * than _numSounds before checking if the resource is loaded. That check is
+ * only for non-HE games. In HE games, a number higher than _numSounds
+ * represents a (streamed) music track. HE games have their own implementation
+ * of isSoundRunning(), while isSoundInUse() is used by all.
  */
 bool Sound::isSoundInUse(int sound) const {
 
 #ifdef ENABLE_SCUMM_7_8
 	if (_vm->_imuseDigital)
-		return (_vm->_imuseDigital->getSoundStatus(sound) != 0);
+		return (_vm->_imuseDigital->isSoundRunning(sound) != 0);
 #endif
 
-	if (sound == _currentCDSound)
-		return pollCD() != 0;
+	if (sound == _soundCD->_currentCDSound)
+		return _soundCD->pollCD() != 0;
+
+	if (_mixer->isSoundIDActive(sound))
+		return true;
 
 	if (isSoundInQueue(sound))
 		return true;
@@ -752,9 +910,8 @@ bool Sound::isSoundInUse(int sound) const {
 
 	if (_vm->_imuse)
 		return _vm->_imuse->get_sound_active(sound);
-
-	if (_mixer->isSoundIDActive(sound))
-		return 1;
+	else if (_vm->_musicEngine)
+		return _vm->_musicEngine->getSoundStatus(sound);
 
 	return false;
 }
@@ -762,18 +919,18 @@ bool Sound::isSoundInUse(int sound) const {
 bool Sound::isSoundInQueue(int sound) const {
 	int i, num;
 
-	i = _soundQue2Pos;
+	i = _soundQueuePos;
 	while (i--) {
-		if (_soundQue2[i].sound == sound)
+		if (_soundQueue[i].sound == sound)
 			return true;
 	}
 
 	i = 0;
-	while (i < _soundQuePos) {
-		num = _soundQue[i++];
+	while (i < _midiQueuePos) {
+		num = _midiQueue[i++];
 
 		if (num > 0) {
-			if (_soundQue[i + 0] == 0x10F && _soundQue[i + 1] == 8 && _soundQue[i + 2] == sound)
+			if (_midiQueue[i + 0] == 0x10F && _midiQueue[i + 1] == 8 && _midiQueue[i + 2] == sound)
 				return true;
 			i += num;
 		}
@@ -784,11 +941,9 @@ bool Sound::isSoundInQueue(int sound) const {
 void Sound::stopSound(int sound) {
 	int i;
 
-	if (sound != 0 && sound == _currentCDSound) {
-		_currentCDSound = 0;
-		stopCD();
-		stopCDTimer();
-	}
+	_soundCD->stopCDSound(sound);
+	if (_enableAmbienceSounds)
+		_soundSE->stopAmbience();
 
 	if (_vm->_game.version < 7)
 		_mixer->stopID(sound);
@@ -796,27 +951,28 @@ void Sound::stopSound(int sound) {
 	if (_vm->_musicEngine)
 		_vm->_musicEngine->stopSound(sound);
 
-	for (i = 0; i < ARRAYSIZE(_soundQue2); i++) {
-		if (_soundQue2[i].sound == sound) {
-			_soundQue2[i].sound = 0;
-			_soundQue2[i].offset = 0;
-			_soundQue2[i].channel = 0;
-			_soundQue2[i].flags = 0;
+	for (i = 0; i < ARRAYSIZE(_soundQueue); i++) {
+		if (_soundQueue[i].sound == sound) {
+			_soundQueue[i].sound = 0;
+			_soundQueue[i].offset = 0;
+			_soundQueue[i].channel = 0;
+			_soundQueue[i].flags = 0;
+			_soundQueue[i].freq = 0;
+			_soundQueue[i].pan = 0;
+			_soundQueue[i].vol = 0;
 		}
 	}
 }
 
 void Sound::stopAllSounds() {
-	if (_currentCDSound != 0) {
-		_currentCDSound = 0;
-		stopCD();
-		stopCDTimer();
-	}
+	_soundCD->stopAllCDSounds();
+	if (_enableAmbienceSounds)
+		_soundSE->stopAmbience();
 
 	// Clear the (secondary) sound queue
 	_lastSound = 0;
-	_soundQue2Pos = 0;
-	memset(_soundQue2, 0, sizeof(_soundQue2));
+	_soundQueuePos = 0;
+	memset(_soundQueue, 0, sizeof(_soundQueue));
 
 	if (_vm->_musicEngine) {
 		_vm->_musicEngine->stopAllSounds();
@@ -833,8 +989,9 @@ void Sound::soundKludge(int *list, int num) {
 
 #ifdef ENABLE_SCUMM_7_8
 	if (_vm->_imuseDigital) {
-		_vm->_imuseDigital->parseScriptCmds(list[0], list[1], list[2], list[3], list[4],
-												list[5], list[6], list[7]);
+		_vm->_imuseDigital->parseScriptCmds(list[0],  list[1],  list[2],  list[3],  list[4],
+									  list[5],  list[6],  list[7],  list[8],  list[9],
+									  list[10], list[11], list[12], list[13], list[14], list[15]);
 		return;
 	}
 #endif
@@ -842,25 +999,25 @@ void Sound::soundKludge(int *list, int num) {
 	if (list[0] == -1) {
 		processSound();
 	} else {
-		_soundQue[_soundQuePos++] = num;
+		_midiQueue[_midiQueuePos++] = num;
 
 		for (i = 0; i < num; i++) {
-			_soundQue[_soundQuePos++] = list[i];
+			_midiQueue[_midiQueuePos++] = list[i];
 		}
 	}
 }
 
-void Sound::talkSound(uint32 a, uint32 b, int mode, int channel) {
-	if (mode == 1) {
-		_talk_sound_a1 = a;
-		_talk_sound_b1 = b;
-		_talk_sound_channel = channel;
+void Sound::talkSound(uint32 offset, uint32 length, int mode, int channel) {
+	if (mode == DIGI_SND_MODE_SFX) {
+		_queuedSfxOffset = offset;
+		_queuedSfxLen = length;
+		_queuedSfxChannel = channel;
 	} else {
-		_talk_sound_a2 = a;
-		_talk_sound_b2 = b;
+		_queuedTalkieOffset = offset;
+		_queuedTalkieLen = length;
 	}
 
-	_talk_sound_mode |= mode;
+	_queuedSoundMode |= mode;
 }
 
 void Sound::setupSound() {
@@ -875,13 +1032,7 @@ void Sound::pauseSounds(bool pause) {
 	if (_vm->_imuse)
 		_vm->_imuse->pause(pause);
 
-	// Don't pause sounds if the game isn't active
-	// FIXME - this is quite a nasty hack, replace with something cleaner, and w/o
-	// having to access member vars directly!
-	if (!_vm->_roomResource)
-		return;
-
-	_soundsPaused = pause;
+	_soundsPaused = _soundCD->_soundsPaused = pause;
 
 #ifdef ENABLE_SCUMM_7_8
 	if (_vm->_imuseDigital) {
@@ -891,12 +1042,47 @@ void Sound::pauseSounds(bool pause) {
 
 	_mixer->pauseAll(pause);
 
-	if ((_vm->_game.features & GF_AUDIOTRACKS) && _vm->VAR(_vm->VAR_MUSIC_TIMER) > 0) {
-		if (pause)
-			stopCDTimer();
-		else
-			startCDTimer();
+	_soundCD->pauseCDSounds(pause);
+}
+
+bool Sound::isSfxFileCompressed() {
+	return !(_soundMode == kVOCMode);
+}
+
+bool Sound::hasSfxFile() const
+{
+	return !_sfxFilename.empty();
+}
+
+ScummFile *Sound::restoreDiMUSESpeechFile(const char *fileName) {
+	Common::ScopedPtr<ScummFile> file;
+	file.reset(_vm->instantiateScummFile());
+	if (!_vm->openFile(*file, fileName)) {
+		return NULL;
 	}
+
+	return file.release();
+}
+
+/* The approach used by the full version of The Dig for obtaining mouth syncs is a bit weird:
+ * they are stored in a text marker found inside the DiMUSE map for each speech file, and when
+ * said engine reaches said marker, the function below is triggered.
+ *
+ * A good reason why this is the way it's done, is that in The Dig the whole speech file,
+ * including its map (and consequently, the text marker), is compressed with the same codec as
+ * sound data; this prevents us from getting the mouth syncs before the file has started playing.
+ * Also, although I can't confirm this, there might be more than one sync marker in a single
+ * speech file, so let's just be safe and follow what the original does.
+ */
+void Sound::extractSyncsFromDiMUSEMarker(const char *marker) {
+	int syncIdx = 0;
+
+	while (marker[syncIdx * 8]) {
+		_mouthSyncTimes[syncIdx] = (uint16)atoi(&marker[syncIdx * 8]);
+		syncIdx++;
+	}
+
+	_mouthSyncTimes[syncIdx] = 0xFFFF;
 }
 
 void Sound::setupSfxFile() {
@@ -916,11 +1102,11 @@ void Sound::setupSfxFile() {
 #ifdef USE_MAD
 		{ "so3", kMP3Mode },
 #endif
-		{ 0, kVOCMode }
+		{ nullptr, kVOCMode }
 	};
 
-	ScummFile file;
-	_offsetTable = NULL;
+	ScummFile *file = _vm->instantiateScummFile();
+	_offsetTable = nullptr;
 	_sfxFileEncByte = 0;
 	_sfxFilename.clear();
 
@@ -929,7 +1115,7 @@ void Sound::setupSfxFile() {
 	 * same directory */
 
 	Common::String basename[2];
-	Common::String tmp;
+	Common::Path tmp;
 
 	const char *ptr = strchr(_vm->_filenamePattern.pattern, '.');
 	if (ptr) {
@@ -944,23 +1130,33 @@ void Sound::setupSfxFile() {
 		if ((_vm->_game.heversion <= 62 && _vm->_game.platform == Common::kPlatformMacintosh) || (_vm->_game.heversion >= 70)) {
 			tmp = _vm->generateFilename(-2);
 		} else {
-			tmp = basename[0] + "tlk";
+			tmp = basename[0];
+			tmp.appendInPlace("tlk");
 		}
 
-		if (file.open(tmp))
-			_sfxFilename = tmp;
+		if (file->open(Common::Path(tmp)))
+			_sfxFilename = tmp.toString('/');
 
 		if (_vm->_game.heversion <= 74)
 			_sfxFileEncByte = 0x69;
 
 		_soundMode = kVOCMode;
 	} else {
-		for (uint j = 0; j < 2 && !file.isOpen(); ++j) {
+		for (uint j = 0; j < 2 && !file->isOpen(); ++j) {
 			for (int i = 0; extensions[i].ext; ++i) {
-				tmp = basename[j] + extensions[i].ext;
-				if (_vm->openFile(file, tmp)) {
+				tmp = basename[j];
+				tmp.appendInPlace(extensions[i].ext);
+				if (_vm->openFile(*file, tmp)) {
 					_soundMode = extensions[i].mode;
-					_sfxFilename = tmp;
+					_sfxFilename = tmp.toString('/');
+
+					// Cache SFX file location for classic game versions
+					// packed within remastered ones
+					if (_vm->_game.features & GF_DOUBLEFINE_PAK) {
+						PAKFile *tmpPak = dynamic_cast<ScummPAKFile *>(file)->getPAKFileIndex(_sfxFilename);
+						_cachedSfxLocationInPak = tmpPak->start;
+						_cachedSfxLengthInPak = tmpPak->len;
+					}
 					break;
 				}
 			}
@@ -984,138 +1180,78 @@ void Sound::setupSfxFile() {
 		 */
 		int size, compressed_offset;
 		MP3OffsetTable *cur;
-		compressed_offset = file.readUint32BE();
+		compressed_offset = file->readUint32BE();
 		_offsetTable = (MP3OffsetTable *) malloc(compressed_offset);
 		_numSoundEffects = compressed_offset / 16;
 
 		size = compressed_offset;
 		cur = _offsetTable;
 		while (size > 0) {
-			cur->org_offset = file.readUint32BE();
-			cur->new_offset = file.readUint32BE() + compressed_offset + 4; /* The + 4 is to take into accound the 'size' field */
-			cur->num_tags = file.readUint32BE();
-			cur->compressed_size = file.readUint32BE();
+			cur->org_offset = file->readUint32BE();
+			cur->new_offset = file->readUint32BE() + compressed_offset + 4; /* The + 4 is to take into accound the 'size' field */
+			cur->num_tags = file->readUint32BE();
+			cur->compressed_size = file->readUint32BE();
 			size -= 4 * 4;
 			cur++;
 		}
 	}
+
+	file->close();
+	delete file;
 }
 
 bool Sound::isSfxFinished() const {
 	return !_mixer->hasActiveChannelOfType(Audio::Mixer::kSFXSoundType);
 }
 
-// We use a real timer in an attempt to get better sync with CD tracks. This is
-// necessary for games like Loom CD.
-
-static void cd_timer_handler(void *refCon) {
-	ScummEngine *scumm = (ScummEngine *)refCon;
-
-	// FIXME: Turn off the timer when it's no longer needed. In theory, it
-	// should be possible to check with pollCD(), but since CD sound isn't
-	// properly restarted when reloading a saved game, I don't dare to.
-
-	scumm->VAR(scumm->VAR_MUSIC_TIMER) += 6;
-}
-
-void Sound::startCDTimer() {
-	// This timer interval is based on two scenes: The Monkey Island 1
-	// intro, and the scene in Loom CD where Chaos appears. In both cases
-	// the game plays the scene as two separate sounds, even though both
-	// halves are right next to each other in the CD track. Probably so
-	// that you can hit Escape to skip the first half.
-	//
-	// Make it too low, and the Monkey Island theme will be cut short. Make
-	// it too high, and there will be a nasty "hiccup" just as Chaos
-	// appears.
-
-	_vm->getTimerManager()->removeTimerProc(&cd_timer_handler);
-	_vm->getTimerManager()->installTimerProc(&cd_timer_handler, 100700, _vm, "scummCDtimer");
-}
-
-void Sound::stopCDTimer() {
-	_vm->getTimerManager()->removeTimerProc(&cd_timer_handler);
-}
-
-void Sound::playCDTrack(int track, int numLoops, int startFrame, int duration) {
-	// Reset the music timer variable at the start of a new track
-	_vm->VAR(_vm->VAR_MUSIC_TIMER) = 0;
-
-	// Play it
+void Sound::incrementSpeechTimer() {
 	if (!_soundsPaused)
-		playCDTrackInternal(track, numLoops, startFrame, duration);
-
-	// Start the timer after starting the track. Starting an MP3 track is
-	// almost instantaneous, but a CD player may take some time. Hopefully
-	// playCD() will block during that delay.
-	startCDTimer();
+		_curSoundPos++;
 }
 
-void Sound::playCDTrackInternal(int track, int numLoops, int startFrame, int duration) {
-	_loomSteamCD.track = track;
-	_loomSteamCD.numLoops = numLoops;
-	_loomSteamCD.start = startFrame;
-	_loomSteamCD.duration = duration;
+void Sound::resetSpeechTimer() {
+	_curSoundPos = 0;
+}
 
-	if (!_isLoomSteam) {
-		g_system->getAudioCDManager()->play(track, numLoops, startFrame, duration);
-	} else {
-		// Stop any currently playing track
-		_mixer->stopHandle(_loomSteamCDAudioHandle);
-
-		Common::File *cddaFile = new Common::File();
-		if (cddaFile->open("CDDA.SOU")) {
-			Audio::Timestamp start = Audio::Timestamp(0, startFrame, 75);
-			Audio::Timestamp end = Audio::Timestamp(0, startFrame + duration, 75);
-			Audio::SeekableAudioStream *stream = makeCDDAStream(cddaFile, DisposeAfterUse::YES);
-
-			_mixer->playStream(Audio::Mixer::kMusicSoundType, &_loomSteamCDAudioHandle,
-			                    Audio::makeLoopingAudioStream(stream, start, end, (numLoops < 1) ? numLoops + 1 : numLoops));
-		} else {
-			delete cddaFile;
-		}
+static void speechTimerHandler(void *refCon) {
+	Sound *snd = (Sound *)refCon;
+	if ((snd->_speechTimerMod++ & 3) == 0) {
+		snd->incrementSpeechTimer();
 	}
 }
 
-void Sound::stopCD() {
-	if (!_isLoomSteam)
-		g_system->getAudioCDManager()->stop();
-	else
-		_mixer->stopHandle(_loomSteamCDAudioHandle);
+void Sound::startSpeechTimer() {
+	_vm->getTimerManager()->installTimerProc(&speechTimerHandler, 1000000 / _vm->getTimerFrequency(), this, "scummSpeechTimer");
 }
 
-int Sound::pollCD() const {
-	if (!_isLoomSteam)
-		return g_system->getAudioCDManager()->isPlaying();
-	else
-		return _mixer->isSoundHandleActive(_loomSteamCDAudioHandle);
+void Sound::stopSpeechTimer() {
+	_vm->getTimerManager()->removeTimerProc(&speechTimerHandler);
 }
 
-void Sound::updateCD() {
-	if (!_isLoomSteam)
-		g_system->getAudioCDManager()->updateCD();
+bool Sound::speechIsPlaying() {
+	return _mixer->isSoundHandleActive(*_talkChannelHandle);
 }
 
-AudioCDManager::Status Sound::getCDStatus() {
-	if (!_isLoomSteam)
-		return g_system->getAudioCDManager()->getStatus();
-	else {
-		AudioCDManager::Status info = _loomSteamCD;
-		info.playing = _mixer->isSoundHandleActive(_loomSteamCDAudioHandle);
-		return info;
+void Sound::saveLoadWithSerializer(Common::Serializer &s) {
+	s.syncAsSint16LE(_soundCD->_currentCDSound, VER(35));
+	s.syncAsSint16LE(_currentMusic, VER(35));
+}
+
+void Sound::restoreAfterLoad() {
+	int track = _soundCD->restoreAfterLoad();
+	if (_enableAmbienceSounds && track >= 0)
+		_soundSE->startAmbience(track);
+}
+
+bool Sound::isAudioDisabled() {
+#ifdef ENABLE_SCUMM_7_8
+	if (_vm->_game.version > 6) {
+		return _vm->_imuseDigital->isEngineDisabled();
 	}
+#endif
+
+	return false;
 }
-
-void Sound::saveLoadWithSerializer(Serializer *ser) {
-	static const SaveLoadEntry soundEntries[] = {
-		MKLINE(Sound, _currentCDSound, sleInt16, VER(35)),
-		MKLINE(Sound, _currentMusic, sleInt16, VER(35)),
-		MKEND()
-	};
-
-	ser->saveLoadEntries(this, soundEntries);
-}
-
 
 #pragma mark -
 #pragma mark --- Sound resource handling ---
@@ -1171,14 +1307,21 @@ int ScummEngine::readSoundResource(ResId idx) {
 				pri = 15;
 				break;
 			case MKTAG('A','D','L',' '):
-				pri = 1;
 				if (_sound->_musicType == MDT_ADLIB || _sound->_musicType == MDT_TOWNS)
 					pri = 10;
+				else if (_sound->_musicType != MDT_MACINTOSH && _sound->_musicType != MDT_AMIGA)
+					pri = 1;
 				break;
 			case MKTAG('A','M','I',' '):
 				pri = 3;
 				break;
 			case MKTAG('R','O','L',' '):
+				// Some of the Mac MI2 music only exists as Roland tracks. The
+				// original interpreter doesn't play them. I don't think there
+				// is any similarly missing FoA music.
+				if (_game.id == GID_MONKEY2 && _game.platform == Common::kPlatformMacintosh && !enhancementEnabled(kEnhAudioChanges))
+					break;
+
 				pri = 3;
 				if (_native_mt32)
 					pri = 5;
@@ -1190,9 +1333,10 @@ int ScummEngine::readSoundResource(ResId idx) {
 				pri = 2;
 				break;
 			case MKTAG('S','P','K',' '):
-				pri = -1;
 				if (_sound->_musicType == MDT_PCSPK || _sound->_musicType == MDT_PCJR)
 					pri = 11;
+				break;
+			default:
 				break;
 			}
 
@@ -1235,6 +1379,11 @@ int ScummEngine::readSoundResource(ResId idx) {
 			_fileHandle->read(ptr, best_size);
 			//dumpResource("sound-", idx, ptr);
 			return 1;
+		} else if (_game.platform == Common::kPlatformAmiga || _game.platform == Common::kPlatformMacintosh) {
+			// This isn't a bug. These versions simply don't have all the sounds. Very noticeable for Amiga (which
+			// doesn't even have the Woodtick song), but also for Macintosh in a few cases.
+			debugC(DEBUG_RESOURCE, "No appropriate sound data for target platform found in resource %d", idx);
+			return 0;
 		}
 		break;
 	case MKTAG('M','a','c','0'):
@@ -1250,12 +1399,33 @@ int ScummEngine::readSoundResource(ResId idx) {
 	case MKTAG('T','A','L','K'):
 	case MKTAG('D','I','G','I'):
 	case MKTAG('C','r','e','a'):
-	case 0x460e200d:	// WORKAROUND bug # 1311447
-		_fileHandle->seek(-12, SEEK_CUR);
-		total_size = _fileHandle->readUint32BE();
-		ptr = _res->createResource(rtSound, idx, total_size);
-		_fileHandle->read(ptr, total_size - 8);
-		//dumpResource("sound-", idx, ptr);
+	case 0x460e200d:	// WORKAROUND bug #2221
+		// Some HE games take WAV files and put a WSOU header around them
+		if (_game.heversion > 0 && basetag == MKTAG('R','I','F','F')) {
+			_fileHandle->seek(-4, SEEK_CUR);
+
+			// The chunksize field in a RIFF header is a LE field
+			total_size = _fileHandle->readUint32LE() + 8;
+
+			// Make space for the WSOU tag and for the size field
+			ptr = _res->createResource(rtSound, idx, total_size + 8);
+
+			((uint32 *)ptr)[0] = TO_BE_32(MKTAG('W', 'S', 'O', 'U'));
+			((uint32 *)ptr)[1] = TO_BE_32(total_size + 8);
+
+			// Move the ptr forward for the actual data allocation,
+			// so that our new header doesn't get rewritten
+			ptr += 8;
+			_fileHandle->seek(-8, SEEK_CUR);
+			_fileHandle->read(ptr, total_size);
+		} else {
+			_fileHandle->seek(-12, SEEK_CUR);
+			total_size = _fileHandle->readUint32BE();
+			ptr = _res->createResource(rtSound, idx, total_size);
+			_fileHandle->read(ptr, total_size - 8);
+			//dumpResource("sound-", idx, ptr);
+		}
+
 		return 1;
 
 	case MKTAG('H','S','H','D'):
@@ -1274,7 +1444,7 @@ int ScummEngine::readSoundResource(ResId idx) {
 		Common::File dmuFile;
 		char buffer[128];
 		debugC(DEBUG_SOUND, "Found base tag FMUS in sound %d, size %d", idx, total_size);
-		debugC(DEBUG_SOUND, "It was at position %d", _fileHandle->pos());
+		debugC(DEBUG_SOUND, "It was at position %d", (int)_fileHandle->pos());
 
 		_fileHandle->seek(4, SEEK_CUR);
 		// HSHD size
@@ -1289,7 +1459,7 @@ int ScummEngine::readSoundResource(ResId idx) {
 		// files seem to be 11 chars (8.3)
 		char *p = (char *)memchr(buffer, '.', 12);
 		if (!p) p = &buffer[8];
-		strcpy(p, ".dmu");
+		Common::strlcpy(p, ".dmu", sizeof(buffer) - (p - buffer));
 		debugC(DEBUG_SOUND, "FMUS file %s", buffer);
 
 		if (!dmuFile.open(buffer)) {
@@ -1316,8 +1486,10 @@ int ScummEngine::readSoundResource(ResId idx) {
 			//dumpResource("sound-", idx, ptr);
 			return 1;
 		}
-		error("Unrecognized base tag 0x%08x in sound %d", basetag, idx);
 	}
+
+	if (total_size)
+		warning("Unrecognized base tag '%c%c%c%c' in sound %d", (basetag >> 24) & 0xFF, (basetag >> 16) & 0xFF, (basetag >> 8) & 0xFF, basetag & 0xFF, idx);
 	_res->_types[rtSound][idx]._roomoffs = RES_INVALID_OFFSET;
 	return 0;
 }
@@ -1655,6 +1827,7 @@ static void convertADResource(ResourceManager *res, const GameSettings& game, Re
 		int  current_note[3];
 		int track_time[3];
 		byte *track_data[3];
+		memset(current_instr, 0, sizeof(current_instr));
 
 		int track_ctr = 0;
 		byte chunk_type = 0;
@@ -1874,7 +2047,7 @@ int ScummEngine::readSoundResourceSmallHeader(ResId idx) {
 
 	debug(4, "readSoundResourceSmallHeader(%d)", idx);
 
-	if ((_game.id == GID_LOOM) && (_game.version == 3) && (_game.platform == Common::kPlatformDOS) && VAR(VAR_SOUNDCARD) == 4) {
+	if (_sound->isRolandLoom()) {
 		// Roland resources in Loom are tagless
 		// So we add an RO tag to allow imuse to detect format
 		byte *ptr, *src_ptr;
@@ -1939,7 +2112,7 @@ int ScummEngine::readSoundResourceSmallHeader(ResId idx) {
 		}
 	}
 
-	if ((_sound->_musicType == MDT_PCSPK || _sound->_musicType == MDT_PCJR) && wa_offs != 0) {
+	if ((_sound->_musicType == MDT_PCSPK || _sound->_musicType == MDT_PCJR || _sound->_musicType == MDT_MACINTOSH) && wa_offs != 0) {
 		if (_game.features & GF_OLD_BUNDLE) {
 			_fileHandle->seek(wa_offs, SEEK_SET);
 			_fileHandle->read(_res->createResource(rtSound, idx, wa_size), wa_size);
@@ -1980,6 +2153,7 @@ int ScummEngine::readSoundResourceSmallHeader(ResId idx) {
 				_fileHandle->read(_res->createResource(rtSound, idx, wa_size + 6), wa_size + 6);
 			}
 		}
+		return 1;
 	} else if (ad_offs != 0) {
 		// AD resources have a header, instrument definitions and one MIDI track.
 		// We build an 'ADL ' resource from that:
@@ -2017,5 +2191,45 @@ int ScummEngine::readSoundResourceSmallHeader(ResId idx) {
 	return 0;
 }
 
+void Sound::updateMusicTimer() {
+	if (_vm->_game.features & GF_AUDIOTRACKS) {
+		_vm->VAR(_vm->VAR_MUSIC_TIMER) = _soundCD->getCDMusicTimer();
+	} else if (_vm->VAR_MUSIC_TIMER != 0xFF) {
+		if (_soundCD->useReplacementAudio() && _soundCD->getCurrentCDSound()) {
+			// The replacement music timer operates on real time, adjusted to
+			// the expected length of the Loom Overture (since there are so
+			// many different recordings of it). It's completely independent of
+			// the SCUMM engine's timer frequency.
+			_soundCD->updateMusicTimer();
+			_vm->VAR(_vm->VAR_MUSIC_TIMER) = _soundCD->getMusicTimer();
+		} else if (_vm->_musicEngine) {
+			// The music engine generates the timer data for us.
+			_vm->VAR(_vm->VAR_MUSIC_TIMER) = _vm->_musicEngine->getMusicTimer() * _vm->getTimerFrequency() / 240.0;
+		}
+	}
+}
+
+void Sound::startRemasteredSpeech(const char *msgString, uint16 roomNumber, uint16 actorTalking, uint16 numWaits) {
+	// Crudely adapted from the disasm of MI1SE...
+	// TODO: Apply the various speech-line substitutions performed per-game
+
+	int32 soundIndex = _soundSE->handleMISESpeech(
+		msgString,
+		nullptr,
+		roomNumber,
+		actorTalking,
+		numWaits
+	);
+
+	if (soundIndex >= 0) {
+		talkSound(soundIndex, 0, DIGI_SND_MODE_TALKIE);
+	}
+}
+
+bool Sound::shouldInjectMISEAudio() const {
+	return (_vm->_game.id == GID_MONKEY || _vm->_game.id == GID_MONKEY2) &&
+		   (_vm->_game.features & GF_DOUBLEFINE_PAK) &&
+		   _useRemasteredAudio;
+}
 
 } // End of namespace Scumm

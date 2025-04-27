@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -38,35 +37,35 @@ namespace LastExpress {
 
 Vesna::Vesna(LastExpressEngine *engine) : Entity(engine, kEntityVesna) {
 	ADD_CALLBACK_FUNCTION(Vesna, reset);
-	ADD_CALLBACK_FUNCTION(Vesna, playSound);
-	ADD_CALLBACK_FUNCTION(Vesna, enterExitCompartment);
-	ADD_CALLBACK_FUNCTION(Vesna, draw);
-	ADD_CALLBACK_FUNCTION(Vesna, updateEntity);
-	ADD_CALLBACK_FUNCTION(Vesna, updateFromTime);
-	ADD_CALLBACK_FUNCTION(Vesna, updateEntity2);
+	ADD_CALLBACK_FUNCTION_S(Vesna, playSound);
+	ADD_CALLBACK_FUNCTION_SI(Vesna, enterExitCompartment);
+	ADD_CALLBACK_FUNCTION_S(Vesna, draw);
+	ADD_CALLBACK_FUNCTION_II(Vesna, updateEntity);
+	ADD_CALLBACK_FUNCTION_I(Vesna, updateFromTime);
+	ADD_CALLBACK_FUNCTION_II(Vesna, updateEntity2);
 	ADD_CALLBACK_FUNCTION(Vesna, callbackActionRestaurantOrSalon);
 	ADD_CALLBACK_FUNCTION(Vesna, callbackActionOnDirection);
-	ADD_CALLBACK_FUNCTION(Vesna, savegame);
-	ADD_CALLBACK_FUNCTION(Vesna, function11);
+	ADD_CALLBACK_FUNCTION_II(Vesna, savegame);
+	ADD_CALLBACK_FUNCTION_TYPE(Vesna, homeAlone, EntityParametersIIIS);
 	ADD_CALLBACK_FUNCTION(Vesna, chapter1);
-	ADD_CALLBACK_FUNCTION(Vesna, chapter1Handler);
-	ADD_CALLBACK_FUNCTION(Vesna, function14);
+	ADD_CALLBACK_FUNCTION(Vesna, withMilos);
+	ADD_CALLBACK_FUNCTION(Vesna, homeTogether);
 	ADD_CALLBACK_FUNCTION(Vesna, function15);
 	ADD_CALLBACK_FUNCTION(Vesna, chapter2);
 	ADD_CALLBACK_FUNCTION(Vesna, chapter2Handler);
-	ADD_CALLBACK_FUNCTION(Vesna, function18);
+	ADD_CALLBACK_FUNCTION(Vesna, checkTrain);
 	ADD_CALLBACK_FUNCTION(Vesna, chapter3);
-	ADD_CALLBACK_FUNCTION(Vesna, chapter3Handler);
-	ADD_CALLBACK_FUNCTION(Vesna, function21);
-	ADD_CALLBACK_FUNCTION(Vesna, function22);
-	ADD_CALLBACK_FUNCTION(Vesna, function23);
+	ADD_CALLBACK_FUNCTION_TYPE(Vesna, inCompartment, EntityParametersIIIS);
+	ADD_CALLBACK_FUNCTION(Vesna, takeAWalk);
+	ADD_CALLBACK_FUNCTION(Vesna, killAnna);
+	ADD_CALLBACK_FUNCTION(Vesna, killedAnna);
 	ADD_CALLBACK_FUNCTION(Vesna, chapter4);
-	ADD_CALLBACK_FUNCTION(Vesna, function25);
-	ADD_CALLBACK_FUNCTION(Vesna, function26);
+	ADD_CALLBACK_FUNCTION(Vesna, exitLocation);
+	ADD_CALLBACK_FUNCTION(Vesna, done);
 	ADD_CALLBACK_FUNCTION(Vesna, function27);
 	ADD_CALLBACK_FUNCTION(Vesna, chapter5);
-	ADD_CALLBACK_FUNCTION(Vesna, chapter5Handler);
-	ADD_CALLBACK_FUNCTION(Vesna, function30);
+	ADD_CALLBACK_FUNCTION(Vesna, guarding);
+	ADD_CALLBACK_FUNCTION(Vesna, climbing);
 	ADD_NULL_FUNCTION();
 }
 
@@ -93,7 +92,7 @@ IMPLEMENT_FUNCTION_END
 //////////////////////////////////////////////////////////////////////////
 IMPLEMENT_FUNCTION_II(5, Vesna, updateEntity, CarIndex, EntityPosition)
 	if (savepoint.action == kActionExcuseMeCath) {
-		getSound()->playSound(kEntityPlayer, rnd(2) ? "CAT10150" : "CAT1015A");
+		getSound()->playSound(kEntityPlayer, rnd(2) ? "CAT1015" : "CAT1015A");
 
 		return;
 	}
@@ -116,8 +115,8 @@ IMPLEMENT_FUNCTION_II(7, Vesna, updateEntity2, CarIndex, EntityPosition)
 		params->param3 = 0;
 
 		if (getEntities()->isDistanceBetweenEntities(kEntityVesna, kEntityMilos, 500)
-		 || (((getData()->direction == kDirectionUp && (getData()->car > getEntityData(kEntityMilos)->car)) || (getData()->car == getEntityData(kEntityMilos)->car && getData()->entityPosition > getEntityData(kEntityMilos)->entityPosition)))
-		 || (((getData()->direction == kDirectionDown && (getData()->car < getEntityData(kEntityMilos)->car)) || (getData()->car == getEntityData(kEntityMilos)->car && getData()->entityPosition < getEntityData(kEntityMilos)->entityPosition)))) {
+		 || (getData()->direction == kDirectionUp && (getData()->car > getEntityData(kEntityMilos)->car || (getData()->car == getEntityData(kEntityMilos)->car && getData()->entityPosition > getEntityData(kEntityMilos)->entityPosition)))
+		 || (getData()->direction == kDirectionDown && (getData()->car < getEntityData(kEntityMilos)->car || (getData()->car == getEntityData(kEntityMilos)->car && getData()->entityPosition < getEntityData(kEntityMilos)->entityPosition)))) {
 			getData()->field_49B = 0;
 			params->param3 = 1;
 		}
@@ -152,7 +151,7 @@ IMPLEMENT_FUNCTION_II(10, Vesna, savegame, SavegameType, uint32)
 IMPLEMENT_FUNCTION_END
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_FUNCTION(11, Vesna, function11)
+IMPLEMENT_FUNCTION(11, Vesna, homeAlone)
 	// Expose parameters as IIIS and ignore the default exposed parameters
 	EntityData::EntityParametersIIIS *parameters = (EntityData::EntityParametersIIIS*)_data->getCurrentParameters();
 
@@ -186,16 +185,16 @@ IMPLEMENT_FUNCTION(11, Vesna, function11)
 		parameters->param1++;
 		switch (parameters->param1) {
 		default:
-			strcpy((char *)&parameters->seq, "VES1015C");
+			Common::strcpy_s(parameters->seq, "VES1015C");
 			parameters->param1 = 0;
 			break;
 
 		case 1:
-			strcpy((char *)&parameters->seq, "VES1015A");
+			Common::strcpy_s(parameters->seq, "VES1015A");
 			break;
 
 		case 2:
-			strcpy((char *)&parameters->seq, "VES1015B");
+			Common::strcpy_s(parameters->seq, "VES1015B");
 			break;
 		}
 
@@ -226,7 +225,7 @@ IMPLEMENT_FUNCTION(11, Vesna, function11)
 		case 1:
 		case 2:
 			setCallback(3);
-			setup_playSound((char *)&parameters->seq);
+			setup_playSound(parameters->seq);
 			break;
 
 		case 3:
@@ -255,7 +254,7 @@ IMPLEMENT_FUNCTION(12, Vesna, chapter1)
 		break;
 
 	case kActionNone:
-		Entity::timeCheck(kTimeChapter1, params->param1, WRAP_SETUP_FUNCTION(Vesna, setup_chapter1Handler));
+		Entity::timeCheck(kTimeChapter1, params->param1, WRAP_SETUP_FUNCTION(Vesna, setup_withMilos));
 		break;
 
 	case kActionDefault:
@@ -269,7 +268,7 @@ IMPLEMENT_FUNCTION(12, Vesna, chapter1)
 IMPLEMENT_FUNCTION_END
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_FUNCTION(13, Vesna, chapter1Handler)
+IMPLEMENT_FUNCTION(13, Vesna, withMilos)
 	switch (savepoint.action) {
 	default:
 		break;
@@ -277,12 +276,13 @@ IMPLEMENT_FUNCTION(13, Vesna, chapter1Handler)
 	case kActionNone:
 		getData()->entityPosition = getEntityData(kEntityMilos)->entityPosition;
 		getData()->location = getEntityData(kEntityMilos)->location;
+		getData()->car = getEntityData(kEntityMilos)->car;
 		break;
 
 	case kActionCallback:
 		if (getCallback() == 1) {
 			getEntities()->clearSequences(kEntityVesna);
-			setup_function14();
+			setup_homeTogether();
 		}
 		break;
 
@@ -294,7 +294,7 @@ IMPLEMENT_FUNCTION(13, Vesna, chapter1Handler)
 IMPLEMENT_FUNCTION_END
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_FUNCTION(14, Vesna, function14)
+IMPLEMENT_FUNCTION(14, Vesna, homeTogether)
 	switch (savepoint.action) {
 	default:
 		break;
@@ -307,7 +307,7 @@ IMPLEMENT_FUNCTION(14, Vesna, function14)
 
 	case kAction190412928:
 		setCallback(1);
-		setup_function11();
+		setup_homeAlone();
 		break;
 	}
 IMPLEMENT_FUNCTION_END
@@ -355,25 +355,25 @@ IMPLEMENT_FUNCTION(17, Vesna, chapter2Handler)
 
 	case kAction135024800:
 		setCallback(2);
-		setup_function18();
+		setup_checkTrain();
 		break;
 
 	case kAction137165825:
 		setCallback(1);
-		setup_function11();
+		setup_homeAlone();
 		break;
 	}
 IMPLEMENT_FUNCTION_END
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_FUNCTION(18, Vesna, function18)
+IMPLEMENT_FUNCTION(18, Vesna, checkTrain)
 	switch (savepoint.action) {
 	default:
 		break;
 
 	case kActionDefault:
 		setCallback(1);
-		setup_enterExitCompartment("610Bg", kObjectCompartmentG);
+		setup_enterExitCompartment("610BG", kObjectCompartmentG);
 		break;
 
 	case kActionCallback:
@@ -449,7 +449,7 @@ IMPLEMENT_FUNCTION(18, Vesna, function18)
 
 		case 10:
 			setCallback(11);
-			setup_enterExitCompartment("610Ag", kObjectCompartmentG);
+			setup_enterExitCompartment("610AG", kObjectCompartmentG);
 			break;
 
 		case 11:
@@ -470,7 +470,7 @@ IMPLEMENT_FUNCTION(19, Vesna, chapter3)
 		break;
 
 	case kActionNone:
-		setup_chapter3Handler();
+		setup_inCompartment();
 		break;
 
 	case kActionDefault:
@@ -486,7 +486,7 @@ IMPLEMENT_FUNCTION(19, Vesna, chapter3)
 IMPLEMENT_FUNCTION_END
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_FUNCTION(20, Vesna, chapter3Handler)
+IMPLEMENT_FUNCTION(20, Vesna, inCompartment)
 	EntityData::EntityParametersIIIS *parameters = (EntityData::EntityParametersIIIS*)_data->getCurrentParameters();
 
 	switch (savepoint.action) {
@@ -497,7 +497,7 @@ IMPLEMENT_FUNCTION(20, Vesna, chapter3Handler)
 		if (getProgress().field_54 && parameters->param7 != kTimeInvalid) {
 			if (getState()->time > kTime2250000) {
 				parameters->param7 = kTimeInvalid;
-				setup_function22();
+				setup_killAnna();
 				break;
 			}
 
@@ -506,7 +506,7 @@ IMPLEMENT_FUNCTION(20, Vesna, chapter3Handler)
 
 			if (parameters->param7 < getState()->time) {
 				parameters->param7 = kTimeInvalid;
-				setup_function22();
+				setup_killAnna();
 				break;
 			}
 		}
@@ -538,19 +538,16 @@ IMPLEMENT_FUNCTION(20, Vesna, chapter3Handler)
 
 		switch (parameters->param3) {
 		default:
+			Common::strcpy_s(parameters->seq, "VES1015C");
+			parameters->param3 = 0;
 			break;
 
 		case 1:
-			strcpy((char *)&parameters->seq, "VES1015A");
+			Common::strcpy_s(parameters->seq, "VES1015A");
 			break;
 
 		case 2:
-			strcpy((char *)&parameters->seq, "VES1015B");
-			break;
-
-		case 3:
-			strcpy((char *)&parameters->seq, "VES1015C");
-			parameters->param3 = 0;
+			Common::strcpy_s(parameters->seq, "VES1015B");
 			break;
 		}
 
@@ -586,7 +583,7 @@ IMPLEMENT_FUNCTION(20, Vesna, chapter3Handler)
 		case 1:
 		case 2:
 			setCallback(3);
-			setup_playSound((char *)&parameters->seq);
+			setup_playSound(parameters->seq);
 			break;
 
 		case 3:
@@ -603,12 +600,12 @@ IMPLEMENT_FUNCTION(20, Vesna, chapter3Handler)
 
 	case kAction137165825:
 		setCallback(5);
-		setup_function11();
+		setup_homeAlone();
 		break;
 
 	case kAction155913424:
 		setCallback(6);
-		setup_function21();
+		setup_takeAWalk();
 		break;
 
 	case kAction203663744:
@@ -618,7 +615,7 @@ IMPLEMENT_FUNCTION(20, Vesna, chapter3Handler)
 IMPLEMENT_FUNCTION_END
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_FUNCTION(21, Vesna, function21)
+IMPLEMENT_FUNCTION(21, Vesna, takeAWalk)
 	switch (savepoint.action) {
 	default:
 		break;
@@ -718,7 +715,7 @@ IMPLEMENT_FUNCTION(21, Vesna, function21)
 IMPLEMENT_FUNCTION_END
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_FUNCTION(22, Vesna, function22)
+IMPLEMENT_FUNCTION(22, Vesna, killAnna)
 	switch (savepoint.action) {
 	default:
 		break;
@@ -805,7 +802,7 @@ IMPLEMENT_FUNCTION(22, Vesna, function22)
 			getData()->location = kLocationInsideCompartment;
 			getEntities()->clearSequences(kEntityVesna);
 
-			setup_function23();
+			setup_killedAnna();
 			break;
 		}
 		break;
@@ -818,7 +815,7 @@ IMPLEMENT_FUNCTION(22, Vesna, function22)
 IMPLEMENT_FUNCTION_END
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_FUNCTION(23, Vesna, function23)
+IMPLEMENT_FUNCTION(23, Vesna, killedAnna)
 	switch (savepoint.action) {
 	default:
 		break;
@@ -869,7 +866,7 @@ IMPLEMENT_FUNCTION(24, Vesna, chapter4)
 
 	case kActionNone:
 		setCallback(1);
-		setup_function11();
+		setup_homeAlone();
 		break;
 
 	case kActionDefault:
@@ -885,12 +882,12 @@ IMPLEMENT_FUNCTION(24, Vesna, chapter4)
 
 	case kActionCallback:
 		if (getCallback() == 1)
-			setup_function25();
+			setup_exitLocation();
 	}
 IMPLEMENT_FUNCTION_END
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_FUNCTION(25, Vesna, function25)
+IMPLEMENT_FUNCTION(25, Vesna, exitLocation)
 	switch (savepoint.action) {
 	default:
 		break;
@@ -898,7 +895,7 @@ IMPLEMENT_FUNCTION(25, Vesna, function25)
 	case kActionNone:
 		if (getState()->time > kTime2428200 && !params->param1) {
 			params->param1 = 1;
-			setup_function26();
+			setup_done();
 		}
 		break;
 
@@ -958,7 +955,7 @@ IMPLEMENT_FUNCTION(25, Vesna, function25)
 IMPLEMENT_FUNCTION_END
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_FUNCTION(26, Vesna, function26)
+IMPLEMENT_FUNCTION(26, Vesna, done)
 	switch (savepoint.action) {
 	default:
 		break;
@@ -1030,7 +1027,7 @@ IMPLEMENT_FUNCTION(28, Vesna, chapter5)
 		break;
 
 	case kActionNone:
-		setup_chapter5Handler();
+		setup_guarding();
 		break;
 
 	case kActionDefault:
@@ -1044,15 +1041,13 @@ IMPLEMENT_FUNCTION(28, Vesna, chapter5)
 IMPLEMENT_FUNCTION_END
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_FUNCTION(29, Vesna, chapter5Handler)
+IMPLEMENT_FUNCTION(29, Vesna, guarding)
 	switch (savepoint.action) {
 	default:
 		break;
 
 	case kActionOpenDoor:
 		setCallback(1);
-
-		getData()->currentCall++;
 		setup_savegame(kSavegameTypeEvent, kEventCathVesnaRestaurantKilled);
 		break;
 
@@ -1069,13 +1064,13 @@ IMPLEMENT_FUNCTION(29, Vesna, chapter5Handler)
 
 	case kAction134427424:
 		getObjects()->update(kObject64, kEntityPlayer, kObjectLocationNone, kCursorNormal, kCursorForward);
-		setup_function30();
+		setup_climbing();
 		break;
 	}
 IMPLEMENT_FUNCTION_END
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_FUNCTION(30, Vesna, function30)
+IMPLEMENT_FUNCTION(30, Vesna, climbing)
 	switch (savepoint.action) {
 	default:
 		break;
@@ -1083,7 +1078,7 @@ IMPLEMENT_FUNCTION(30, Vesna, function30)
 	case kActionNone:
 		if (!params->param1) {
 			if (Entity::updateParameter(params->param3, getState()->timeTicks, 120)) {
-				getSound()->playSound(kEntityVesna, "Ves50001", kFlagDefault);
+				getSound()->playSound(kEntityVesna, "Ves5001", kVolumeFull);
 				params->param1 = 1;
 			}
 		}
@@ -1117,9 +1112,10 @@ IMPLEMENT_FUNCTION(30, Vesna, function30)
 			params->param2 = getFight()->setup(kFightVesna);
 
 			if (params->param2) {
-				getLogic()->gameOver(kSavegameTypeIndex, 0, kSceneNone, params->param2 != Fight::kFightEndExit);
+				getLogic()->gameOver(kSavegameTypeIndex, 0, kSceneNone, params->param2 == Fight::kFightEndLost);
 			} else {
 				getSound()->playSound(kEntityPlayer, "TUNNEL");
+				// TODO: fade to black screen
 
 				getState()->time = (TimeValue)(getState()->time + 1800);
 
@@ -1147,7 +1143,7 @@ IMPLEMENT_FUNCTION(30, Vesna, function30)
 			setCallback(2);
 			setup_savegame(kSavegameTypeEvent, kEventCathVesnaTrainTopKilled);
 		} else {
-			getSound()->playSound(kEntityVesna, "Ves5001", kFlagDefault);
+			getSound()->playSound(kEntityVesna, "Ves5001", kVolumeFull);
 			params->param1 = 1;
 		}
 		break;

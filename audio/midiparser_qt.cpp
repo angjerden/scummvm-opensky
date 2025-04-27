@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,12 +15,12 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "audio/midiparser_qt.h"
+#include "audio/mididrv.h"
 #include "common/debug.h"
 #include "common/memstream.h"
 
@@ -95,7 +95,7 @@ bool MidiParser_QT::loadFromContainerStream(Common::SeekableReadStream *stream, 
 	return true;
 }
 
-bool MidiParser_QT::loadFromContainerFile(const Common::String &fileName) {
+bool MidiParser_QT::loadFromContainerFile(const Common::Path &fileName) {
 	unloadMusic();
 
 	if (!parseFile(fileName))
@@ -116,7 +116,7 @@ void MidiParser_QT::parseNextEvent(EventInfo &info) {
 }
 
 uint32 MidiParser_QT::readNextEvent() {
-	if (_position._playPos >= _trackInfo[_activeTrack].data + _trackInfo[_activeTrack].size) {
+	if (_position._subtracks[0]._playPos >= _trackInfo[_activeTrack].data + _trackInfo[_activeTrack].size) {
 		// Manually insert end of track when we reach the end
 		EventInfo info;
 		info.event = 0xFF;
@@ -175,6 +175,8 @@ uint32 MidiParser_QT::readNextEvent() {
 	case 0xF:
 		// General
 		handleGeneralEvent(control);
+		break;
+	default:
 		break;
 	}
 
@@ -236,6 +238,8 @@ void MidiParser_QT::handleControllerEvent(uint32 control, uint32 part, byte intP
 		case 10:
 			_partMap[part].pan = intPart;
 			break;
+		default:
+			break;
 		}
 	}
 
@@ -245,7 +249,7 @@ void MidiParser_QT::handleControllerEvent(uint32 control, uint32 part, byte intP
 void MidiParser_QT::handleGeneralEvent(uint32 control) {
 	uint32 part = (control >> 16) & 0xFFF;
 	uint32 dataSize = ((control & 0xFFFF) - 2) * 4;
-	byte subType = READ_BE_UINT16(_position._playPos + dataSize) & 0x3FFF;
+	byte subType = READ_BE_UINT16(_position._subtracks[0]._playPos + dataSize) & 0x3FFF;
 
 	switch (subType) {
 	case 1:
@@ -255,7 +259,7 @@ void MidiParser_QT::handleGeneralEvent(uint32 control) {
 
 		// We have to remap channels because GM needs percussion to be on the
 		// percussion channel but QuickTime can have that anywhere.
-		definePart(part, READ_BE_UINT32(_position._playPos + 80));
+		definePart(part, READ_BE_UINT32(_position._subtracks[0]._playPos + 80));
 		break;
 	case 5: // Tune Difference
 	case 8: // MIDI Channel
@@ -267,7 +271,7 @@ void MidiParser_QT::handleGeneralEvent(uint32 control) {
 		warning("Unhandled general event %d", subType);
 	}
 
-	_position._playPos += dataSize + 4;
+	_position._subtracks[0]._playPos += dataSize + 4;
 }
 
 void MidiParser_QT::definePart(uint32 part, uint32 instrument) {
@@ -325,17 +329,17 @@ void MidiParser_QT::deallocateFreeChannel() {
 }
 
 void MidiParser_QT::deallocateChannel(byte channel) {
-	for (ChannelMap::iterator it = _channelMap.begin(); it != _channelMap.end(); it++) {
-		if (it->_value == channel) {
-			_channelMap.erase(it);
+	for (auto &curChannel : _channelMap) {
+		if (curChannel._value == channel) {
+			_channelMap.erase(curChannel._key);
 			return;
 		}
 	}
 }
 
 bool MidiParser_QT::isChannelAllocated(byte channel) const {
-	for (ChannelMap::const_iterator it = _channelMap.begin(); it != _channelMap.end(); it++)
-		if (it->_value == channel)
+	for (const auto &curChannel : _channelMap)
+		if (curChannel._value == channel)
 			return true;
 
 	return false;
@@ -348,8 +352,8 @@ bool MidiParser_QT::allChannelsAllocated() const {
 
 	// 15? One of the allocated channels might be the percussion one
 	if (_channelMap.size() == 15)
-		for (ChannelMap::const_iterator it = _channelMap.begin(); it != _channelMap.end(); it++)
-			if (it->_value == 9)
+		for (const auto &channel : _channelMap)
+			if (channel._value == 9)
 				return false;
 
 	// 16 -> definitely all allocated
@@ -395,6 +399,22 @@ void MidiParser_QT::resetTracking() {
 	_partMap.clear();
 }
 
+void MidiParser_QT::sendToDriver(uint32 b) {
+	if (_source < 0) {
+		MidiParser::sendToDriver(b);
+	} else {
+		_driver->send(_source, b);
+	}
+}
+
+void MidiParser_QT::sendMetaEventToDriver(byte type, byte *data, uint16 length) {
+	if (_source < 0) {
+		MidiParser::sendMetaEventToDriver(type, data, length);
+	} else {
+		_driver->metaEvent(_source, type, data, length);
+	}
+}
+
 Common::QuickTimeParser::SampleDesc *MidiParser_QT::readSampleDesc(Track *track, uint32 format, uint32 descSize) {
 	if (track->codecType == CODEC_TYPE_MIDI) {
 		debug(0, "MIDI Codec FourCC '%s'", tag2str(format));
@@ -409,7 +429,7 @@ Common::QuickTimeParser::SampleDesc *MidiParser_QT::readSampleDesc(Track *track,
 		return entry;
 	}
 
-	return 0;
+	return nullptr;
 }
 
 MidiParser_QT::MIDISampleDesc::MIDISampleDesc(Common::QuickTimeParser::Track *parentTrack, uint32 codecTag) :
@@ -423,7 +443,7 @@ void MidiParser_QT::initFromContainerTracks() {
 		if (tracks[i]->codecType == CODEC_TYPE_MIDI) {
 			assert(tracks[i]->sampleDescs.size() == 1);
 
-			if (tracks[i]->editCount != 1)
+			if (tracks[i]->editList.size() != 1)
 				warning("Unhandled QuickTime MIDI edit lists, things may go awry");
 
 			MIDITrackInfo trackInfo;
@@ -444,7 +464,7 @@ void MidiParser_QT::initCommon() {
 	assert(_numTracks > 0);
 
 	for (uint32 i = 0; i < _trackInfo.size(); i++)
-		MidiParser::_tracks[i] = _trackInfo[i].data;
+		MidiParser::_tracks[i][0] = _trackInfo[i].data;
 
 	_ppqn = _trackInfo[0].timeScale;
 	resetTracking();
@@ -455,7 +475,7 @@ void MidiParser_QT::initCommon() {
 byte *MidiParser_QT::readWholeTrack(Common::QuickTimeParser::Track *track, uint32 &trackSize) {
 	// This just goes through all chunks and appends them together
 
-	Common::MemoryWriteStreamDynamic output;
+	Common::MemoryWriteStreamDynamic output(DisposeAfterUse::NO);
 	uint32 curSample = 0;
 
 	// Read in the note request data first
@@ -486,11 +506,11 @@ byte *MidiParser_QT::readWholeTrack(Common::QuickTimeParser::Track *track, uint3
 }
 
 uint32 MidiParser_QT::readUint32() {
-	uint32 value = READ_BE_UINT32(_position._playPos);
-	_position._playPos += 4;
+	uint32 value = READ_BE_UINT32(_position._subtracks[0]._playPos);
+	_position._subtracks[0]._playPos += 4;
 	return value;
 }
 
-MidiParser *MidiParser::createParser_QT() {
-	return new MidiParser_QT();
+MidiParser *MidiParser::createParser_QT(int8 source) {
+	return new MidiParser_QT(source);
 }

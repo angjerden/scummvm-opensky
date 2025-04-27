@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -34,44 +33,43 @@
 namespace ZVision {
 
 Video::AVIDecoder::AVIAudioTrack *ZorkAVIDecoder::createAudioTrack(Video::AVIDecoder::AVIStreamHeader sHeader, Video::AVIDecoder::PCMWaveFormat wvInfo) {
-	ZorkAVIDecoder::ZorkAVIAudioTrack *audioTrack = new ZorkAVIDecoder::ZorkAVIAudioTrack(sHeader, wvInfo, _soundType);
-	return (Video::AVIDecoder::AVIAudioTrack *)audioTrack;
+	if (wvInfo.tag != kWaveFormatZorkPCM)
+		return new AVIAudioTrack(sHeader, wvInfo, getSoundType());
+
+	assert(wvInfo.size == 8);
+	return new ZorkAVIAudioTrack(sHeader, wvInfo, getSoundType());
+}
+
+ZorkAVIDecoder::ZorkAVIAudioTrack::ZorkAVIAudioTrack(const AVIStreamHeader &streamHeader, const PCMWaveFormat &waveFormat, Audio::Mixer::SoundType soundType) :
+		Video::AVIDecoder::AVIAudioTrack(streamHeader, waveFormat, soundType), _queueStream(0), _decoder(waveFormat.channels == 2) {
+}
+
+void ZorkAVIDecoder::ZorkAVIAudioTrack::createAudioStream() {
+	_queueStream = Audio::makeQueuingAudioStream(_wvInfo.samplesPerSec, _wvInfo.channels == 2);
+	_audioStream = _queueStream;
 }
 
 void ZorkAVIDecoder::ZorkAVIAudioTrack::queueSound(Common::SeekableReadStream *stream) {
-	bool updateCurChunk = true;
-	if (_audStream) {
-		if (_wvInfo.tag == kWaveFormatZorkPCM) {
-			assert(_wvInfo.size == 8);
-			RawChunkStream::RawChunk chunk = decoder->readNextChunk(stream);
-			delete stream;
+	RawChunkStream::RawChunk chunk = _decoder.readNextChunk(stream);
+	delete stream;
 
-			if (chunk.data) {
-				byte flags = Audio::FLAG_16BITS | Audio::FLAG_STEREO;
+	if (chunk.data) {
+		byte flags = Audio::FLAG_16BITS;
+		if (_wvInfo.channels == 2)
+			flags |= Audio::FLAG_STEREO;
 #ifdef SCUMM_LITTLE_ENDIAN
-				// RawChunkStream produces native endianness int16
-				flags |= Audio::FLAG_LITTLE_ENDIAN;
+		// RawChunkStream produces native endianness int16
+		flags |= Audio::FLAG_LITTLE_ENDIAN;
 #endif
-				_audStream->queueBuffer((byte *)chunk.data, chunk.size, DisposeAfterUse::YES, flags);
-			}
-		} else {
-			updateCurChunk = false;
-			AVIAudioTrack::queueSound(stream);
-		}
-	} else {
-		delete stream;
+		_queueStream->queueBuffer((byte *)chunk.data, chunk.size, DisposeAfterUse::YES, flags);
 	}
 
-	// The superclass always updates _curChunk, whether or not audio has
-	// been queued, so we should do that too. Unless the superclass already
-	// has done it for us.
-	if (updateCurChunk) {
-		_curChunk++;
-	}
+	_curChunk++;
 }
 
 void ZorkAVIDecoder::ZorkAVIAudioTrack::resetStream() {
-	decoder->init();
+	AVIAudioTrack::resetStream();
+	_decoder.init();
 }
 
 } // End of namespace ZVision

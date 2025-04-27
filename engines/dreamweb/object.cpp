@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -97,7 +96,7 @@ void DreamWebEngine::obToInv(uint8 index, uint8 flag, uint16 x, uint16 y) {
 void DreamWebEngine::obPicture() {
 	if (_objectType == kSetObjectType1)
 		return;
-	uint8 frame = 3 * _command + 1;
+	uint16 frame = 3 * _command + 1;
 	if (_objectType == kExObjectType)
 		showFrame(_exFrames, 160, 68, frame, 0x80);
 	else
@@ -162,7 +161,7 @@ void DreamWebEngine::examineOb(bool examineAgain) {
 				{ 144,176,64,96,&DreamWebEngine::setPickup },
 				{ 0,50,50,200,&DreamWebEngine::examineInventory },
 				{ 0,320,0,200,&DreamWebEngine::blank },
-				{ 0xFFFF,0,0,0,0 }
+				{ 0xFFFF,0,0,0,nullptr }
 			};
 			checkCoords(examList);
 			break;
@@ -176,7 +175,7 @@ void DreamWebEngine::examineOb(bool examineAgain) {
 				{ kInventx,_openChangeSize,kInventy+100,kInventy+100+kItempicsize,&DreamWebEngine::useOpened },
 				{ kInventx,kInventx+(5*kItempicsize),kInventy,kInventy+(2*kItempicsize),&DreamWebEngine::inToInv },
 				{ 0,320,0,200,&DreamWebEngine::blank },
-				{ 0xFFFF,0,0,0,0 }
+				{ 0xFFFF,0,0,0,nullptr }
 			};
 			checkCoords(invList1);
 			break;
@@ -187,7 +186,7 @@ void DreamWebEngine::examineOb(bool examineAgain) {
 				{ kInventx+167,kInventx+167+(18*3),kInventy-18,kInventy-2,&DreamWebEngine::incRyanPage },
 				{ kInventx,kInventx+(5*kItempicsize), kInventy,kInventy+(2*kItempicsize),&DreamWebEngine::selectOb },
 				{ 0,320,0,200,&DreamWebEngine::blank },
-				{ 0xFFFF,0,0,0,0 }
+				{ 0xFFFF,0,0,0,nullptr }
 			};
 			checkCoords(withList1);
 			break;
@@ -253,6 +252,7 @@ void DreamWebEngine::transferText(uint8 from, uint8 to) {
 	char *dst = _exText._text + _vars._exTextPos;
 
 	size_t len = strlen(src);
+	assert(_vars._exTextPos + len + 1 <= kExtextlen);
 	memcpy(dst, src, len + 1);
 	_vars._exTextPos += len + 1;
 }
@@ -293,9 +293,14 @@ void DreamWebEngine::openOb() {
 
 	copyName(_openedType, _openedOb, commandLine);
 
-	printMessage(kInventx, kInventy+86, 62, 240, false);
+	if (getLanguage() != Common::RU_RUS) {
+		printMessage(kInventx, kInventy+86, 62, 240, false);
 
-	printDirect(commandLine, _lastXPos + 5, kInventy+86, 220, false);
+		printDirect(commandLine, _lastXPos + 5, kInventy+86, 220, false);
+	} else {
+		printDirect(commandLine, kInventx, kInventy+86, 220, false);
+		printMessage(_lastXPos, kInventy+86, 62, 240, false);
+	}
 
 	fillOpen();
 	_openChangeSize = getOpenedSlotCount() * kItempicsize + kInventx;
@@ -419,7 +424,8 @@ void DreamWebEngine::setPickup() {
 	workToScreenM();
 }
 
-void DreamWebEngine::deleteExFrame(uint8 frameNum) {
+void DreamWebEngine::deleteExFrame(uint16 frameNum) {
+	assert(frameNum < 346); // see GraphicsFile::getFrameData
 	Frame *frame = &_exFrames._frames[frameNum];
 
 	uint16 frameSize = frame->width * frame->height;
@@ -595,7 +601,7 @@ void DreamWebEngine::purgeALocation(uint8 index) {
 }
 
 const uint8 *DreamWebEngine::getObTextStart() {
-	const uint8 *textBase = 0;
+	const uint8 *textBase = nullptr;
 	const uint8 *text;
 	uint16 textOff = 0;
 	if (_objectType == kFreeObjectType) {
@@ -1010,7 +1016,7 @@ ObjectRef DreamWebEngine::findOpenPos() {
 }
 
 byte DreamWebEngine::transferToEx(uint8 from) {
-	emergencyPurge();
+	emergencyPurge(from);
 
 	byte pos = getExPos();
 	DynObject *exObject = getExAd(pos);
@@ -1128,11 +1134,18 @@ void DreamWebEngine::incRyanPage() {
 	delPointer();
 }
 
-void DreamWebEngine::emergencyPurge() {
+void DreamWebEngine::emergencyPurge(uint8 from) {
 	debug(2, "Ex memory: frames %d/%d, text %d/%d", _vars._exFramePos, kExframeslen, _vars._exTextPos, kExtextlen);
 
-	while (_vars._exFramePos + 4000 >= kExframeslen ||
-		   _vars._exTextPos + 400 >= kExtextlen)
+	uint16 frameBytesNeeded = 0;
+	for (int offset = 0; offset <= 1; ++offset) {
+		const Frame &freeFrame = _freeFrames._frames[3 * from + offset];
+		frameBytesNeeded += freeFrame.width * freeFrame.height;
+	}
+	const uint16 textBytesNeeded = strlen(_freeDesc.getString(from)) + 1;
+
+	while (_vars._exFramePos + frameBytesNeeded > kExframeslen ||
+		   _vars._exTextPos + textBytesNeeded > kExtextlen)
 	{
 		purgeAnItem();
 		debug(2, "Ex memory after purging: frames %d/%d, text %d/%d", _vars._exFramePos, kExframeslen, _vars._exTextPos, kExtextlen);

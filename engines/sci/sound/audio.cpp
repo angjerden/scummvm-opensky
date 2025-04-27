@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,19 +15,18 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
-#include "sci/resource.h"
+#include "sci/resource/resource.h"
 #include "sci/engine/kernel.h"
-#include "sci/engine/selector.h"
 #include "sci/engine/seg_manager.h"
 #include "sci/sound/audio.h"
 
 #include "backends/audiocd/audiocd.h"
 
+#include "common/config-manager.h"
 #include "common/file.h"
 #include "common/memstream.h"
 #include "common/system.h"
@@ -44,7 +43,7 @@
 namespace Sci {
 
 AudioPlayer::AudioPlayer(ResourceManager *resMan) : _resMan(resMan), _audioRate(11025),
-		_syncResource(NULL), _syncOffset(0), _audioCdStart(0) {
+		_audioCdStart(0), _initCD(false), _playCounter(0) {
 
 	_mixer = g_system->getMixer();
 	_wPlayFlag = false;
@@ -55,7 +54,6 @@ AudioPlayer::~AudioPlayer() {
 }
 
 void AudioPlayer::stopAllAudio() {
-	stopSoundSync();
 	stopAudio();
 	if (_audioCdStart > 0)
 		audioCdStop();
@@ -72,22 +70,60 @@ void AudioPlayer::handleFanmadeSciAudio(reg_t sciAudioObject, SegManager *segMan
 	// TODO: This is a bare bones implementation. Only the play/playx and stop commands
 	// are handled for now - the other commands haven't been observed in any fanmade game
 	// yet. All the volume related and fading functionality is currently missing.
-
 	Kernel *kernel = g_sci->getKernel();
 
+	// get the sciAudio command from the "command" selector.
+	// this property is a string in 1.0 and an integer in 1.1.
+	enum FanmadeSciAudioCommand {
+		kFanmadeSciAudioCommandNone = -1,
+		kFanmadeSciAudioCommandPlayX,
+		kFanmadeSciAudioCommandPlay,
+		kFanmadeSciAudioCommandStop
+	};
+	FanmadeSciAudioCommand sciAudioCommand = kFanmadeSciAudioCommandNone;
 	reg_t commandReg = readSelector(segMan, sciAudioObject, kernel->findSelector("command"));
-	Common::String command = segMan->getString(commandReg);
+	Common::String commandString;
+	if (commandReg.isNumber()) {
+		// sciAudio 1.1
+		sciAudioCommand = (FanmadeSciAudioCommand)commandReg.toUint16();
+	} else {
+		// sciAudio 1.0
+		commandString = segMan->getString(commandReg);
+		if (commandString == "playx") {
+			sciAudioCommand = kFanmadeSciAudioCommandPlayX;
+		} else if (commandString == "play") {
+			sciAudioCommand = kFanmadeSciAudioCommandPlay;
+		} else if (commandString == "stop") {
+			sciAudioCommand = kFanmadeSciAudioCommandStop;
+		}
+	}
 
-	if (command == "play" || command == "playx") {
-#ifdef USE_MAD
+	if (sciAudioCommand == kFanmadeSciAudioCommandPlayX ||
+		sciAudioCommand == kFanmadeSciAudioCommandPlay) {
 		reg_t fileNameReg = readSelector(segMan, sciAudioObject, kernel->findSelector("fileName"));
 		Common::String fileName = segMan->getString(fileNameReg);
 
-		int16 loopCount = (int16)readSelectorValue(segMan, sciAudioObject, kernel->findSelector("loopCount"));
-		// When loopCount is -1, we treat it as infinite looping, else no looping is done.
-		// This is observed by game scripts, which can set loopCount to all sorts of random values.
+		reg_t loopCountReg = readSelector(segMan, sciAudioObject, kernel->findSelector("loopCount"));
+		int16 loopCount;
+		if (loopCountReg.isNumber()) {
+			// sciAudio 1.1
+			loopCount = loopCountReg.toSint16();
+		} else {
+			// sciAudio 1.0
+			Common::String loopCountStr = segMan->getString(loopCountReg);
+			loopCount = atoi(loopCountStr.c_str());
+		}
+
 		// Adjust loopCount for ScummVM's LoopingAudioStream semantics
-		loopCount = (loopCount == -1) ? 0 : 1;
+		if (loopCount == -1) {
+			loopCount = 0; // loop endlessly
+		} else if (loopCount >= 0) {
+			// sciAudio loopCount == 0 -> play 1 time  -> ScummVM's loopCount should be 1
+			// sciAudio loopCount == 1 -> play 2 times -> ScummVM's loopCount should be 2
+			loopCount++;
+		} else {
+			loopCount = 1; // play once in case the value makes no sense
+		}
 
 		// Determine sound type
 		Audio::Mixer::SoundType soundType = Audio::Mixer::kSFXSoundType;
@@ -96,24 +132,59 @@ void AudioPlayer::handleFanmadeSciAudio(reg_t sciAudioObject, SegManager *segMan
 		else if (fileName.hasPrefix("speech"))
 			soundType = Audio::Mixer::kSpeechSoundType;
 
-		Common::File *sciAudio = new Common::File();
+		// Determine compression
+		uint32 audioCompressionType = 0;
+		if ((fileName.hasSuffix(".mp3")) || (fileName.hasSuffix(".sciAudio")) || (fileName.hasSuffix(".sciaudio"))) {
+			audioCompressionType = MKTAG('M','P','3',' ');
+		} else if (fileName.hasSuffix(".wav")) {
+			audioCompressionType = MKTAG('W','A','V',' ');
+		} else if (fileName.hasSuffix(".aiff")) {
+			audioCompressionType = MKTAG('A','I','F','F');
+		} else {
+			error("sciAudio: unsupported file type");
+		}
+
+		Common::File *sciAudioFile = new Common::File();
 		// Replace backwards slashes
 		for (uint i = 0; i < fileName.size(); i++) {
 			if (fileName[i] == '\\')
 				fileName.setChar('/', i);
 		}
-		sciAudio->open("sciAudio/" + fileName);
+		sciAudioFile->open(Common::Path("sciAudio/" + fileName, '/'));
 
-		Audio::SeekableAudioStream *audioStream = Audio::makeMP3Stream(sciAudio, DisposeAfterUse::YES);
+		Audio::RewindableAudioStream *audioStream = nullptr;
+
+		switch (audioCompressionType) {
+		case MKTAG('M','P','3',' '):
+#ifdef USE_MAD
+			audioStream = Audio::makeMP3Stream(sciAudioFile, DisposeAfterUse::YES);
+#endif
+			break;
+		case MKTAG('W','A','V',' '):
+			audioStream = Audio::makeWAVStream(sciAudioFile, DisposeAfterUse::YES);
+			break;
+		case MKTAG('A','I','F','F'):
+			audioStream = Audio::makeAIFFStream(sciAudioFile, DisposeAfterUse::YES);
+			break;
+		default:
+			break;
+		}
+
+		if (!audioStream) {
+			error("sciAudio: requested compression not compiled into ScummVM");
+		}
 
 		// We only support one audio handle
 		_mixer->playStream(soundType, &_audioHandle,
 							Audio::makeLoopingAudioStream((Audio::RewindableAudioStream *)audioStream, loopCount));
-#endif
-	} else if (command == "stop") {
+	} else if (sciAudioCommand == kFanmadeSciAudioCommandStop) {
 		_mixer->stopHandle(_audioHandle);
 	} else {
-		warning("Unhandled sciAudio command: %s", command.c_str());
+		if (commandReg.isNumber()) {
+			warning("Unhandled sciAudio command: %u", commandReg.getOffset());
+		} else {
+			warning("Unhandled sciAudio command: %s", commandString.c_str());
+		}
 	}
 }
 
@@ -215,13 +286,7 @@ static void deDPCM16(byte *soundBuf, Common::SeekableReadStream &audioStream, ui
 
 static void deDPCM8Nibble(byte *soundBuf, int32 &s, byte b) {
 	if (b & 8) {
-#ifdef ENABLE_SCI32
-		// SCI2.1 reverses the order of the table values here
-		if (getSciVersion() >= SCI_VERSION_2_1)
-			s -= tableDPCM8[b & 7];
-		else
-#endif
-			s -= tableDPCM8[7 - (b & 7)];
+		s -= tableDPCM8[7 - (b & 7)];
 	} else
 		s += tableDPCM8[b & 7];
 	s = CLIP<int32>(s, 0, 255);
@@ -297,16 +362,11 @@ static byte *readSOLAudio(Common::SeekableReadStream *audioStream, uint32 &size,
 	return buffer;
 }
 
-byte *AudioPlayer::getDecodedRobotAudioFrame(Common::SeekableReadStream *str, uint32 encodedSize) {
-	byte flags = 0;
-	return readSOLAudio(str, encodedSize, kSolFlagCompressed | kSolFlag16Bit, flags);
-}
-
 Audio::RewindableAudioStream *AudioPlayer::getAudioStream(uint32 number, uint32 volume, int *sampleLen) {
-	Audio::SeekableAudioStream *audioSeekStream = 0;
-	Audio::RewindableAudioStream *audioStream = 0;
+	Audio::SeekableAudioStream *audioSeekStream = nullptr;
+	Audio::RewindableAudioStream *audioStream = nullptr;
 	uint32 size = 0;
-	byte *data = 0;
+	byte *data = nullptr;
 	byte flags = 0;
 	Sci::Resource *audioRes;
 
@@ -316,177 +376,125 @@ Audio::RewindableAudioStream *AudioPlayer::getAudioStream(uint32 number, uint32 
 		audioRes = _resMan->findResource(ResourceId(kResourceTypeAudio, number), false);
 		if (!audioRes) {
 			warning("Failed to find audio entry %i", number);
-			return NULL;
+			return nullptr;
 		}
 	} else {
 		audioRes = _resMan->findResource(ResourceId(kResourceTypeAudio36, volume, number), false);
 		if (!audioRes) {
 			warning("Failed to find audio entry (%i, %i, %i, %i, %i)", volume, (number >> 24) & 0xff,
 					(number >> 16) & 0xff, (number >> 8) & 0xff, number & 0xff);
-			return NULL;
+			return nullptr;
 		}
 	}
+
+	// We copy over the audio data in our own buffer. We have to do
+	// this, because ResourceManager may free the original data late,
+	// and audio decompression may work on-the-fly instead.
+	byte *audioBuffer = (byte *)malloc(audioRes->size());
+	assert(audioBuffer);
+	audioRes->unsafeCopyDataTo(audioBuffer);
+	Common::SeekableReadStream *memoryStream = new Common::MemoryReadStream(audioBuffer, audioRes->size(), DisposeAfterUse::YES);
 
 	byte audioFlags;
 	uint32 audioCompressionType = audioRes->getAudioCompressionType();
 
 	if (audioCompressionType) {
-#if (defined(USE_MAD) || defined(USE_VORBIS) || defined(USE_FLAC))
 		// Compressed audio made by our tool
-		byte *compressedData = (byte *)malloc(audioRes->size);
-		assert(compressedData);
-		// We copy over the compressed data in our own buffer. We have to do
-		// this, because ResourceManager may free the original data late. All
-		// other compression types already decompress completely into an
-		// additional buffer here. MP3/OGG/FLAC decompression works on-the-fly
-		// instead.
-		memcpy(compressedData, audioRes->data, audioRes->size);
-		Common::SeekableReadStream *compressedStream = new Common::MemoryReadStream(compressedData, audioRes->size, DisposeAfterUse::YES);
-
 		switch (audioCompressionType) {
-		case MKTAG('M','P','3',' '):
 #ifdef USE_MAD
-			audioSeekStream = Audio::makeMP3Stream(compressedStream, DisposeAfterUse::YES);
-#endif
+		case MKTAG('M','P','3',' '):
+			audioSeekStream = Audio::makeMP3Stream(memoryStream, DisposeAfterUse::YES);
 			break;
-		case MKTAG('O','G','G',' '):
+#endif
 #ifdef USE_VORBIS
-			audioSeekStream = Audio::makeVorbisStream(compressedStream, DisposeAfterUse::YES);
-#endif
+		case MKTAG('O','G','G',' '):
+			audioSeekStream = Audio::makeVorbisStream(memoryStream, DisposeAfterUse::YES);
 			break;
-		case MKTAG('F','L','A','C'):
-#ifdef USE_FLAC
-			audioSeekStream = Audio::makeFLACStream(compressedStream, DisposeAfterUse::YES);
 #endif
+#ifdef USE_FLAC
+		case MKTAG('F','L','A','C'):
+			audioSeekStream = Audio::makeFLACStream(memoryStream, DisposeAfterUse::YES);
+			break;
+#endif
+		default:
+			error("Compressed audio file encountered, but no decoder compiled in for: '%s'", tag2str(audioCompressionType));
 			break;
 		}
-#else
-		error("Compressed audio file encountered, but no appropriate decoder is compiled in");
-#endif
 	} else {
 		// Original source file
-		if (audioRes->_headerSize > 0) {
+		if (audioRes->size() > 6 &&
+			(audioRes->getUint8At(0) & 0x7f) == kResourceTypeAudio &&
+			audioRes->getUint32BEAt(2) == MKTAG('S','O','L',0)) {
 			// SCI1.1
-			Common::MemoryReadStream headerStream(audioRes->_header, audioRes->_headerSize, DisposeAfterUse::NO);
+			delete memoryStream;
+			const uint8 headerSize = audioRes->getUint8At(1);
+			Common::MemoryReadStream headerStream = audioRes->subspan(kResourceHeaderSize, headerSize).toStream();
 
-			if (readSOLHeader(&headerStream, audioRes->_headerSize, size, _audioRate, audioFlags, audioRes->size)) {
-				Common::MemoryReadStream dataStream(audioRes->data, audioRes->size, DisposeAfterUse::NO);
+			if (readSOLHeader(&headerStream, headerSize, size, _audioRate, audioFlags, audioRes->size())) {
+				Common::MemoryReadStream dataStream(audioRes->subspan(kResourceHeaderSize + headerSize).toStream());
 				data = readSOLAudio(&dataStream, size, audioFlags, flags);
+				audioSeekStream = Audio::makeRawStream(data, size, _audioRate, flags);
 			}
-		} else if (audioRes->size > 4 && READ_BE_UINT32(audioRes->data) == MKTAG('R','I','F','F')) {
+		} else if (audioRes->size() > 4 && audioRes->getUint32BEAt(0) == MKTAG('R','I','F','F')) {
 			// WAVE detected
-			Common::SeekableReadStream *waveStream = new Common::MemoryReadStream(audioRes->data, audioRes->size, DisposeAfterUse::NO);
 
 			// Calculate samplelen from WAVE header
 			int waveSize = 0, waveRate = 0;
 			byte waveFlags = 0;
-			bool ret = Audio::loadWAVFromStream(*waveStream, waveSize, waveRate, waveFlags);
+			bool ret = Audio::loadWAVFromStream(*memoryStream, waveSize, waveRate, waveFlags);
 			if (!ret)
 				error("Failed to load WAV from stream");
 
-			*sampleLen = (waveFlags & Audio::FLAG_16BITS ? waveSize >> 1 : waveSize) * 60 / waveRate;
+			*sampleLen = ((waveFlags & Audio::FLAG_16BITS) ? (waveSize >> 1) : waveSize) * 60 / waveRate;
 
-			waveStream->seek(0, SEEK_SET);
-			audioStream = Audio::makeWAVStream(waveStream, DisposeAfterUse::YES);
-		} else if (audioRes->size > 4 && READ_BE_UINT32(audioRes->data) == MKTAG('F','O','R','M')) {
-			// AIFF detected
-			Common::SeekableReadStream *waveStream = new Common::MemoryReadStream(audioRes->data, audioRes->size, DisposeAfterUse::NO);
+			memoryStream->seek(0, SEEK_SET);
+			audioStream = Audio::makeWAVStream(memoryStream, DisposeAfterUse::YES);
+		} else if (audioRes->size() > 14 &&
+				   audioRes->getUint16BEAt(0) == 1 &&
+				   audioRes->getUint16BEAt(2) == 1 &&
+				   audioRes->getUint16BEAt(4) == 5 &&
+				   audioRes->getUint32BEAt(10) == 0x00018051) {
 
-			// Calculate samplelen from AIFF header
-			int waveSize = 0, waveRate = 0;
-			byte waveFlags = 0;
-			bool ret = Audio::loadAIFFFromStream(*waveStream, waveSize, waveRate, waveFlags);
-			if (!ret)
-				error("Failed to load AIFF from stream");
-
-			*sampleLen = (waveFlags & Audio::FLAG_16BITS ? waveSize >> 1 : waveSize) * 60 / waveRate;
-
-			waveStream->seek(0, SEEK_SET);
-			audioStream = Audio::makeAIFFStream(waveStream, DisposeAfterUse::YES);
-		} else if (audioRes->size > 14 && READ_BE_UINT16(audioRes->data) == 1 && READ_BE_UINT16(audioRes->data + 2) == 1
-				&& READ_BE_UINT16(audioRes->data + 4) == 5 && READ_BE_UINT32(audioRes->data + 10) == 0x00018051) {
 			// Mac snd detected
-			Common::SeekableReadStream *sndStream = new Common::MemoryReadStream(audioRes->data, audioRes->size, DisposeAfterUse::NO);
-
-			audioSeekStream = Audio::makeMacSndStream(sndStream, DisposeAfterUse::YES);
+			audioSeekStream = Audio::makeMacSndStream(memoryStream, DisposeAfterUse::YES);
 			if (!audioSeekStream)
 				error("Failed to load Mac sound stream");
 
 		} else {
 			// SCI1 raw audio
-			size = audioRes->size;
-			data = (byte *)malloc(size);
-			assert(data);
-			memcpy(data, audioRes->data, size);
 			flags = Audio::FLAG_UNSIGNED;
 			_audioRate = 11025;
+			audioSeekStream = Audio::makeRawStream(memoryStream, _audioRate, flags);
 		}
-
-		if (data)
-			audioSeekStream = Audio::makeRawStream(data, size, _audioRate, flags);
 	}
 
 	if (audioSeekStream) {
 		*sampleLen = (audioSeekStream->getLength().msecs() * 60) / 1000; // we translate msecs to ticks
 		audioStream = audioSeekStream;
 	}
+
 	// We have to make sure that we don't depend on resource manager pointers
 	// after this point, because the actual audio resource may get unloaded by
 	// resource manager at any time.
-	if (audioStream)
-		return audioStream;
-
-	return NULL;
-}
-
-void AudioPlayer::setSoundSync(ResourceId id, reg_t syncObjAddr, SegManager *segMan) {
-	_syncResource = _resMan->findResource(id, 1);
-	_syncOffset = 0;
-
-	if (_syncResource) {
-		writeSelectorValue(segMan, syncObjAddr, SELECTOR(syncCue), 0);
-	} else {
-		warning("setSoundSync: failed to find resource %s", id.toString().c_str());
-		// Notify the scripts to stop sound sync
-		writeSelectorValue(segMan, syncObjAddr, SELECTOR(syncCue), SIGNAL_OFFSET);
-	}
-}
-
-void AudioPlayer::doSoundSync(reg_t syncObjAddr, SegManager *segMan) {
-	if (_syncResource && (_syncOffset < _syncResource->size - 1)) {
-		int16 syncCue = -1;
-		int16 syncTime = (int16)READ_SCI11ENDIAN_UINT16(_syncResource->data + _syncOffset);
-
-		_syncOffset += 2;
-
-		if ((syncTime != -1) && (_syncOffset < _syncResource->size - 1)) {
-			syncCue = (int16)READ_SCI11ENDIAN_UINT16(_syncResource->data + _syncOffset);
-			_syncOffset += 2;
-		}
-
-		writeSelectorValue(segMan, syncObjAddr, SELECTOR(syncTime), syncTime);
-		writeSelectorValue(segMan, syncObjAddr, SELECTOR(syncCue), syncCue);
-	}
-}
-
-void AudioPlayer::stopSoundSync() {
-	if (_syncResource) {
-		_resMan->unlockResource(_syncResource);
-		_syncResource = NULL;
-	}
+	return audioStream;
 }
 
 int AudioPlayer::audioCdPlay(int track, int start, int duration) {
+	if (!_initCD) {
+		// Initialize CD mode if we haven't already
+		g_system->getAudioCDManager()->open();
+		_initCD = true;
+	}
+
 	if (getSciVersion() == SCI_VERSION_1_1) {
 		// King's Quest VI CD Audio format
 		_audioCdStart = g_system->getMillis();
 
 		// Subtract one from track. KQ6 starts at track 1, while ScummVM
 		// ignores the data track and considers track 2 to be track 1.
-		g_system->getAudioCDManager()->play(track - 1, 1, start, duration);
-		return 1;
+		return g_system->getAudioCDManager()->play(track - 1, 1, start, duration) ? 1 : 0;
 	} else {
-		// Jones in the Fast Lane CD Audio format
+		// Jones in the Fast Lane and Mothergoose256 CD Audio format
 		uint32 length = 0;
 
 		audioCdStop();
@@ -497,14 +505,15 @@ int AudioPlayer::audioCdPlay(int track, int start, int duration) {
 
 		while (audioMap.pos() < audioMap.size()) {
 			uint16 res = audioMap.readUint16LE();
+			res &= 0x1fff; // Upper bits are always set in Mothergoose256
 			uint32 startFrame = audioMap.readUint16LE();
 			startFrame += audioMap.readByte() << 16;
-			audioMap.readByte(); // Unknown, always 0x20
+			audioMap.readByte(); // Unknown, always 0x20 in Jones, 0x04 in Mothergoose256
 			length = audioMap.readUint16LE();
 			length += audioMap.readByte() << 16;
 			audioMap.readByte(); // Unknown, always 0x00
 
-			// Jones uses the track as the resource value in the map
+			// The track is the resource value in the map
 			if (res == track) {
 				g_system->getAudioCDManager()->play(1, 1, startFrame, length);
 				_audioCdStart = g_system->getMillis();
@@ -534,6 +543,14 @@ int AudioPlayer::audioCdPosition() {
 
 	// Return the position otherwise (in ticks).
 	return (g_system->getMillis() - _audioCdStart) * 60 / 1000;
+}
+
+void AudioPlayer::incrementPlayCounter() {
+	_playCounter++;
+}
+
+uint16 AudioPlayer::getPlayCounter() {
+	return _playCounter;
 }
 
 } // End of namespace Sci

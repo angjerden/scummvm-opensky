@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,14 +15,17 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
 #include "sci/engine/gc.h"
 #include "common/array.h"
 #include "sci/graphics/ports.h"
+
+#ifdef ENABLE_SCI32
+#include "sci/graphics/controls32.h"
+#endif
 
 namespace Sci {
 
@@ -42,7 +45,7 @@ const char *segmentTypeNames[] = {
 	"dynmem",    // 9
 	"obsolete",  // 10: obsolete string fragments
 	"array",     // 11: SCI32 arrays
-	"string"     // 12: SCI32 strings
+	"obsolete"   // 12: obsolete SCI32 strings
 };
 #endif
 
@@ -139,14 +142,29 @@ AddrSet *findAllActiveReferences(EngineState *s) {
 	const Common::Array<SegmentObj *> &heap = s->_segMan->getSegments();
 	uint heapSize = heap.size();
 
-	// Init: Explicitly loaded scripts
 	for (uint i = 1; i < heapSize; i++) {
-		if (heap[i] && heap[i]->getType() == SEG_TYPE_SCRIPT) {
-			Script *script = (Script *)heap[i];
+		if (heap[i]) {
+			// Init: Explicitly loaded scripts
+			if (heap[i]->getType() == SEG_TYPE_SCRIPT) {
+				Script *script = (Script *)heap[i];
 
-			if (script->getLockers()) { // Explicitly loaded?
-				wm.pushArray(script->listObjectReferences());
+				if (script->getLockers()) { // Explicitly loaded?
+					wm.pushArray(script->listObjectReferences());
+				}
 			}
+
+#ifdef ENABLE_SCI32
+			// Init: Explicitly opted-out bitmaps
+			else if (heap[i]->getType() == SEG_TYPE_BITMAP) {
+				BitmapTable *bt = static_cast<BitmapTable *>(heap[i]);
+
+				for (uint j = 0; j < bt->_table.size(); j++) {
+					if (bt->_table[j].data && bt->_table[j].data->getShouldGC() == false) {
+						wm.push(make_reg(i, j));
+					}
+				}
+			}
+#endif
 		}
 	}
 
@@ -181,7 +199,7 @@ void run_gc(EngineState *s) {
 	for (uint seg = 1; seg < heap.size(); seg++) {
 		SegmentObj *mobj = heap[seg];
 
-		if (mobj != NULL) {
+		if (mobj != nullptr) {
 #ifdef GC_DEBUG_CODE
 			const SegmentType type = mobj->getType();
 			segnames[type] = segmentTypeNames[type];

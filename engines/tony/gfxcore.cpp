@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -912,7 +911,7 @@ void RMGfxSourceBuffer8RLE::draw(CORO_PARAM, RMGfxTargetBuffer &bigBuf, RMGfxPri
 	if (prim->isFlipped()) {
 // Eliminate horizontal clipping
 //		width = m_dimx;
-//		x1=prim->Dst().x1;
+//		x1=prim->getDst()._x1;
 
 		// Clipping
 		u = _dimx - (width + u);
@@ -1699,7 +1698,7 @@ void RMGfxSourceBuffer8AA::drawAA(RMGfxTargetBuffer &bigBuf, RMGfxPrimitive *pri
 	}
 
 	//width = _dimx;
-	//x1 = prim->Dst().x1;
+	//x1 = prim->getDst()._x1;
 
 	// Position into the destination buffer
 	buf = bigBuf;
@@ -1714,7 +1713,7 @@ void RMGfxSourceBuffer8AA::drawAA(RMGfxTargetBuffer &bigBuf, RMGfxPrimitive *pri
 	// Loop
 	buf += bigBuf.getDimx(); // Skip the first line
 	for (int y = 1; y < height - 1; y++) {
-		// if (prim->IsFlipped())
+		// if (prim->isFlipped())
 		//	mybuf=&buf[x1+m_dimx-1];
 		// else
 		mybuf = &buf[x1];
@@ -1733,13 +1732,6 @@ void RMGfxSourceBuffer8AA::drawAA(RMGfxTargetBuffer &bigBuf, RMGfxPrimitive *pri
 				g /= 5;
 				b /= 5;
 
-				if (r > 0x1f)
-					r = 0x1f;
-				if (g > 0x3f)
-					g = 0x3f;
-				if (b > 0x1f)
-					b = 0x1f;
-
 				mybuf[0] = (r << 11) | (g << 5) | b;
 			}
 		}
@@ -1755,7 +1747,7 @@ void RMGfxSourceBuffer8AA::drawAA(RMGfxTargetBuffer &bigBuf, RMGfxPrimitive *pri
 	// Looppone
 	buf += bigBuf.getDimx();
 	for (int y = 1; y < height - 1; y++) {
-		// if (prim->IsFlipped())
+		// if (prim->isFlipped())
 		// 	mybuf=&buf[x1+m_dimx-1];
 		// else
 		mybuf = &buf[x1];
@@ -1773,13 +1765,6 @@ void RMGfxSourceBuffer8AA::drawAA(RMGfxTargetBuffer &bigBuf, RMGfxPrimitive *pri
 				r /= 6;
 				g /= 6;
 				b /= 6;
-
-				if (r > 0x1f)
-					r = 0x1f;
-				if (g > 0x3f)
-					g = 0x3f;
-				if (b > 0x1f)
-					b = 0x1f;
 
 				mybuf[0] = (r << 11) | (g << 5) | b;
 			}

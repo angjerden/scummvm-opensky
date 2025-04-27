@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -327,7 +326,7 @@ void Parallaction_ns::_c_endComment(void *param) {
 		button. If the input is reconciled with the main
 		loop then the command sequence must be suspended
 		to avoid executing QUIT before this actual
-		routine gets a chance to be run. See bug #2619824
+		routine gets a chance to be run. See bug #4184
 		for a similar situation.
 	*/
 
@@ -377,7 +376,7 @@ void Parallaction_ns::_c_finito(void *parm) {
 
 	_saveLoad->setPartComplete(_char.getBaseName());
 
-	cleanInventory();
+	cleanInventory(true);
 	cleanupGame();
 
 	_gfx->setPalette(_gfx->_palette);
@@ -454,7 +453,7 @@ void Parallaction_ns::_c_endIntro(void *parm) {
 		// NOTE: suspend command execution queue, to
 		// avoid running the QUIT command before
 		// credits are displayed. This solves bug
-		// #2619824.
+		// #4184.
 		// Execution of the command list will resume
 		// as soon as runGameFrame is run.
 		_cmdExec->suspend();
@@ -489,12 +488,14 @@ void Parallaction_ns::_c_moveSheet(void *parm) {
 	return;
 }
 
-void zeroMask(int x, int y, int color, void *data) {
-	BackgroundInfo *info = (BackgroundInfo *)data;
+class ZeroMaskPrimitives : public Graphics::Primitives {
+	void drawPoint(int x, int y, uint32 color, void *data) override {
+		BackgroundInfo *info = (BackgroundInfo *)data;
 
-	uint16 _ax = x + y * info->_mask->w;
-	info->_mask->data[_ax >> 2] &= ~(3 << ((_ax & 3) << 1));
-}
+		uint16 _ax = x + y * info->_mask->w;
+		info->_mask->data[_ax >> 2] &= ~(3 << ((_ax & 3) << 1));
+	}
+};
 
 void Parallaction_ns::_c_sketch(void *parm) {
 
@@ -520,7 +521,7 @@ void Parallaction_ns::_c_sketch(void *parm) {
 	}
 
 	if (_gfx->_backgroundInfo->hasMask()) {
-		Graphics::drawLine(oldx, oldy, newx, newy, 0, zeroMask, _gfx->_backgroundInfo);
+		ZeroMaskPrimitives().drawLine(oldx, oldy, newx, newy, 0, _gfx->_backgroundInfo);
 	}
 
 	_rightHandAnim->setX(newx);

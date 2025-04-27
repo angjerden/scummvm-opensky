@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -50,8 +49,10 @@
 
 #include "sword25/fmv/movieplayer.h"
 
-#include "sword25/util/lua/lua.h"
-#include "sword25/util/lua/lauxlib.h"
+#include "common/lua/lua.h"
+#include "common/lua/lauxlib.h"
+#include "common/config-manager.h"
+
 enum {
 	BIT_DEPTH = 32,
 	BACKBUFFER_COUNT = 1
@@ -60,13 +61,13 @@ enum {
 
 namespace Sword25 {
 
-static const uint FRAMETIME_SAMPLE_COUNT = 5;       // Anzahl der Framezeiten über die, die Framezeit gemittelt wird
+static const uint FRAMETIME_SAMPLE_COUNT = 5;       // Frame duration is averaged over FRAMETIME_SAMPLE_COUNT frames
 
 GraphicEngine::GraphicEngine(Kernel *pKernel) :
 	_width(0),
 	_height(0),
 	_bitDepth(0),
-	_lastTimeStamp((uint) -1), // max. BS_INT64 um beim ersten Aufruf von _UpdateLastFrameDuration() einen Reset zu erzwingen
+	_lastTimeStamp((uint) -1), // force reset of _UpdateLastFrameDuration() on first call
 	_lastFrameDuration(0),
 	_timerActive(true),
 	_frameTimeSampleSlot(0),
@@ -87,19 +88,18 @@ GraphicEngine::~GraphicEngine() {
 }
 
 bool GraphicEngine::init(int width, int height, int bitDepth, int backbufferCount) {
-	// Warnung ausgeben, wenn eine nicht unterstützte Bittiefe gewählt wurde.
+	// Warn when an unsupported bit depth has been selected.
 	if (bitDepth != BIT_DEPTH) {
 		warning("Can't use a bit depth of %d (not supported). Falling back to %d.", bitDepth, BIT_DEPTH);
 		_bitDepth = BIT_DEPTH;
 	}
 
-	// Warnung ausgeben, wenn nicht genau ein Backbuffer gewählt wurde.
+	// Warn when wrong BackBuffer is specified.
 	if (backbufferCount != BACKBUFFER_COUNT) {
 		warning("Can't use %d backbuffers (not supported). Falling back to %d.", backbufferCount, BACKBUFFER_COUNT);
 		backbufferCount = BACKBUFFER_COUNT;
 	}
 
-	// Parameter in lokale Variablen kopieren
 	_width = width;
 	_height = height;
 	_bitDepth = bitDepth;
@@ -107,18 +107,19 @@ bool GraphicEngine::init(int width, int height, int bitDepth, int backbufferCoun
 	_screenRect.top = 0;
 	_screenRect.right = _width;
 	_screenRect.bottom = _height;
+    _isRTL = Common::parseLanguage(ConfMan.get("language")) == Common::HE_ISR;
 
 	const Graphics::PixelFormat format = g_system->getScreenFormat();
 
 	_backSurface.create(width, height, format);
 
-	// Standardmäßig ist Vsync an.
+	// By default Vsync is on.
 	setVsync(true);
 
-	// Layer-Manager initialisieren.
+	// Layer-Manager initialization
 	_renderObjectManagerPtr.reset(new RenderObjectManager(width, height, backbufferCount + 1));
 
-	// Hauptpanel erstellen
+	// Create the main panel
 	_mainPanelPtr = _renderObjectManagerPtr->getTreeRoot()->addPanel(width, height, BS_ARGB(0, 0, 0, 0));
 	if (!_mainPanelPtr.isValid())
 		return false;
@@ -128,11 +129,10 @@ bool GraphicEngine::init(int width, int height, int bitDepth, int backbufferCoun
 }
 
 bool GraphicEngine::startFrame(bool updateAll) {
-	// Berechnen, wie viel Zeit seit dem letzten Frame vergangen ist.
-	// Dieser Wert kann über GetLastFrameDuration() von Modulen abgefragt werden, die zeitabhängig arbeiten.
+	// Calculate how much time has elapsed since the last frame.
 	updateLastFrameDuration();
 
-	// Den Layer-Manager auf den nächsten Frame vorbereiten
+	// Prepare the Layer Manager for the next frame
 	_renderObjectManagerPtr->startFrame();
 
 	return true;
@@ -147,6 +147,32 @@ bool GraphicEngine::endFrame() {
 	_renderObjectManagerPtr->render();
 
 	g_system->updateScreen();
+
+	// Debug-Lines zeichnen
+	if (!_debugLines.empty()) {
+#if 0
+		glEnable(GL_LINE_SMOOTH);
+		glBegin(GL_LINES);
+
+		Common::Array<DebugLine>::const_iterator iter = m_DebugLines.begin();
+		for (; iter != m_DebugLines.end(); ++iter) {
+			const uint &Color = (*iter).Color;
+			const BS_Vertex &Start = (*iter).Start;
+			const BS_Vertex &End = (*iter).End;
+
+			glColor4ub((Color >> 16) & 0xff, (Color >> 8) & 0xff, Color & 0xff, Color >> 24);
+			glVertex2d(Start.X, Start.Y);
+			glVertex2d(End.X, End.Y);
+		}
+
+		glEnd();
+		glDisable(GL_LINE_SMOOTH);
+#endif
+
+		warning("STUB: Drawing debug lines");
+
+		_debugLines.clear();
+	}
 
 	return true;
 }
@@ -168,14 +194,14 @@ bool GraphicEngine::getVsync() const {
 bool GraphicEngine::fill(const Common::Rect *fillRectPtr, uint color) {
 	Common::Rect rect(_width - 1, _height - 1);
 
-	int ca = (color >> 24) & 0xff;
+	int ca = (color >> BS_ASHIFT) & 0xff;
 
 	if (ca == 0)
 		return true;
 
-	int cr = (color >> 16) & 0xff;
-	int cg = (color >> 8) & 0xff;
-	int cb = (color >> 0) & 0xff;
+	int cr = (color >> BS_RSHIFT) & 0xff;
+	int cg = (color >> BS_GSHIFT) & 0xff;
+	int cb = (color >> BS_BSHIFT) & 0xff;
 
 	if (fillRectPtr) {
 		rect = *fillRectPtr;
@@ -183,7 +209,7 @@ bool GraphicEngine::fill(const Common::Rect *fillRectPtr, uint color) {
 
 	if (rect.width() > 0 && rect.height() > 0) {
 		if (ca == 0xff) {
-			_backSurface.fillRect(rect, BS_ARGB(cr, cg, cb, ca));
+			_backSurface.fillRect(rect, _backSurface.format.ARGBToColor(ca, cr, cg, cb));
 		} else {
 			byte *outo = (byte *)_backSurface.getBasePtr(rect.left, rect.top);
 			byte *out;
@@ -276,7 +302,7 @@ Resource *GraphicEngine::loadResource(const Common::String &filename) {
 		PackageManager *pPackage = Kernel::getInstance()->getPackage();
 		assert(pPackage);
 
-		// Datei laden
+		// Loading data
 		byte *pFileData;
 		uint fileSize;
 		pFileData = pPackage->getFile(filename, &fileSize);
@@ -341,6 +367,15 @@ bool GraphicEngine::canLoadResource(const Common::String &filename) {
 		filename.hasPrefix("/saves");
 }
 
+
+// -----------------------------------------------------------------------------
+// DEBUGGING
+// -----------------------------------------------------------------------------
+
+void GraphicEngine::drawDebugLine(const Vertex &start, const Vertex &end, uint color) {
+	_debugLines.push_back(DebugLine(start, end, color));
+}
+
 void  GraphicEngine::updateLastFrameDuration() {
 	// Record current time
 	const uint currentTime = Kernel::getInstance()->getMilliTicks();
@@ -364,21 +399,21 @@ void  GraphicEngine::updateLastFrameDuration() {
 }
 
 bool GraphicEngine::saveThumbnailScreenshot(const Common::String &filename) {
-	// Note: In ScumMVM, rather than saivng the thumbnail to a file, we store it in memory
+	// Note: In ScummVM, rather than saving the thumbnail to a file, we store it in memory
 	// until needed when creating savegame files
 	delete _thumbnail;
 
-	_thumbnail = Screenshot::createThumbnail(&_backSurface);
+	_thumbnail = Screenshot::createThumbnail(_backSurface.surfacePtr());
 
 	return true;
 }
 
 void GraphicEngine::ARGBColorToLuaColor(lua_State *L, uint color) {
 	lua_Number components[4] = {
-		(lua_Number)((color >> 16) & 0xff),   // Rot
-		(lua_Number)((color >> 8) & 0xff),    // Grün
-		(lua_Number)(color & 0xff),          // Blau
-		(lua_Number)(color >> 24),           // Alpha
+		(lua_Number)((color >> BS_RSHIFT) & 0xff), // Red
+		(lua_Number)((color >> BS_GSHIFT) & 0xff), // Green
+		(lua_Number)((color >> BS_BSHIFT) & 0xff), // Blue
+		(lua_Number)( color >> BS_ASHIFT),         // Alpha
 	};
 
 	lua_newtable(L);
@@ -395,11 +430,11 @@ uint GraphicEngine::luaColorToARGBColor(lua_State *L, int stackIndex) {
 	int __startStackDepth = lua_gettop(L);
 #endif
 
-	// Sicherstellen, dass wir wirklich eine Tabelle betrachten
+	// Make sure that we really look at a table
 	luaL_checktype(L, stackIndex, LUA_TTABLE);
-	// Größe der Tabelle auslesen
+	// getting table size
 	uint n = luaL_getn(L, stackIndex);
-	// RGB oder RGBA Farben werden unterstützt und sonst keine
+	// only RGB or RGBA colors are supported
 	if (n != 3 && n != 4)
 		luaL_argcheck(L, 0, stackIndex, "at least 3 of the 4 color components have to be specified");
 
@@ -438,7 +473,7 @@ uint GraphicEngine::luaColorToARGBColor(lua_State *L, int stackIndex) {
 	assert(__startStackDepth == lua_gettop(L));
 #endif
 
-	return (alpha << 24) | (red << 16) | (green << 8) | blue;
+	return BS_ARGB(alpha, red, green, blue);
 }
 
 bool GraphicEngine::persist(OutputPersistenceBlock &writer) {
@@ -454,6 +489,10 @@ bool GraphicEngine::unpersist(InputPersistenceBlock &reader) {
 	_renderObjectManagerPtr->unpersist(reader);
 
 	return reader.isGood();
+}
+
+bool GraphicEngine::isRTL() {
+    return _isRTL;
 }
 
 } // End of namespace Sword25

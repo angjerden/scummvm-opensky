@@ -4,10 +4,10 @@
  * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,8 +15,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
 
@@ -26,7 +25,7 @@
 #include "common/scummsys.h"
 #include "common/array.h"
 #include "common/file.h"
-#include "graphics/surface.h"
+#include "graphics/managed_surface.h"
 #include "access/decompress.h"
 
 namespace Access {
@@ -70,19 +69,18 @@ public:
 class FileManager {
 private:
 	AccessEngine *_vm;
-	const char * const *_filenames;
 
-	void openFile(Resource *res, const Common::String &filename);
+	void openFile(Resource *res, const Common::Path &filename);
 
 	/**
 	 * Handles setting up the resource with a stream for the located resource
 	 */
 	void handleFile(Resource *res);
-	
+
 	/**
 	 * Handles loading a screen surface and palette with decoded resource
 	 */
-	void handleScreen(Graphics::Surface *dest, Resource *res);
+	void handleScreen(Graphics::ManagedSurface *dest, Resource *res);
 
 	/**
 	* Open up a sub-file container file
@@ -104,7 +102,7 @@ public:
 	/**
 	 * Check the existence of a given file
 	 */
-	bool existFile(const Common::String &filename);
+	bool existFile(const Common::Path &filename);
 
 	/**
 	 * Load a given subfile from a container file
@@ -119,7 +117,7 @@ public:
 	/**
 	 * Load a given file by name
 	 */
-	Resource *loadFile(const Common::String &filename);
+	Resource *loadFile(const Common::Path &filename);
 
 	/**
 	 * Load a given scren from a container file
@@ -129,12 +127,12 @@ public:
 	/**
 	* Load a given screen by name
 	*/
-	void loadScreen(const Common::String &filename);
+	void loadScreen(const Common::Path &filename);
 
 	/**
 	 * Load a screen resource onto a designated surface
 	 */
-	void loadScreen(Graphics::Surface *dest, int fileNum, int subfile);
+	void loadScreen(Graphics::ManagedSurface *dest, int fileNum, int subfile);
 };
 
 } // End of namespace Access

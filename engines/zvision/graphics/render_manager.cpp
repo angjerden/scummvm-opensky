@@ -1,24 +1,23 @@
 /* ScummVM - Graphic Adventure Engine
-*
-* ScummVM is the legal property of its developers, whose names
-* are too numerous to list here. Please refer to the COPYRIGHT
-* file distributed with this source distribution.
-*
-* This program is free software; you can redistribute it and/or
-* modify it under the terms of the GNU General Public License
-* as published by the Free Software Foundation; either version 2
-* of the License, or (at your option) any later version.
-
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
-
-* You should have received a copy of the GNU General Public License
-* along with this program; if not, write to the Free Software
-* Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
-*
-*/
+ *
+ * ScummVM is the legal property of its developers, whose names
+ * are too numerous to list here. Please refer to the COPYRIGHT
+ * file distributed with this source distribution.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ */
 
 #include "common/scummsys.h"
 
@@ -39,7 +38,7 @@
 
 namespace ZVision {
 
-RenderManager::RenderManager(ZVision *engine, uint32 windowWidth, uint32 windowHeight, const Common::Rect workingWindow, const Graphics::PixelFormat pixelFormat, bool doubleFPS)
+RenderManager::RenderManager(ZVision *engine, uint32 windowWidth, uint32 windowHeight, const Common::Rect &workingWindow, const Graphics::PixelFormat &pixelFormat, bool doubleFPS)
 	: _engine(engine),
 	  _system(engine->_system),
 	  _screenCenterX(_workingWindow.width() / 2),
@@ -149,7 +148,7 @@ void RenderManager::copyToScreen(const Graphics::Surface &surface, Common::Rect 
 	delete outSurface;
 }
 
-void RenderManager::renderImageToBackground(const Common::String &fileName, int16 destX, int16 destY) {
+void RenderManager::renderImageToBackground(const Common::Path &fileName, int16 destX, int16 destY) {
 	Graphics::Surface surface;
 	readImageToSurface(fileName, surface);
 
@@ -157,7 +156,7 @@ void RenderManager::renderImageToBackground(const Common::String &fileName, int1
 	surface.free();
 }
 
-void RenderManager::renderImageToBackground(const Common::String &fileName, int16 destX, int16 destY, uint32 keycolor) {
+void RenderManager::renderImageToBackground(const Common::Path &fileName, int16 destX, int16 destY, uint32 keycolor) {
 	Graphics::Surface surface;
 	readImageToSurface(fileName, surface);
 
@@ -165,7 +164,7 @@ void RenderManager::renderImageToBackground(const Common::String &fileName, int1
 	surface.free();
 }
 
-void RenderManager::renderImageToBackground(const Common::String &fileName, int16 destX, int16 destY, int16  keyX, int16 keyY) {
+void RenderManager::renderImageToBackground(const Common::Path &fileName, int16 destX, int16 destY, int16  keyX, int16 keyY) {
 	Graphics::Surface surface;
 	readImageToSurface(fileName, surface);
 
@@ -175,16 +174,16 @@ void RenderManager::renderImageToBackground(const Common::String &fileName, int1
 	surface.free();
 }
 
-void RenderManager::readImageToSurface(const Common::String &fileName, Graphics::Surface &destination) {
+void RenderManager::readImageToSurface(const Common::Path &fileName, Graphics::Surface &destination) {
 	bool isTransposed = _renderTable.getRenderState() == RenderTable::PANORAMA;
 	readImageToSurface(fileName, destination, isTransposed);
 }
 
-void RenderManager::readImageToSurface(const Common::String &fileName, Graphics::Surface &destination, bool transposed) {
+void RenderManager::readImageToSurface(const Common::Path &fileName, Graphics::Surface &destination, bool transposed) {
 	Common::File file;
 
 	if (!_engine->getSearchManager()->openFile(file, fileName)) {
-		warning("Could not open file %s", fileName.c_str());
+		warning("Could not open file %s", fileName.toString().c_str());
 		return;
 	}
 
@@ -192,11 +191,11 @@ void RenderManager::readImageToSurface(const Common::String &fileName, Graphics:
 	// Some files are true TGA, while others are TGZ
 	uint32 fileType = file.readUint32BE();
 
-	uint32 imageWidth;
-	uint32 imageHeight;
+	int imageWidth;
+	int imageHeight;
 	Image::TGADecoder tga;
 	uint16 *buffer;
-	// All ZVision images are in RGB 555
+	// All Z-Vision images are in RGB 555
 	destination.format = _engine->_resourcePixelFormat;
 
 	bool isTGZ;
@@ -238,9 +237,7 @@ void RenderManager::readImageToSurface(const Common::String &fileName, Graphics:
 
 	// Flip the width and height if transposed
 	if (transposed) {
-		uint16 temp = imageHeight;
-		imageHeight = imageWidth;
-		imageWidth = temp;
+		SWAP(imageWidth, imageHeight);
 	}
 
 	// If the destination internal buffer is the same size as what we're copying into it,
@@ -254,10 +251,10 @@ void RenderManager::readImageToSurface(const Common::String &fileName, Graphics:
 	if (transposed) {
 		uint16 *dest = (uint16 *)destination.getPixels();
 
-		for (uint32 y = 0; y < imageHeight; ++y) {
+		for (int y = 0; y < imageHeight; ++y) {
 			uint32 columnIndex = y * imageWidth;
 
-			for (uint32 x = 0; x < imageWidth; ++x) {
+			for (int x = 0; x < imageWidth; ++x) {
 				dest[columnIndex + x] = buffer[x * imageHeight + y];
 			}
 		}
@@ -309,7 +306,7 @@ RenderTable *RenderManager::getRenderTable() {
 	return &_renderTable;
 }
 
-void RenderManager::setBackgroundImage(const Common::String &fileName) {
+void RenderManager::setBackgroundImage(const Common::Path &fileName) {
 	readImageToSurface(fileName, _currentBackgroundImage);
 	_backgroundWidth = _currentBackgroundImage.w;
 	_backgroundHeight = _currentBackgroundImage.h;
@@ -345,10 +342,10 @@ Graphics::Surface *RenderManager::tranposeSurface(const Graphics::Surface *surfa
 	const uint16 *source = (const uint16 *)surface->getPixels();
 	uint16 *dest = (uint16 *)tranposedSurface->getPixels();
 
-	for (uint32 y = 0; y < tranposedSurface->h; ++y) {
-		uint32 columnIndex = y * tranposedSurface->w;
+	for (int y = 0; y < tranposedSurface->h; ++y) {
+		int columnIndex = y * tranposedSurface->w;
 
-		for (uint32 x = 0; x < tranposedSurface->w; ++x) {
+		for (int x = 0; x < tranposedSurface->w; ++x) {
 			dest[columnIndex + x] = source[x * surface->w + y];
 		}
 	}
@@ -569,13 +566,13 @@ Graphics::Surface *RenderManager::getBkgRect(Common::Rect &rect) {
 	return srf;
 }
 
-Graphics::Surface *RenderManager::loadImage(Common::String file) {
+Graphics::Surface *RenderManager::loadImage(const Common::Path &file) {
 	Graphics::Surface *tmp = new Graphics::Surface;
 	readImageToSurface(file, *tmp);
 	return tmp;
 }
 
-Graphics::Surface *RenderManager::loadImage(Common::String file, bool transposed) {
+Graphics::Surface *RenderManager::loadImage(const Common::Path &file, bool transposed) {
 	Graphics::Surface *tmp = new Graphics::Surface;
 	readImageToSurface(file, *tmp, transposed);
 	return tmp;
@@ -684,7 +681,7 @@ void RenderManager::renderMenuToScreen() {
 	}
 }
 
-void RenderManager::initSubArea(uint32 windowWidth, uint32 windowHeight, const Common::Rect workingWindow) {
+void RenderManager::initSubArea(uint32 windowWidth, uint32 windowHeight, const Common::Rect &workingWindow) {
 	_workingWindow = workingWindow;
 
 	_subtitleSurface.free();
@@ -992,6 +989,7 @@ bool RenderManager::askQuestion(const Common::String &str) {
 				// Spanish: si/no
 				// French Nemesis: F4/any other key
 				// French ZGI: oui/non
+				// TODO: Handle this using the keymapper
 				switch (evnt.kbd.keycode) {
 				case Common::KEYCODE_y:
 					if (_engine->getLanguage() == Common::EN_ANY)
