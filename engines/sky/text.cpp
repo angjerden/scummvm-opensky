@@ -198,10 +198,10 @@ void Text::getText(uint32 textNr) { //load text #"textNr" into textBuffer
 		*dest++ = textChar;
 	} while (textChar);
         
-        Common::FSNode dir(ConfMan.get("path"));
-        const char* pathToSky = dir.getPath().c_str();        
+        Common::FSNode dir(ConfMan.getPath("path"));
+        const char* pathToSky = dir.getPath().toString(Common::Path::kNativeSeparator).c_str();        
         char ownTextFilename[300];
-        sprintf(ownTextFilename, "%s/opensky/opensky.txt", pathToSky);
+        Common::sprintf_s(ownTextFilename, "%s/opensky/opensky.txt", pathToSky);
 
         //read from own file into map
         std::ifstream ifile;
@@ -222,7 +222,8 @@ void Text::getText(uint32 textNr) { //load text #"textNr" into textBuffer
         //if map has textNr key, read into _textBuffer
         if (ownText.find(textNrForFileOutput) != ownText.end()) {
             debug(2, "Displaying own text for Text item %d", textNrForFileOutput);
-            std::string ownString = ownText[textNrForFileOutput].substr(6);
+			// std::string ownString = ownText[textNrForFileOutput].substr(6);
+			std::string ownString = ownText[textNrForFileOutput];
             strncpy(_textBuffer, ownString.c_str(), ownString.size());
             _textBuffer[ownString.size()] = 0;
         }
