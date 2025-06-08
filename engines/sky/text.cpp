@@ -33,6 +33,7 @@
 #include "sky/logic.h"
 #include "sky/text.h"
 #include "sky/sky.h"
+#include "sky/openskydefs.h"
 #include "sky/skydefs.h"
 #include "sky/struc.h"
 #include "sky/compact.h"
@@ -199,9 +200,9 @@ void Text::getText(uint32 textNr) { //load text #"textNr" into textBuffer
 	} while (textChar);
         
         Common::FSNode dir(ConfMan.getPath("path"));
-        const char* pathToSky = dir.getPath().toString(Common::Path::kNativeSeparator).c_str();        
+        const char* skyPath = dir.getPath().toString(Common::Path::kNativeSeparator).c_str();        
         char ownTextFilename[300];
-        Common::sprintf_s(ownTextFilename, "%s/opensky/opensky.txt", pathToSky);
+        Common::sprintf_s(ownTextFilename, "%s%s%s", skyPath, OPENSKYPATH, OPENSKY_TEXTFILE);
 
         //read from own file into map
         std::ifstream ifile;
