@@ -25,6 +25,7 @@
 
 #include "common/scummsys.h"
 #include "audio/mixer.h"
+#include <vector>
 
 namespace Sky {
 
@@ -77,6 +78,9 @@ public:
 	void checkFxQueue();
 	void restoreSfx();
 	uint8 _soundsTotal;
+
+	// opensky functions
+	bool readWavAudioData(Common::String &filename, std::vector<uint8> &outAudioData, uint32 &sampleRate, uint32 &dataSize);
 
 private:
 	Disk *_skyDisk;

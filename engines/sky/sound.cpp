@@ -30,6 +30,7 @@
 
 #include "sky/disk.h"
 #include "sky/logic.h"
+#include "sky/openskydefs.h"
 #include "sky/sky.h"
 #include "sky/skydefs.h"
 #include "sky/sound.h"
@@ -1220,8 +1221,62 @@ void Sound::fnStopFx() {
 	_saveSounds[0] = _saveSounds[1] = 0xFFFF;
 }
 
+
 void Sound::stopSpeech() {
 	_mixer->stopID(SOUND_SPEECH);
+}
+
+bool readWavAudioData(Common::String &filename, std::vector<uint8> &outAudioData, uint32 &sampleRate, uint32 &dataSize) {
+	std::ifstream file(filename.c_str(), std::ios::binary);
+	if (!file)
+		return false;
+
+	char chunkId[4];
+	uint32_t chunkSize;
+	char format[4];
+
+	file.read(chunkId, 4);  // "RIFF"
+	file.read(reinterpret_cast<char *>(&chunkSize), 4);
+	file.read(format, 4);   // "WAVE"
+
+	if (strncmp(chunkId, "RIFF", 4) != 0 || strncmp(format, "WAVE", 4) != 0)
+		return false;
+
+	// Read chunks until we find "fmt " and "data"
+	bool fmtFound = false;
+	bool dataFound = false;
+	while (!file.eof()) {
+		char subchunkId[4];
+		uint32_t subchunkSize;
+
+		file.read(subchunkId, 4);
+		file.read(reinterpret_cast<char *>(&subchunkSize), 4);
+
+		if (strncmp(subchunkId, "fmt ", 4) == 0) {
+			uint16 audioFormat;
+			uint16 channels;
+			uint16 bitsPerSample;
+			file.read(reinterpret_cast<char *>(&audioFormat), 2);
+			file.read(reinterpret_cast<char *>(&channels), 2);
+			file.read(reinterpret_cast<char *>(&sampleRate), 4);
+			file.ignore(6); // ByteRate (4), BlockAlign (2)
+			file.read(reinterpret_cast<char *>(&bitsPerSample), 2);
+
+			file.ignore(subchunkSize - 16); // skip any extra fmt bytes
+			fmtFound = true;
+		} else if (strncmp(subchunkId, "data", 4) == 0) {
+			dataSize = subchunkSize;
+			outAudioData.resize(dataSize);
+			file.read(reinterpret_cast<char *>(outAudioData.data()), dataSize);
+			dataFound = true;
+			break; // we have what we need
+		} else {
+			// Skip other chunks
+			file.ignore(subchunkSize);
+		}
+	}
+
+	return fmtFound && dataFound;
 }
 
 bool Sound::startSpeech(uint16 textNum) {
@@ -1241,58 +1296,6 @@ bool Sound::startSpeech(uint16 textNum) {
 	
 	free(speechData);
 
-	// Custom speech
-    Common::FSNode dir(ConfMan.getPath("path"));
-	char skyPath[300];
-	Common::sprintf_s(skyPath, dir.getPath().toString(Common::Path::kNativeSeparator).c_str());
-    char openSkyPath[300];
-	Common::sprintf_s(openSkyPath, "%s/opensky/", skyPath);
-    
-    uint16 speechFileNumForOutput = 50000 + speechFileNum;
-
-	char inputFileName[300];
-
-	Common::sprintf_s(inputFileName, "%s/speech-%d", openSkyPath, speechFileNumForOutput);
-	std::ifstream speechFile;
-	speechFile.open(inputFileName, std::ios::in | std::ios::binary);
-	if (speechFile.good()) {
-
-        //get speechSize
-        uint32 speechSizeCustom;
-
-        struct stat results;
-
-        if (stat(inputFileName, &results) == 0) {
-            // The size of the file in bytes is in
-            // results.st_size
-            speechSizeCustom = results.st_size;
-        }
-        else {
-            // An error occurred
-        }
-        char speechDataCustom[speechSizeCustom];
-
-        if (speechFile.is_open()) {
-
-        	speechFile.seekg(0, std::ios::beg);
-        	speechFile.getline(speechDataCustom, speechSizeCustom);
-        }
-
-        //prepare custom playBuffer
-        uint8 *playBufferCustom = (uint8 *)malloc(speechSizeCustom);
-        memcpy(playBufferCustom, speechDataCustom, speechSizeCustom);
-
-        _mixer->stopID(SOUND_SPEECH);
-
-        //send to scummvm mixer
-        uint rate = 11025;
-        Audio::AudioStream *stream = Audio::makeRawStream(playBufferCustom, speechSizeCustom, rate, Audio::FLAG_UNSIGNED);
-        _mixer->playStream(Audio::Mixer::kSpeechSoundType, &_ingameSpeech, stream, SOUND_SPEECH);
-        speechFile.close();
-		return true;
-    }
-
-
 	// Workaround for BASS bug #1461 - some voice-overs are played at
 	// half speed in 0.0368 (the freeware CD version), in 0.0372 they sound
 	// just fine.
@@ -1303,12 +1306,36 @@ bool Sound::startSpeech(uint16 textNum) {
 	else
 		rate = 11025;
 
+	// Custom speech
+	Common::Path skyPath = ConfMan.getPath("path");
+	Common::Path openSkySpeechFilePath = skyPath.append(OPENSKYPATH)
+		.append(OPENSKY_SPEECHPATH).append(std::to_string(textNum).c_str()).append(".wav");
+	Common::FSNode speechFileNode = Common::FSNode(openSkySpeechFilePath);
+	if (speechFileNode.exists()) {
+		// do custom speech
+		Common::String openSkySpeechFile = openSkySpeechFilePath.toString(Common::Path::kNativeSeparator);
+
+		std::vector<uint8> customSpeechData;
+		uint32 customSampleRate;
+		uint32 customSpeechSize;
+		bool readOk = readWavAudioData(openSkySpeechFile, customSpeechData, customSampleRate, customSpeechSize);
+
+		if (!readOk) {
+			// if read failed, use default speech
+		}
+		
+		playBuffer = customSpeechData.data();
+		speechSize = customSpeechSize;
+		rate = customSampleRate;
+	}
+    
 	_mixer->stopID(SOUND_SPEECH);
 
 	Audio::AudioStream *stream = Audio::makeRawStream(playBuffer, speechSize, rate, Audio::FLAG_UNSIGNED);
 	_mixer->playStream(Audio::Mixer::kSpeechSoundType, &_ingameSpeech, stream, SOUND_SPEECH);
 	return true;
 }
+
 
 void Sound::fnPauseFx() {
 	if (!_isPaused) {

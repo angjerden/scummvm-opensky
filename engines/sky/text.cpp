@@ -199,35 +199,33 @@ void Text::getText(uint32 textNr) { //load text #"textNr" into textBuffer
 		*dest++ = textChar;
 	} while (textChar);
         
-        Common::FSNode dir(ConfMan.getPath("path"));
-        const char* skyPath = dir.getPath().toString(Common::Path::kNativeSeparator).c_str();        
-        char ownTextFilename[300];
-        Common::sprintf_s(ownTextFilename, "%s%s%s", skyPath, OPENSKYPATH, OPENSKY_TEXTFILE);
+	Common::Path skyPath = ConfMan.getPath("path");
+	Common::Path openSkySpeechFilePath = skyPath.append(OPENSKYPATH).append(OPENSKY_TEXTFILE);
+	const char* openSkyTextFilename = openSkySpeechFilePath.toString(Common::Path::kNativeSeparator).c_str();
 
-        //read from own file into map
-        std::ifstream ifile;
-        ifile.open(ownTextFilename);
-        std::map<int, std::string> ownText;
-        if (ifile.is_open()) {
-            std::string line;
-            while(getline(ifile, line)) {
-                std::size_t splitIndex = line.find(' ');
-                std::string key = line.substr(0, splitIndex);
-                int int_key = atoi(key.c_str());
-                std::string value = line.substr(splitIndex + 1);
-                ownText[int_key] = value;
-            } 
-        }
-        ifile.close();
-        
-        //if map has textNr key, read into _textBuffer
-        if (ownText.find(textNrForFileOutput) != ownText.end()) {
-            debug(2, "Displaying own text for Text item %d", textNrForFileOutput);
-			// std::string ownString = ownText[textNrForFileOutput].substr(6);
-			std::string ownString = ownText[textNrForFileOutput];
-            strncpy(_textBuffer, ownString.c_str(), ownString.size());
-            _textBuffer[ownString.size()] = 0;
-        }
+	//read from own file into map
+	std::ifstream ifile;
+	ifile.open(openSkyTextFilename);
+	std::map<int, std::string> ownText;
+	if (ifile.is_open()) {
+		std::string line;
+		while(getline(ifile, line)) {
+			std::size_t splitIndex = line.find(' ');
+			std::string key = line.substr(0, splitIndex);
+			int int_key = atoi(key.c_str());
+			std::string value = line.substr(splitIndex + 1);
+			ownText[int_key] = value;
+		} 
+	}
+	ifile.close();
+	
+	//if map has textNr key, read into _textBuffer
+	if (ownText.find(textNrForFileOutput) != ownText.end()) {
+		debug(2, "Displaying own text for Text item %d", textNrForFileOutput);
+		std::string ownString = ownText[textNrForFileOutput];
+		strncpy(_textBuffer, ownString.c_str(), ownString.size());
+		_textBuffer[ownString.size()] = 0;
+	}
 }
 
 void Text::fnPointerText(uint32 pointedId, uint16 mouseX, uint16 mouseY) {

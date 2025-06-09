@@ -11,6 +11,7 @@
 #endif
 
 #define OPENSKYPATH "/opensky/"
+#define OPENSKY_SPEECHPATH "speech/"
 #define OPENSKY_TEXTFILE "texts.txt"
 
 #endif
