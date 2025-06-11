@@ -38,6 +38,7 @@
 
 #include "audio/audiostream.h"
 #include "audio/decoders/raw.h"
+#include "audio/decoders/wave.h"
 
 namespace Sky {
 
@@ -1226,7 +1227,7 @@ void Sound::stopSpeech() {
 	_mixer->stopID(SOUND_SPEECH);
 }
 
-bool readWavAudioData(Common::String &filename, std::vector<uint8> &outAudioData, uint32 &sampleRate, uint32 &dataSize) {
+bool Sound::readWavAudioData(Common::String &filename, std::vector<uint8> &outAudioData, uint32 &sampleRate, uint32 &dataSize) {
 	std::ifstream file(filename.c_str(), std::ios::binary);
 	if (!file)
 		return false;
@@ -1306,6 +1307,8 @@ bool Sound::startSpeech(uint16 textNum) {
 	else
 		rate = 11025;
 
+	_mixer->stopID(SOUND_SPEECH);
+
 	// Custom speech
 	Common::Path skyPath = ConfMan.getPath("path");
 	Common::Path openSkySpeechFilePath = skyPath.append(OPENSKYPATH)
@@ -1313,24 +1316,29 @@ bool Sound::startSpeech(uint16 textNum) {
 	Common::FSNode speechFileNode = Common::FSNode(openSkySpeechFilePath);
 	if (speechFileNode.exists()) {
 		// do custom speech
-		Common::String openSkySpeechFile = openSkySpeechFilePath.toString(Common::Path::kNativeSeparator);
+		// Common::String openSkySpeechFile = openSkySpeechFilePath.toString(Common::Path::kNativeSeparator);
 
-		std::vector<uint8> customSpeechData;
-		uint32 customSampleRate;
-		uint32 customSpeechSize;
-		bool readOk = readWavAudioData(openSkySpeechFile, customSpeechData, customSampleRate, customSpeechSize);
+		// std::vector<uint8> customSpeechData;
+		// uint32 customSampleRate;
+		// uint32 customSpeechSize;
+		// bool readOk = readWavAudioData(openSkySpeechFile, customSpeechData, customSampleRate, customSpeechSize);
 
-		if (!readOk) {
-			// if read failed, use default speech
-		}
+		// if (!readOk) {
+		// 	// if read failed, use default speech
+		// }
 		
-		playBuffer = customSpeechData.data();
-		speechSize = customSpeechSize;
-		rate = customSampleRate;
+		// playBuffer = customSpeechData.data();
+		// speechSize = customSpeechSize;
+		// rate = customSampleRate;
+
+		// Common::SeekableReadStream *stream = SearchMan.createReadStreamForMember(openSkySpeechFilePath);
+		Common::File *audioFile = new Common::File();
+		audioFile->open(openSkySpeechFilePath);
+		Audio::AudioStream *audioStream = Audio::makeWAVStream(audioFile, DisposeAfterUse::YES);
+		_mixer->playStream(Audio::Mixer::kSpeechSoundType, &_ingameSpeech, audioStream, SOUND_SPEECH);
+		return true;
 	}
     
-	_mixer->stopID(SOUND_SPEECH);
-
 	Audio::AudioStream *stream = Audio::makeRawStream(playBuffer, speechSize, rate, Audio::FLAG_UNSIGNED);
 	_mixer->playStream(Audio::Mixer::kSpeechSoundType, &_ingameSpeech, stream, SOUND_SPEECH);
 	return true;
