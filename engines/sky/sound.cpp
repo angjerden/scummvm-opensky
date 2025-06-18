@@ -1256,6 +1256,8 @@ bool Sound::startSpeech(uint16 textNum) {
 
 	_mixer->stopID(SOUND_SPEECH);
 
+	Audio::AudioStream *stream = Audio::makeRawStream(playBuffer, speechSize, rate, Audio::FLAG_UNSIGNED);
+
 	// Custom speech
 	Common::Path skyPath = ConfMan.getPath("path");
 	Common::Path openSkySpeechPath = skyPath.append(OPENSKYPATH).append(OPENSKY_SPEECHPATH);
@@ -1265,13 +1267,9 @@ bool Sound::startSpeech(uint16 textNum) {
 	if (speechFileNode.exists()) {
 		Common::File *audioFile = new Common::File();
 		audioFile->open(openSkySpeechFileName);
-		Audio::AudioStream *audioStream = Audio::makeWAVStream(audioFile, DisposeAfterUse::YES);
-		// TODO: Create custom audioStream but use mixer->playStream in the default execution flow
-		_mixer->playStream(Audio::Mixer::kSpeechSoundType, &_ingameSpeech, audioStream, SOUND_SPEECH);
-		return true;
+		stream = Audio::makeWAVStream(audioFile, DisposeAfterUse::YES);
 	}
     
-	Audio::AudioStream *stream = Audio::makeRawStream(playBuffer, speechSize, rate, Audio::FLAG_UNSIGNED);
 	_mixer->playStream(Audio::Mixer::kSpeechSoundType, &_ingameSpeech, stream, SOUND_SPEECH);
 	return true;
 }
