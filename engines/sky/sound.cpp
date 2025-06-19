@@ -1260,9 +1260,9 @@ bool Sound::startSpeech(uint16 textNum) {
 
 	// Custom speech
 	Common::Path skyPath = ConfMan.getPath("path");
-	Common::Path openSkySpeechPath = skyPath.append(OPENSKYPATH).append(OPENSKY_SPEECHPATH);
+	Common::Path openSkySpeechPath = skyPath.appendComponent(OPENSKYPATH).appendComponent(OPENSKY_SPEECHPATH);
 	Common::Path openSkySpeechFileName = Common::Path(std::to_string(textNum).c_str()).append(".wav");
-	Common::Path openSkySpeechFileFullPath = openSkySpeechPath.append(openSkySpeechFileName.toString(Common::Path::kNativeSeparator));
+	Common::Path openSkySpeechFileFullPath = openSkySpeechPath.appendComponent(openSkySpeechFileName.toString(Common::Path::kNativeSeparator));
 	Common::FSNode speechFileNode = Common::FSNode(openSkySpeechFileFullPath);
 	if (speechFileNode.exists()) {
 		Common::File *audioFile = new Common::File();
