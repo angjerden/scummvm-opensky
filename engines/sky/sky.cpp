@@ -468,7 +468,7 @@ Common::Error SkyEngine::init() {
 
 	// Add OpenSky folder to look for speech
 	Common::Path skyPath = ConfMan.getPath("path");
-	Common::Path openSkySpeechPath = skyPath.appendComponent(OPENSKYPATH).appendComponent(OPENSKY_SPEECHPATH);
+	Common::Path openSkySpeechPath = skyPath.appendComponent(OPENSKY_PATH).appendComponent(OPENSKY_SPEECHPATH);
 	SearchMan.addDirectory(openSkySpeechPath, 0, 2);
 
 	_debugger = new Debugger(_skyLogic, _skyMouse, _skyScreen, _skyCompact);

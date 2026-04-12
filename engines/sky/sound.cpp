@@ -1260,7 +1260,7 @@ bool Sound::startSpeech(uint16 textNum) {
 
 	// Custom speech
 	Common::Path skyPath = ConfMan.getPath("path");
-	Common::Path openSkySpeechPath = skyPath.appendComponent(OPENSKYPATH).appendComponent(OPENSKY_SPEECHPATH);
+	Common::Path openSkySpeechPath = skyPath.appendComponent(OPENSKY_PATH).appendComponent(OPENSKY_SPEECHPATH);
 	Common::String textNumStr = Common::String::format("%d", textNum);
 	Common::Path openSkySpeechFileName = Common::Path(textNumStr).append(".wav");
 	Common::Path openSkySpeechFileFullPath = openSkySpeechPath.appendComponent(openSkySpeechFileName.toString(Common::Path::kNativeSeparator));
