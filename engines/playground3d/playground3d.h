@@ -32,6 +32,12 @@
 
 namespace Playground3d {
 
+enum Actions {
+	kActionSwitchTest,
+	kActionEnableFog,
+	kActionEnableScissor
+};
+
 class Playground3dEngine : public Engine {
 public:
 	Playground3dEngine(OSystem *syst);
@@ -45,7 +51,7 @@ public:
 
 	void processInput();
 
-	void drawFrame(int testId);
+	void drawFrame();
 
 private:
 	OSystem *_system;
@@ -53,9 +59,11 @@ private:
 	Graphics::FrameLimiter *_frameLimiter;
 	Math::Vector4d _clearColor;
 	Math::Vector4d _fogColor;
+	int _testId;
 	float _fade;
 	bool _fadeIn;
 	bool _fogEnable;
+	bool _scissorEnable;
 	Graphics::Surface *_rgbaTexture;
 	Graphics::Surface *_rgbTexture;
 	Graphics::Surface *_rgb565Texture;

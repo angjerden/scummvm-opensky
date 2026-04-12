@@ -20,9 +20,10 @@
  */
 
 #include "m4/riddle/rooms/section4/room407.h"
-#include "m4/graphics/gr_series.h"
 #include "m4/riddle/vars.h"
 #include "m4/riddle/riddle.h"
+#include "m4/adv_r/adv_control.h"
+#include "m4/graphics/gr_series.h"
 
 namespace M4 {
 namespace Riddle {
@@ -351,7 +352,7 @@ void Room407::init() {
 				_G(kernel).trigger_mode = KT_PARSE;
 			} else if (_tubeState == 1130) {
 				_G(kernel).trigger_mode = KT_DAEMON;
-				kernel_timing_trigger(1, 410);
+				kernel_timing_trigger(1, 420);
 				_G(kernel).trigger_mode = KT_PARSE;
 			}
 		}
@@ -529,7 +530,7 @@ void Room407::init() {
 		player_set_commands_allowed(true);
 
 	} else if (!_G(kittyScreaming)) {
-		midi_play("DRAMA1", 255, 0, -1, 949);
+		midi_play("DRAMA1", 255, false, -1, 949);
 		_ripEnters = series_load("407 RIP ENTERS");
 		_stair = series_load("407STAIR");
 		ws_demand_location(_G(my_walker), 250, 331, 3);
@@ -925,7 +926,7 @@ void Room407::daemon() {
 		terminateMachineAndNull(_bottle);
 
 		_407r = series_load("407r");
-		_bottle = TriggerMachineByHash(1, 1, 0, 0, 0, 0, 0, -53, 100, 0xe00, 0,
+		_bottle = TriggerMachineByHash(1, 1, 0, 0, 0, 0, 0, -53, 100, 0xe00, false,
 			triggerMachineByHashCallback, "GLASS JAR TURNS");
 		sendWSMessage_10000(1, _bottle, _407r, 1, 30, 186, _407r, 30, 30, 0);
 		digi_play("407_s16", 3);
@@ -960,7 +961,7 @@ void Room407::daemon() {
 		hotspot_set_active("PERIODIC TABLE ", true);
 		_periodicTableState = 1120;
 
-		midi_play("EMERALD", 255, 0, 194, 949);
+		midi_play("EMERALD", 255, false, 194, 949);
 		kernel_examine_inventory_object("PING EMERALD/CORK",
 			_G(master_palette), 5, 1, 50, 200, 195, nullptr, -1);
 		break;
@@ -1587,9 +1588,9 @@ void Room407::daemon() {
 }
 
 void Room407::pre_parser() {
-	bool lookFlag = player_said_any("look", "look at");
-	bool takeFlag = player_said("take");
-	bool useFlag = player_said_any("push", "pull", "gear", "open", "close");
+	const bool lookFlag = player_said_any("look", "look at");
+	const bool takeFlag = player_said("take");
+	const bool useFlag = player_said_any("push", "pull", "gear", "open", "close");
 
 	if ((player_said("SURGICAL TUBE", "FAUCET PIPE") || player_said("TUBE/HOSE", "FAUCET PIPE")) &&
 			_faucetPipeState == 1100) {
@@ -2024,19 +2025,15 @@ void Room407::parser() {
 			_airValveState == 1100 && inv_object_is_here("FAUCET HANDLE")) {
 		if (_frotz2) {
 			digi_play("407r99e", 1);
-		} else if (_faucetPipeState == 1100) {
-			if (_periodicTableState == 1120)
-				digi_play("407r99o", 1);
-			else
-				useFaucet();
-		} else if (_tubeState == 1130 && _faucetPipeState != 1130) {
+		} else if (_faucetPipeState == 1100 || (_tubeState == 1130 && _faucetPipeState != 1130)) {
 			if (_periodicTableState == 1120)
 				digi_play("407r99o", 1);
 			else
 				useFaucet();
 		} else if (_faucetHookedToJar) {
 			useFaucet();
-		} else if (_faucetPipeState == 1100 || _tubeState == 1130 || _faucetHookedToJar) {
+		} else if (_tubeState == 1130) {
+			// The original is doing two additional checks on _faucetHookedToJar and (_faucetPipeState == 1100 which are useless at this point (already covered)
 			digi_play("407r99e", 1);
 		} else {
 			digi_play("407r99n", 1);
@@ -3104,7 +3101,7 @@ void Room407::gardenHoseSurgicalTube2() {
 			"407 TUBE AND HOSE INTO SINK", 0, 0, 0, 100, 0xe00);
 		hotspot_set_active("GARDEN HOSE  ", true);
 
-		if (_hoseState == 1061) {
+		if (_hoseState != 1061) {
 			inv_move_object("GARDEN HOSE", 407);
 		} else {
 			_faucetPipe = series_place_sprite("407 FAUCET IN SINK",
@@ -3430,6 +3427,7 @@ void Room407::faucetPipeGlassJar() {
 		break;
 
 	case 777:
+		player_set_commands_allowed(false);
 		ws_walk(_G(my_walker), 436, 331, nullptr, 70, 1);
 		break;
 
@@ -3440,6 +3438,7 @@ void Room407::faucetPipeGlassJar() {
 
 void Room407::gardenHoseFaucetPipe() {
 	switch (_G(kernel).trigger) {
+
 	case 1:
 		_drawerPopupHose = series_place_sprite(
 			"407 HOSE HANG FROM JAR", 0, 0, 0, 100, 0xb00);
@@ -3473,6 +3472,7 @@ void Room407::gardenHoseFaucetPipe() {
 	case 70:
 		_ripHiHand1 = series_load("rip trek hi 1 hand");
 		setGlobals1(_ripHiHand1, 1, 12, 12, 12, 0, 12, 1, 1, 1);
+		sendWSMessage_110000(1);
 		break;
 
 	case 777:
@@ -5545,7 +5545,7 @@ void Room407::takeLeverKeyFromBench() {
 		terminateMachineAndNull(_lever);
 		inv_give_to_player("LEVER KEY");
 		hotspot_set_active("LEVER KEY ", false);
-		kernel_examine_inventory_object("PING LEVER KEY", 5, 1, 175, 200, 2, "407_s07a");
+		kernel_examine_inventory_object("PING LEVER KEY", _G(master_palette), 5, 1, 175, 200, 2, "407_s07a", -1);
 		break;
 
 	case 2:

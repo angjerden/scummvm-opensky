@@ -27,6 +27,7 @@
 #include "m4/m4_types.h"
 #include "m4/graphics/gr_buff.h"
 #include "m4/gui/gui_univ.h"
+#include "m4/graphics/gr_font.h"
 
 namespace M4 {
 
@@ -169,8 +170,6 @@ public:
 	int32 itemFlags = 0;
 
 	static menuItemMsg *msgAdd(guiMenu *myMenu, int32 tag, int32 x, int32 y, int32 w, int32 h, bool transparent = false);
-	static void disableMsg(menuItemMsg *myItem, int32 tag, guiMenu *myMenu);
-	static void enableMsg(menuItemMsg *myItem, int32 tag, guiMenu *myMenu);
 };
 
 struct menuItemButton : public menuItem {
@@ -213,7 +212,7 @@ public:
 		const char *prompt = nullptr, ItemHandlerFunction i_handler = (ItemHandlerFunction)handler);
 	static void disableButton(menuItemButton *myItem, int32 tag, guiMenu *myMenu);
 	static void enableButton(menuItemButton *myItem, int32 tag, guiMenu *myMenu);
-	static bool handler(menuItemButton *theItem, int32 eventType, int32 event,
+	static bool handler(menuItemButton *myItem, int32 eventType, int32 event,
 		int32 x, int32 y, void **currItem);
 };
 

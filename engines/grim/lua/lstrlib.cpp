@@ -93,7 +93,7 @@ static void push_captures(Capture *cap) {
 	for (int i = 0; i < cap->level; i++) {
 		int l = cap->capture[i].len;
 		char *buff = luaL_openspace(l+1);
-		if (l == -1)
+		if (l < 0)
 			lua_error("unfinished capture");
 		strncpy(buff, cap->capture[i].init, l);
 		buff[l] = 0;
@@ -497,7 +497,7 @@ static struct luaL_reg strlib[] = {
 ** Open string library
 */
 void strlib_open() {
-	luaL_openlib(strlib, (sizeof(strlib) / sizeof(strlib[0])));
+	luaL_openlib(strlib, ARRAYSIZE(strlib));
 }
 
 } // end of namespace Grim

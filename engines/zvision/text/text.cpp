@@ -19,20 +19,20 @@
  *
  */
 
-#include "common/scummsys.h"
-#include "common/file.h"
-#include "common/tokenizer.h"
 #include "common/debug.h"
+#include "common/enc-internal.h"
+#include "common/file.h"
 #include "common/rect.h"
+#include "common/scummsys.h"
+#include "common/tokenizer.h"
+#include "graphics/font.h"
 #include "graphics/fontman.h"
 #include "graphics/surface.h"
-#include "graphics/font.h"
 #include "graphics/fonts/ttf.h"
-
-#include "zvision/text/text.h"
 #include "zvision/graphics/render_manager.h"
-#include "zvision/text/truetype_font.h"
 #include "zvision/scripting/script_manager.h"
+#include "zvision/text/text.h"
+#include "zvision/text/truetype_font.h"
 
 namespace ZVision {
 
@@ -235,7 +235,7 @@ TextChange TextStyleState::parseStyle(const Common::String &str, int16 len) {
 	return (TextChange)retval;
 }
 
-void TextStyleState::readAllStyles(const Common::String &txt) {
+void TextStyleState::readAllStyles(const Common::U32String &txt) {
 	int16 startTextPosition = -1;
 	int16 endTextPosition = -1;
 
@@ -246,7 +246,7 @@ void TextStyleState::readAllStyles(const Common::String &txt) {
 			endTextPosition = i;
 			if (startTextPosition != -1) {
 				if ((endTextPosition - startTextPosition - 1) > 0) {
-					parseStyle(Common::String(txt.c_str() + startTextPosition + 1), endTextPosition - startTextPosition - 1);
+					parseStyle(Common::U32String(txt.c_str() + startTextPosition + 1).encode(), endTextPosition - startTextPosition - 1);
 				}
 			}
 		}
@@ -276,16 +276,21 @@ void TextStyleState::updateFontWithTextState(StyledTTFont &font) {
 	font.loadFont(_fontname, _size, tempStyle);
 }
 
-void TextRenderer::drawTextWithJustification(const Common::String &text, StyledTTFont &font, uint32 color, Graphics::Surface &dest, int lineY, TextJustification justify) {
-	if (justify == TEXT_JUSTIFY_LEFT)
+void TextRenderer::drawTextWithJustification(const Common::U32String &text, StyledTTFont &font, uint32 color, Graphics::Surface &dest, int lineY, TextJustification justify) {
+	switch (justify) {
+	case TEXT_JUSTIFY_LEFT :
 		font.drawString(&dest, text, 0, lineY, dest.w, color, Graphics::kTextAlignLeft);
-	else if (justify == TEXT_JUSTIFY_CENTER)
+		break;
+	case TEXT_JUSTIFY_CENTER :
 		font.drawString(&dest, text, 0, lineY, dest.w, color, Graphics::kTextAlignCenter);
-	else if (justify == TEXT_JUSTIFY_RIGHT)
+		break;
+	case TEXT_JUSTIFY_RIGHT :
 		font.drawString(&dest, text, 0, lineY, dest.w, color, Graphics::kTextAlignRight);
+		break;
+	}
 }
 
-int32 TextRenderer::drawText(const Common::String &text, TextStyleState &state, Graphics::Surface &dest) {
+int32 TextRenderer::drawText(const Common::U32String &text, TextStyleState &state, Graphics::Surface &dest) {
 	StyledTTFont font(_engine);
 	state.updateFontWithTextState(font);
 
@@ -307,7 +312,7 @@ struct TextSurface {
 	uint _lineNumber;
 };
 
-void TextRenderer::drawTextWithWordWrapping(const Common::String &text, Graphics::Surface &dest) {
+void TextRenderer::drawTextWithWordWrapping(const Common::U32String &text, Graphics::Surface &dest, bool blackFrame) {
 	Common::Array<TextSurface> textSurfaces;
 	Common::Array<uint> lineWidths;
 	Common::Array<TextJustification> lineJustifications;
@@ -319,8 +324,8 @@ void TextRenderer::drawTextWithWordWrapping(const Common::String &text, Graphics
 	StyledTTFont font(_engine);
 	currentState.updateFontWithTextState(font);
 
-	Common::String currentSentence; // Not a true 'grammatical' sentence. Rather, it's just a collection of words
-	Common::String currentWord;
+	Common::U32String currentSentence; // Not a true 'grammatical' sentence. Rather, it's just a collection of words
+	Common::U32String currentWord;
 	int sentenceWidth = 0;
 	int wordWidth = 0;
 	int lineWidth = 0;
@@ -337,7 +342,9 @@ void TextRenderer::drawTextWithWordWrapping(const Common::String &text, Graphics
 	uint i = 0u;
 	uint stringlen = text.size();
 
+	// Parse entirety of supplied text
 	while (i < stringlen) {
+		// Style tag encountered?
 		if (text[i] == '<') {
 			// Flush the currentWord to the currentSentence
 			currentSentence += currentWord;
@@ -358,7 +365,7 @@ void TextRenderer::drawTextWithWordWrapping(const Common::String &text, Graphics
 
 			uint stateChanges = 0u;
 			if ((endTextPosition - startTextPosition - 1) > 0) {
-				stateChanges = currentState.parseStyle(Common::String(text.c_str() + startTextPosition + 1), endTextPosition - startTextPosition - 1);
+				stateChanges = currentState.parseStyle(Common::U32String(text.c_str() + startTextPosition + 1), endTextPosition - startTextPosition - 1);
 			}
 
 			if (stateChanges & (TEXT_CHANGE_FONT_TYPE | TEXT_CHANGE_FONT_STYLE)) {
@@ -404,7 +411,7 @@ void TextRenderer::drawTextWithWordWrapping(const Common::String &text, Graphics
 				lineJustifications.push_back(currentState._justification);
 			}
 			if (stateChanges & TEXT_CHANGE_HAS_STATE_BOX) {
-				Common::String temp = Common::String::format("%d", _engine->getScriptManager()->getStateValue(currentState._statebox));
+				Common::U32String temp = Common::U32String::format("%d", _engine->getScriptManager()->getStateValue(currentState._statebox));
 				wordWidth += font.getStringWidth(temp);
 
 				// If the word causes the line to overflow, render the sentence and start a new line
@@ -489,15 +496,21 @@ void TextRenderer::drawTextWithWordWrapping(const Common::String &text, Graphics
 
 	for (Common::Array<TextSurface>::iterator iter = textSurfaces.begin(); iter != textSurfaces.end(); ++iter) {
 		Common::Rect empty;
-
-		if (lineJustifications[iter->_lineNumber] == TEXT_JUSTIFY_LEFT) {
-			_engine->getRenderManager()->blitSurfaceToSurface(*iter->_surface, empty, dest, iter->_surfaceOffset.x, iter->_surfaceOffset.y, 0);
-		} else if (lineJustifications[iter->_lineNumber] == TEXT_JUSTIFY_CENTER) {
-			_engine->getRenderManager()->blitSurfaceToSurface(*iter->_surface, empty, dest, ((dest.w - lineWidths[iter->_lineNumber]) / 2) + iter->_surfaceOffset.x, iter->_surfaceOffset.y, 0);
-		} else if (lineJustifications[iter->_lineNumber] == TEXT_JUSTIFY_RIGHT) {
-			_engine->getRenderManager()->blitSurfaceToSurface(*iter->_surface, empty, dest, dest.w - lineWidths[iter->_lineNumber]  + iter->_surfaceOffset.x, iter->_surfaceOffset.y, 0);
+		int16 Xpos = iter->_surfaceOffset.x;
+		switch (lineJustifications[iter->_lineNumber]) {
+		case TEXT_JUSTIFY_LEFT :
+			break;
+		case TEXT_JUSTIFY_CENTER :
+			Xpos += ((dest.w - lineWidths[iter->_lineNumber]) / 2);
+			break;
+		case TEXT_JUSTIFY_RIGHT :
+			Xpos += dest.w - lineWidths[iter->_lineNumber];
+			break;
 		}
-
+		if (blackFrame)
+			_engine->getRenderManager()->blitSurfaceToSurface(*iter->_surface, empty, dest, Xpos, iter->_surfaceOffset.y);
+		else
+			_engine->getRenderManager()->blitSurfaceToSurface(*iter->_surface, empty, dest, Xpos, iter->_surfaceOffset.y, 0);
 		// Release memory
 		iter->_surface->free();
 		delete iter->_surface;
@@ -522,6 +535,14 @@ Common::U32String readWideLine(Common::SeekableReadStream &stream) {
 		asciiString += value;
 	}
 	return asciiString;
+}
+
+void fixPseudo1251(Common::U32String *str) {
+	for (uint32 i = 0; i < str->size(); i++) {
+		uint32 c = str->operator[](i);
+		if (c >= 0x80 && c < 0x100)
+			str->operator[](i) = Common::kWindows1251ConversionTable[c & 0x7f];
+	}
 }
 
 } // End of namespace ZVision

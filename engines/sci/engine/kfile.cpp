@@ -915,7 +915,7 @@ reg_t kFileIOExists(EngineState *s, int argc, reg_t *argv) {
 	if (!exists && name == "memory.drv") {
 		// Create a new file, and write the bytes for the empty password
 		// string inside
-		byte defaultContent[] = { 0xE9, 0xE9, 0xEB, 0xE1, 0x0D, 0x0A, 0x31, 0x30, 0x30, 0x30 };
+		const byte defaultContent[] = { 0xE9, 0xE9, 0xEB, 0xE1, 0x0D, 0x0A, 0x31, 0x30, 0x30, 0x30 };
 		Common::WriteStream *outFile = saveFileMan->openForSaving(wrappedName);
 		for (int i = 0; i < 10; i++)
 			outFile->writeByte(defaultContent[i]);
@@ -1101,7 +1101,7 @@ reg_t kSaveGame(EngineState *s, int argc, reg_t *argv) {
 
 		// we are supposed to show a dialog for the user and let him choose where to save
 		g_sci->_soundCmd->pauseAll(true); // pause music
-		GUI::SaveLoadChooser *dialog = new GUI::SaveLoadChooser(_("Save game:"), _("Save"), true);
+		GUI::SaveLoadChooser *dialog = new GUI::SaveLoadChooser(true);
 		savegameId = dialog->runModalWithCurrentTarget();
 		game_description = dialog->getResultString();
 		if (game_description.empty()) {
@@ -1243,7 +1243,7 @@ reg_t kRestoreGame(EngineState *s, int argc, reg_t *argv) {
 			// get properly released. In that case we don't add another pause here.
 			if (!g_sci->_soundCmd->isGlobalPauseActive()) 
 				g_sci->_soundCmd->pauseAll(true); 
-			GUI::SaveLoadChooser *dialog = new GUI::SaveLoadChooser(_("Restore game:"), _("Restore"), false);
+			GUI::SaveLoadChooser *dialog = new GUI::SaveLoadChooser(false);
 			savegameId = dialog->runModalWithCurrentTarget();
 			delete dialog;
 			if (savegameId < 0) {

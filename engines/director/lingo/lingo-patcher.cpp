@@ -321,6 +321,29 @@ end \r\
 ";
 
 /*
+ * The Virtual Nightclub codebase is a large mass of spaghetti.
+ * All VNC/VNC.EXE is meant to do is play the Thumb Candy logo,
+ * then kick over to VNC2/_VNC.DXR which boots the game.
+ *
+ * However, VNC/VNC.EXE contains an internal copy of the SHARED.DXR similar
+ * to the main game in VNC2/SHARED.DXR. The game handles pretty much
+ * everything with an event loop in "idle", which (amongst other things)
+ * assumes if certain stuff hasn't been initialised, the game has been
+ * restarted and it should try and init -some- things (but not call init(),
+ * which inits everything).
+ *
+ * This doesn't really work, as several of the subsystems don't have checks for
+ * e.g. "mmxobj", a global object used for controlling the custom movie player.
+ * As such, running the game in strict mode will crash on startup.
+ * Instead of divining the exact order of operations which narrowly avoids a crash,
+ * we can say "idle" isn't needed for the intro and nop it out.
+ */
+const char *const vncFixIntro = " \
+on idle \r\
+end \r\
+";
+
+/*
  * Virtual Nightclub will try and list all the files from all 26 drive letters
  * to determine which has the CD. This works, but takes forever.
  */
@@ -368,6 +391,14 @@ end\r\
 const char *const amberDriveDetectionFix = " \
 on GetCDLetter tagFile, discNumber\r\
   return \"D:\"\r\
+end \r\
+";
+
+/* Elroy Hits the Pavement has a missing mouseUp script for clicking on the map when
+ * you game over in the gangster's hideout. */
+const char *const elroypaveMapFix = " \
+on mouseUp\r\
+  handleMapClick()\r\
 end \r\
 ";
 
@@ -443,6 +474,54 @@ on exitFrame\r\
   go(1, \"C:\\PG_WORLD\\A_IN01\")\r\
 ";
 
+/*
+ * Mission Code: Millennium has some drive detection code which prevents the game from loading
+ * if it detects DESTINA.MLD is present "on the hard disk". Provide the same code without that check.
+ */
+const char *const mcmillenniumDriveDetectionFix = "\
+on initPaths\r\
+  global PD, theCDPath, theHDPath, theVCAudioPath, theNotePath, proxPath\r\
+  if the machineType = 256 then\r\
+    set PD to \"\\\"\r\
+  else\r\
+    set PD to \":\"\r\
+  end if\r\
+  if the machineType = 256 then\r\
+    set theCDPath to getAt(the searchPaths, 2)\r\
+  else\r\
+    if checkFileExists(the pathName & \"DESTINA.MLD\") = 1 then\r\
+      set theCDPath to the pathName\r\
+    else\
+      set theCDPath to \"Millennium:\"\r\
+    end if\r\
+  end if\r\
+  set theHDPath to the pathName\r\
+  set theVCAudioPath to theCDPath & \"AUDIO\" & PD & \"VIDCOM\" & PD\r\
+  set theNotePath to the pathName\r\
+  set proxPath to theCDPath & \"prox\" & PD\r\
+end\r\
+";
+
+/*
+ * Mission Code: Millennium has a bizarre method of checking the dimensions of the screen by
+ * measuring the stage position of a 512x384 movie and seeing if it matches 640x480.
+ * Even when forcing desktop mode this doesn't match up exactly, so patch it out.
+ */
+const char *const mcmillenniumResDetectionFix = "\
+on getRes\r\
+end\r\
+";
+
+/*
+ * GORD@K has a complicated CD detection method which includes writing a temp file to the CD
+ * drive. Since this always works, we have to stub out the entire method.
+ */
+const char *const gordakDetectionFix = "\
+on checkFiles\r\
+   go to movie \"gordak\\intro.dxr\"\r\
+end\r\
+";
+
 struct ScriptHandlerPatch {
 	const char *gameId;
 	const char *extra;
@@ -465,8 +544,13 @@ struct ScriptHandlerPatch {
 	{"kyoto", nullptr, kPlatformWindows, "ck_data\\opening\\shared.dxr", kMovieScript, 802, DEFAULT_CAST_LIB, &kyotoTextEntryFix},
 	{"kyoto", nullptr, kPlatformWindows, "ck_data\\rajoumon\\shared.dxr", kMovieScript, 840, DEFAULT_CAST_LIB, &kyotoTextEntryFix},
 	{"kyoto", nullptr, kPlatformWindows, "ck_data\\rokudou\\shared.dxr", kMovieScript, 846, DEFAULT_CAST_LIB, &kyotoTextEntryFix},
+	{"elroypave", nullptr, kPlatformWindows, "P04\\P04HAZ\\ENDING.DXR", kScoreScript, 27, DEFAULT_CAST_LIB, &elroypaveMapFix},
+	{"elroypave", nullptr, kPlatformWindows, "P04\\P04HAZ\\ENDING.DXR", kScoreScript, 29, DEFAULT_CAST_LIB, &elroypaveMapFix},
+	{"elroypave", nullptr, kPlatformMacintosh, "P04:p04Haz:ending.Dxr", kScoreScript, 27, DEFAULT_CAST_LIB, &elroypaveMapFix},
+	{"elroypave", nullptr, kPlatformMacintosh, "P04:p04Haz:ending.Dxr", kScoreScript, 29, DEFAULT_CAST_LIB, &elroypaveMapFix},
 	{"vnc", nullptr, kPlatformWindows, "VNC\\VNC.EXE", kMovieScript, 57, DEFAULT_CAST_LIB, &vncSkipDetection},
 	{"vnc", nullptr, kPlatformWindows, "VNC2\\SHARED.DXR", kMovieScript, 1248, DEFAULT_CAST_LIB, &vncEnableCheats},
+	{"vnc", nullptr, kPlatformWindows, "VNC\\Shared.DXR", kMovieScript, 1562, DEFAULT_CAST_LIB, &vncFixIntro},
 	{"amber", nullptr, kPlatformWindows, "AMBER_F\\AMBER_JB.EXE", kMovieScript, 7, DEFAULT_CAST_LIB, &amberDriveDetectionFix},
 	{"frankenstein", nullptr, kPlatformWindows, "FRANKIE.EXE", kScoreScript, 21, DEFAULT_CAST_LIB, &frankensteinSwapFix},
 	{"gadgetpaf", nullptr, kPlatformWindows, "GADGET\\DISKCNG.DIR", kScoreScript, 2, DEFAULT_CAST_LIB, &gadgetPafDetectionFixAlert},
@@ -481,6 +565,11 @@ struct ScriptHandlerPatch {
 	{"gadgetpaf", nullptr, kPlatformWindows, "GADGET\\GADGET.EXE", kScoreScript, 9, DEFAULT_CAST_LIB, &gadgetPafDetectionFix9},
 	{"pinkgear", nullptr, kPlatformWindows, "GOTOPINK.EXE", kMovieScript, 4, DEFAULT_CAST_LIB, &pinkGearDriveDetectionFix1},
 	{"pinkgear", nullptr, kPlatformWindows, "GOTOPINK.EXE", kScoreScript, 6, DEFAULT_CAST_LIB, &pinkGearDriveDetectionFix2},
+	{"mcmillennium", nullptr, kPlatformWindows, "PC\\MILL.EXE", kMovieScript, 15, DEFAULT_CAST_LIB, &mcmillenniumResDetectionFix},
+	{"mcmillennium", nullptr, kPlatformMacintosh, "Mission Code Millennium:Mission Code Millennium", kMovieScript, 15, DEFAULT_CAST_LIB, &mcmillenniumResDetectionFix},
+	{"mcmillennium", nullptr, kPlatformWindows, "PC\\SHARED.DXR", kMovieScript, 1013, DEFAULT_CAST_LIB, &mcmillenniumDriveDetectionFix},
+	{"mcmillennium", nullptr, kPlatformMacintosh, "Mission Code Millennium:SHARED.Dxr", kMovieScript, 1013, DEFAULT_CAST_LIB, &mcmillenniumDriveDetectionFix},
+	{"gordak", nullptr, kPlatformWindows, "GORDAKCD.EXE", kMovieScript, 2, DEFAULT_CAST_LIB, &gordakDetectionFix},
 	{nullptr, nullptr, kPlatformUnknown, nullptr, kNoneScript, 0, 0, nullptr},
 
 };

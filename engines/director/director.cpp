@@ -106,6 +106,8 @@ DirectorEngine::DirectorEngine(OSystem *syst, const DirectorGameDescription *gam
 	_forceDate.tm_wday = -1;
 	_loadSlowdownFactor = 0;
 	_loadSlowdownCooldownTime = 0;
+	_fileIOType = 0;
+	_vfwPaletteHack = false;
 
 	_wm = nullptr;
 
@@ -129,10 +131,16 @@ DirectorEngine::DirectorEngine(OSystem *syst, const DirectorGameDescription *gam
 		_colorDepth = 8;	// 256-color
 	}
 	// Enable Macintosh gamma correction. This resolves the issue of Mac games appearing too dark.
-	// Applied by default for Macintosh and Pippin games in the detection list.
+	// Enabled by default for Macintosh and Pippin games in the detection code.
 	// Right now only used in 8-bit mode to adjust the palette.
 	// FIXME: How do we add this to true color rendering without a heap of workarounds?
-	_gammaCorrection = ConfMan.getBool("gamma_correction") || (getGameFlags() & GF_GAMMA);
+	if ((getPlatform() == Common::kPlatformMacintosh) || (getPlatform() == Common::kPlatformPippin)) {
+		_gammaCorrection = ConfMan.getBool("gamma_correction");
+	} else {
+		// FIXME: It would be good if we could have this option for non-Mac, except not
+		// enabled by default.
+		_gammaCorrection = false;
+	}
 
 	switch (getPlatform()) {
 	case Common::kPlatformMacintoshII:
@@ -150,30 +158,37 @@ DirectorEngine::DirectorEngine(OSystem *syst, const DirectorGameDescription *gam
 	}
 
 	_playbackPaused = false;
-	_skipFrameAdvance = false;
 	_centerStage = true;
 
 	_surface = nullptr;
 	_tickBaseline = 0;
+
+	_emulateMultiButtonMouse = false;
 }
 
 DirectorEngine::~DirectorEngine() {
+	delete _lingo;
+
+	clearPalettes();
+
 	for (auto &it : _windowList) {
 		it->decRefCount();
 	}
-	delete _lingo;
+	_stage->decRefCount();
+	_stage = nullptr;
+	if (_currentWindow) {
+		_currentWindow->decRefCount();
+		_currentWindow = nullptr;
+	}
 	delete _wm;
-	delete _surface;
-	delete _primitives;
-
 	for (auto &it : _allSeenResFiles) {
 		delete it._value;
 	}
-
 	for (uint i = 0; i < _winCursor.size(); i++)
 		delete _winCursor[i];
 
-	clearPalettes();
+	delete _surface;
+	delete _primitives;
 }
 
 Movie *DirectorEngine::getCurrentMovie() const { return _currentWindow->getCurrentMovie(); }
@@ -181,7 +196,7 @@ Common::String DirectorEngine::getCurrentPath() const { return _currentWindow->g
 Common::String DirectorEngine::getCurrentAbsolutePath() {
 	Common::String currentPath = getCurrentPath();
 	Common::String result;
-	result += (getPlatform() == Common::kPlatformWindows && _version >= 400) ? "C:\\" : "";
+	result += (getPlatform() == Common::kPlatformWindows && _version >= 400) ? "C:\\" : "@:";
 	result += convertPath(currentPath);
 	return result;
 }
@@ -201,7 +216,7 @@ Window *DirectorEngine::getOrCreateWindow(Common::String &name) {
 	window->setVisible(false, true);
 	window->move(0, 0);
 	window->incRefCount();
-	_wm->addWindowInitialized(window);
+	_wm->addWindowInitialized(window->getMacWindow());
 	_windowList.push_back(window);
 	return window;
 }
@@ -232,6 +247,13 @@ void DirectorEngine::setVersion(uint16 version) {
 	_version = version;
 	_lingo->reloadBuiltIns();
 }
+
+#ifndef USE_IMGUI
+namespace DT {
+bool isMouseInputIgnored() { return false; }
+void setSelectedChannel(int channel) { }
+}
+#endif
 
 Common::Error DirectorEngine::run() {
 	debug("Starting v%d Director game", getVersion());
@@ -269,6 +291,9 @@ Common::Error DirectorEngine::run() {
 	_wm->setEngine(this);
 
 	gameQuirks(_gameDescription->desc.gameId, _gameDescription->desc.platform);
+	// Mix in all the saved files for the current target
+	// Assign higher priority to save games to load them before original game files
+	SearchMan.add(kSavedFilesArchive, new SavedArchive(_targetName), 1);
 
 	_wm->setDesktopMode(_wmMode);
 
@@ -279,17 +304,17 @@ Common::Error DirectorEngine::run() {
 	debugC(1, kDebugImages, "Director pixelformat is: %s", _pixelformat.toString().c_str());
 
 	_stage = new Window(_wm->getNextId(), false, false, false, _wm, this, true);
-	*_stage->_refCount += 1;
+	_stage->incRefCount();
 
 	// Set this as background so it doesn't come to foreground when multiple windows present
-	_wm->setBackgroundWindow(_stage);
+	_wm->setBackgroundWindow(_stage->getMacWindow());
 
 	if (!desktopEnabled())
 		_stage->disableBorder();
 
 	_surface = new Graphics::ManagedSurface(1, 1);
 	_wm->setScreen(_surface);
-	_wm->addWindowInitialized(_stage);
+	_wm->addWindowInitialized(_stage->getMacWindow());
 	_wm->setActiveWindow(_stage->getId());
 	setPalette(CastMemberID(kClutSystemMac, -1));
 
@@ -356,6 +381,7 @@ Common::Error DirectorEngine::run() {
 			for (size_t i = 0; i < _windowList.size(); i++) {
 				if (_windowList[i] == window) {
 					_windowList.remove_at(i);
+					// FIXME: force window to be removed from WM
 					window->decRefCount();
 					break;
 				}
@@ -376,6 +402,10 @@ Common::Error DirectorEngine::run() {
 #ifdef USE_IMGUI
 	_system->setImGuiCallbacks(ImGuiCallbacks());
 #endif
+
+	if (debugChannelSet(10, kDebugSaving)) {
+		//_mainArchive->writeToFile(Common::String(""), getCurrentMovie());
+	}
 
 	return Common::kNoError;
 }

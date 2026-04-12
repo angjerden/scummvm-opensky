@@ -29,6 +29,7 @@ namespace Common {
 struct Event;
 class ReadStreamEndian;
 class SeekableReadStreamEndian;
+class MemoryWriteStream;
 }
 
 namespace Director {
@@ -71,6 +72,7 @@ struct InfoEntry {
 	}
 
 	Common::String readString(bool pascal = true);
+	void writeString(Common::String string, bool pascal = true);
 };
 
 struct InfoEntries {
@@ -90,6 +92,9 @@ public:
 
 	static Common::Rect readRect(Common::ReadStreamEndian &stream);
 	static InfoEntries loadInfoEntries(Common::SeekableReadStreamEndian &stream, uint16 version);
+	static void saveInfoEntries(Common::SeekableWriteStream *writeStream, InfoEntries info);
+
+	static void writeRect(Common::WriteStream *writeStream, Common::Rect rect);
 
 	void loadCastLibMapping(Common::SeekableReadStreamEndian &stream);
 	bool loadArchive();
@@ -100,6 +105,7 @@ public:
 	DirectorEngine *getVM() const { return _vm; }
 	Cast *getCast() const { return _casts.getValOrDefault(DEFAULT_CAST_LIB, nullptr); }
 	Cast *getCast(CastMemberID memberID);
+	Cast *getCastByLibResourceID(int libresourceID);
 	Cast *getSharedCast() const { return _sharedCast; }
 	const Common::HashMap<int, Cast *> *getCasts() const { return &_casts; }
 	Score *getScore() const { return _score; }
@@ -115,6 +121,7 @@ public:
 	bool duplicateCastMember(CastMemberID source, CastMemberID target);
 	CastMemberID getCastMemberIDByMember(int memberID);
 	int getCastLibIDByName(const Common::String &name);
+	void setCastLibName(const Common::String &name, int castLib);
 	CastMemberID getCastMemberIDByName(const Common::String &name);
 	CastMemberID getCastMemberIDByNameAndType(const Common::String &name, int castLib, CastType type);
 	CastMemberInfo *getCastMemberInfo(CastMemberID memberID);
@@ -127,8 +134,9 @@ public:
 	ScriptContext *getScriptContext(ScriptType type, CastMemberID id);
 	Symbol getHandler(const Common::String &name, uint16 castLibHint = 0);
 
-	// events.cpp
+	// lingo/lingo-events.cpp
 	bool processEvent(Common::Event &event);
+	void broadcastEvent(LEvent event);
 
 	// lingo/lingo-events.cpp
 	void setPrimaryEventHandler(LEvent event, const Common::String &code);
@@ -147,15 +155,19 @@ public:
 	uint16 _version;
 	Common::Platform _platform;
 	Common::Rect _movieRect;
-	uint16 _currentActiveSpriteId;
-	uint16 _currentMouseSpriteId;
+	uint16 _lastClickedSpriteId;
+	uint16 _currentHoveredSpriteId;
+	uint _currentSpriteNum;
 	CastMemberID _currentMouseDownCastID;
+	CastMemberID _currentMouseDownSpriteScriptID;
+	bool _currentMouseDownSpriteImmediate;
 	uint16 _currentEditableTextChannel;
 	uint32 _lastEventTime;
 	uint32 _lastRollTime;
 	uint32 _lastClickTime;
 	uint32 _lastClickTime2;
 	Common::Point _lastClickPos;
+	Common::Point _lastMousePos;
 	uint32 _lastKeyTime;
 	uint32 _lastTimerReset;
 	uint32 _stageColor;
@@ -172,7 +184,7 @@ public:
 	int _nextEventId;
 	Common::Queue<LingoEvent> _inputEventQueue;
 
-	unsigned char _key;
+	uint16 _key;
 	int _keyCode;
 	byte _keyFlags;
 
@@ -183,6 +195,7 @@ public:
 	int _checkBoxAccess;
 
 	uint16 _currentHiliteChannelId;
+	uint16 _lastEnteredChannelId;
 
 	int _lastTimeOut;
 	int _timeOutLength;
@@ -191,11 +204,12 @@ public:
 	bool _timeOutPlay;
 
 	bool _isBeepOn;
+	Common::HashMap<LEvent, int> _lastEventId;
 
 	Common::String _script;
 
 	// A flag to disable the event processing in the Movie
-	// This flag will be set when the user's interaction (mouse and key events like mouseUp, keyUp)  
+	// This flag will be set when the user's interaction (mouse and key events like mouseUp, keyUp)
 	// shouldn't be recorded as movie event, which may cause undesirable change in the lingo script
 	bool _inGuiMessageBox = false;
 

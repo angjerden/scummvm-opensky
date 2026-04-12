@@ -24,9 +24,12 @@
 
 #include "common/bitarray.h"
 #include "common/events.h"
+#include "common/file.h"
+#include "common/memstream.h"
 #include "engines/advancedDetector.h"
 #include "graphics/managed_surface.h"
 #include "graphics/surface.h"
+
 
 #include "audio/decoders/wave.h"
 #include "audio/mixer.h"
@@ -48,6 +51,11 @@ class RandomSource;
 namespace Freescape {
 
 class Renderer;
+class Debugger;
+
+bool isEncodedCPCDirectColor(uint8 index);
+uint8 encodeCPCDirectColor(uint8 index);
+uint8 decodeCPCDirectColor(uint8 index);
 
 #define FREESCAPE_DATA_BUNDLE "freescape.dat"
 
@@ -69,6 +77,7 @@ enum FreescapeAction {
 	kActionMoveLeft,
 	kActionMoveRight,
 	kActionShoot,
+	kActionActivate,
 	kActionIncreaseAngle,
 	kActionDecreaseAngle,
 	kActionChangeStepSize,
@@ -99,9 +108,15 @@ enum FreescapeAction {
 	kActionRunMode,
 	kActionWalkMode,
 	kActionCrawlMode,
+	kActionRunModifier, // Shift-to-run: held = run, released = walk
 	kActionSelectPrince,
 	kActionSelectPrincess,
 	kActionQuit,
+	kActionToggleFlashlight,
+
+	// Demo actions
+	kActionUnknownKey,
+	kActionWait
 };
 
 typedef Common::HashMap<uint16, Area *> AreaMap;
@@ -128,12 +143,21 @@ enum GameStateControl {
 	kFreescapeGameStateRestart,
 };
 
+extern byte kEGADefaultPalette[16][3];
+extern byte kCGAPaletteRedGreen[4][3];
+extern byte kCGAPalettePinkBlue[4][3];
+extern byte kCGAPalettePinkBlueBright[4][3];
+extern byte kCGAPaletteRedGreenBright[4][3];
+extern byte kHerculesPaletteGreen[2][3];
+
 struct CGAPaletteEntry {
 	int areaId;
 	byte *palette;
 };
 
 extern Common::String shiftStr(const Common::String &str, int shift);
+extern Common::String centerAndPadString(const Common::String &str, int size);
+extern Graphics::ManagedSurface *readCPCImage(Common::SeekableReadStream *file, bool mode1);
 
 class EventManagerWrapper {
 public:
@@ -144,6 +168,8 @@ public:
 	void purgeMouseEvents();
 	void pushEvent(Common::Event &event);
 	void clearExitEvents();
+	bool isActionActive(const Common::CustomEventType &action);
+	bool isKeyPressed();
 
 private:
 	// for continuous events (keyDown)
@@ -155,7 +181,8 @@ private:
 	Common::EventManager *_delegate;
 
 	Common::KeyState _currentKeyDown;
-	Common::CustomEventType _currentActionDown;
+	Common::CustomEventType _currentActionDown; // last action for key repeat
+	Common::Array<Common::CustomEventType> _activeActions; // all currently held actions
 	uint32 _keyRepeatTime;
 };
 
@@ -178,6 +205,7 @@ public:
 	bool isEclipse() { return _targetName.hasPrefix("totaleclipse"); } // This will match Total Eclipse 1 and 2.
 	bool isEclipse2() { return _targetName.hasPrefix("totaleclipse2"); }
 	bool isCastle() { return _targetName.hasPrefix("castle"); }
+	bool isCastleMaster2() { return _targetName.hasPrefix("castlemaster2"); }
 	bool isAmiga() { return _gameDescription->platform == Common::kPlatformAmiga; }
 	bool isAtariST() { return _gameDescription->platform == Common::kPlatformAtariST; }
 	bool isDOS() { return _gameDescription->platform == Common::kPlatformDOS; }
@@ -185,6 +213,7 @@ public:
 	bool isCPC() { return _gameDescription->platform == Common::kPlatformAmstradCPC; }
 	bool isC64() { return _gameDescription->platform == Common::kPlatformC64; }
 
+	virtual void beforeStarting();
 	Common::Error run() override;
 
 	// UI
@@ -203,6 +232,7 @@ public:
 	void drawTitle();
 	virtual void drawBackground();
 	void clearBackground();
+	void drawPlatformUI(Graphics::Surface *surface);
 	virtual void drawUI();
 	virtual void drawInfoMenu();
 	void drawBorderScreenAndWait(Graphics::Surface *surface, int maxWait = INT_MAX);
@@ -256,7 +286,11 @@ public:
 	Graphics::Surface *loadBundledImage(const Common::String &name, bool appendRenderMode = true);
 	byte *getPaletteFromNeoImage(Common::SeekableReadStream *stream, int offset);
 	Graphics::ManagedSurface *loadAndConvertNeoImage(Common::SeekableReadStream *stream, int offset, byte *palette = nullptr);
-	Graphics::ManagedSurface *loadAndCenterScrImage(Common::SeekableReadStream *stream);
+	void decodeAmigaSprite(Common::SeekableReadStream *file, Graphics::ManagedSurface *surf,
+		int dataOffset, int widthWords, int height, byte *palette);
+	Graphics::ManagedSurface *loadAndConvertScrImage(Common::SeekableReadStream *stream);
+	Graphics::ManagedSurface *loadFrame(Common::SeekableReadStream *file, Graphics::ManagedSurface *surface, int width, int height, uint32 front);
+	Graphics::ManagedSurface *loadFrameCPCIndexed(Common::SeekableReadStream *file, Graphics::ManagedSurface *surface, int widthBytes, int height);
 	Graphics::ManagedSurface *loadAndConvertDoodleImage(Common::SeekableReadStream *bitmap, Common::SeekableReadStream *color1, Common::SeekableReadStream *color2, byte *palette);
 
 	void loadPalettes(Common::SeekableReadStream *file, int offset);
@@ -305,6 +339,7 @@ public:
 
 	void parseAmigaAtariHeader(Common::SeekableReadStream *file);
 	Common::SeekableReadStream *decryptFileAmigaAtari(const Common::Path &packed, const Common::Path &unpacker, uint32 unpackArrayOffset);
+	Common::SeekableReadStream *decryptFileAtariVirtualWorlds(const Common::Path &filename);
 
 	// Areas
 	uint16 _startArea;
@@ -327,16 +362,32 @@ public:
 	bool _shootMode;
 	bool _noClipMode;
 	bool _invertY;
+
+	bool _smoothMovement;
+	bool _useWASDControls;
+	bool _debugSimulateTouchscreen;
+	bool isTouchscreenActive() const;
+	// Player movement state
+	bool _moveForward;
+	bool _moveBackward;
+	bool _strafeLeft;
+	bool _strafeRight;
+	bool _moveUp;
+	bool _moveDown;
+
 	virtual void initKeymaps(Common::Keymap *engineKeyMap, Common::Keymap *infoScreenKeyMap, const char *target);
 	EventManagerWrapper *_eventManager;
 	void processInput();
 	void resetInput();
+	void stopMovement();
 	void generateDemoInput();
 	virtual void pressedKey(const int keycode);
 	virtual void releasedKey(const int keycode);
 	Common::Point getNormalizedPosition(Common::Point position);
 	virtual bool onScreenControls(Common::Point mouse);
-	void move(CameraMovement direction, uint8 scale, float deltaTime);
+	void updatePlayerMovement(float deltaTime);
+	void updatePlayerMovementSmooth(float deltaTime);
+	void updatePlayerMovementClassic(float deltaTime);
 	void resolveCollisions(Math::Vector3d newPosition);
 	virtual void checkIfStillInArea();
 	void changePlayerHeight(int index);
@@ -351,6 +402,10 @@ public:
 	bool tryStepUp(Math::Vector3d currentPosition);
 	bool tryStepDown(Math::Vector3d currentPosition);
 	bool _hasFallen;
+	bool _isCollidingWithWall;
+	bool _isSteppingUp;
+	bool _isSteppingDown;
+	bool _isFalling;
 	int _maxFallingDistance;
 	int _maxShield;
 	int _maxEnergy;
@@ -373,6 +428,7 @@ public:
 
 	Math::Vector3d directionToVector(float pitch, float heading, bool useTable);
 	void updateCamera();
+	virtual void onRotate(float xoffset, float yoffset, float zoffset) {}
 
 	// Camera options
 	Common::Point _crossairPosition;
@@ -390,6 +446,7 @@ public:
 	uint16 _stepUpDistance;
 
 	int _playerStepIndex;
+	int _savedPlayerStepIndex; // saved before shift-to-run, restored on release
 	Common::Array<int> _playerSteps;
 
 	Common::Point crossairPosToMousePos(const Common::Point &crossairPos);
@@ -413,7 +470,7 @@ public:
 	bool checkConditional(FCLInstruction &instruction, bool shot, bool collided, bool timer, bool activated);
 	bool checkIfGreaterOrEqual(FCLInstruction &instruction);
 	bool checkIfLessOrEqual(FCLInstruction &instruction);
-	void executeExecute(FCLInstruction &instruction, bool shot, bool collided, bool activated);
+	void executeExecute(FCLInstruction &instruction);
 	void executeIncrementVariable(FCLInstruction &instruction);
 	void executeDecrementVariable(FCLInstruction &instruction);
 	void executeSetVariable(FCLInstruction &instruction);
@@ -440,15 +497,16 @@ public:
 	// Sound
 	Audio::SoundHandle _soundFxHandle;
 	Audio::SoundHandle _musicHandle;
+	Audio::SoundHandle _movementSoundHandle;
 	Freescape::SizedPCSpeaker *_speaker;
 
 	bool _syncSound;
 	bool _firstSound;
 	bool _usePrerecordedSounds;
 	void waitForSounds();
-	void stopAllSounds();
+	void stopAllSounds(Audio::SoundHandle &handle);
 	bool isPlayingSound();
-	void playSound(int index, bool sync);
+	void playSound(int index, bool sync, Audio::SoundHandle &handle);
 	void playWav(const Common::Path &filename);
 	void playMusic(const Common::Path &filename);
 	void queueSoundConst(double hzFreq, int duration);
@@ -456,21 +514,36 @@ public:
 	void playSoundConst(double hzFreq, int duration, bool sync);
 	void playSoundSweepIncWL(double hzFreq1, double hzFreq2, double wlStepPerMS, int resolution, bool sync);
 	uint16 playSoundDOSSpeaker(uint16 startFrequency, soundSpeakerFx *speakerFxInfo);
-	void playSoundDOS(soundSpeakerFx *speakerFxInfo, bool sync);
+	void playSoundDOS(soundSpeakerFx *speakerFxInfo, bool sync, Audio::SoundHandle &handle);
 
+	void playSoundCPC(int index, Audio::SoundHandle &handle);
+	virtual void playSoundC64(int index);
 	virtual void playSoundFx(int index, bool sync);
 	virtual void loadSoundsFx(Common::SeekableReadStream *file, int offset, int number);
 	Common::HashMap<uint16, soundFx *> _soundsFx;
-	void loadSpeakerFxDOS(Common::SeekableReadStream *file, int offsetFreq, int offsetDuration);
+	void loadSpeakerFxDOS(Common::SeekableReadStream *file, int offsetFreq, int offsetDuration, int numberSounds);
 	void loadSpeakerFxZX(Common::SeekableReadStream *file, int sfxTable, int sfxData);
 	Common::HashMap<uint16, soundSpeakerFx *> _soundsSpeakerFx;
 
-	void playSoundZX(Common::Array<soundUnitZX> *data);
+	virtual void playSoundZX(int index, Audio::SoundHandle &handle);
+	void playSoundZX(Common::Array<soundUnitZX> *data, Audio::SoundHandle &handle);
 	Common::HashMap<uint16, Common::Array<soundUnitZX>*> _soundsSpeakerFxZX;
+
+	void loadSoundsCPC(Common::SeekableReadStream *file, int offsetTone, int sizeTone, int offsetEnvelope, int sizeEnvelope, int offsetSoundDef, int sizeSoundDef);
+	Common::Array<byte> _soundsCPCToneTable;
+	Common::Array<byte> _soundsCPCEnvelopeTable;
+	Common::Array<byte> _soundsCPCSoundDefTable;
+
+	void loadSoundsAmigaDemo(Common::SeekableReadStream *file, int offset, int numSounds);
+	void playSoundAmiga(int index, Audio::SoundHandle &handle);
+	Common::Array<AmigaSfxEntry> _amigaSfxTable;
+	Common::Array<AmigaDmaSample> _amigaDmaSamples;
+
 	int _soundIndexShoot;
 	int _soundIndexCollide;
+	int _soundIndexStepDown;
+	int _soundIndexStepUp;
 	int _soundIndexFall;
-	int _soundIndexClimb;
 	int _soundIndexMenu;
 	int _soundIndexStart;
 	int _soundIndexAreaChange;
@@ -529,6 +602,7 @@ public:
 	Common::Array<Graphics::ManagedSurface *> getChars(Common::SeekableReadStream *file, int offset, int charsNumber);
 	Common::Array<Graphics::ManagedSurface *> getCharsAmigaAtariInternal(int sizeX, int sizeY, int additional, int m1, int m2, Common::SeekableReadStream *file, int offset, int charsNumber);
 	Common::Array<Graphics::ManagedSurface *> getCharsAmigaAtari(Common::SeekableReadStream *file, int offset, int charsNumber);
+	Common::Array<Graphics::ManagedSurface *> getChars4Plane(Common::SeekableReadStream *file, int offset, int charsNumber);
 	Common::StringArray _currentAreaMessages;
 	Common::StringArray _currentEphymeralMessages;
 	Font _font;
@@ -547,6 +621,7 @@ public:
 	StateVars _gameStateVars;
 	uint32 _gameStateBits;
 	void checkIfPlayerWasCrushed();
+	virtual bool triggerWinCondition();
 	virtual bool checkIfGameEnded();
 	virtual void endGame();
 	int _endGameDelayTicks;
@@ -582,6 +657,7 @@ public:
 	int _ticksFromEnd;
 	int _lastTick;
 	int _lastMinute;
+	bool _inWaitLoop;
 
 	void getTimeFromCountdown(int &seconds, int &minutes, int &hours);
 	virtual void updateTimeVariables();
@@ -593,6 +669,10 @@ public:
 
 	// Random
 	Common::RandomSource *_rnd;
+
+	// C64 specifics
+	byte *decompressC64RLE(byte *buffer, int *size, byte marker);
+	byte *_extraBuffer;
 };
 
 enum GameReleaseFlags {
@@ -612,6 +692,7 @@ enum GameReleaseFlags {
 };
 
 extern FreescapeEngine *g_freescape;
+extern Debugger *g_debugger;
 
 } // namespace Freescape
 

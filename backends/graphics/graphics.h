@@ -25,6 +25,7 @@
 #include "common/system.h"
 #include "common/noncopyable.h"
 #include "common/keyboard.h"
+#include "common/rect.h"
 #include "common/rotationmode.h"
 
 #include "graphics/mode.h"
@@ -62,7 +63,7 @@ public:
 	virtual int getDefaultStretchMode() const { return 0; }
 	virtual bool setStretchMode(int mode) { return false; }
 	virtual int getStretchMode() const { return 0; }
-	virtual Common::RotationMode getRotationMode() const { return Common::kRotationNormal; }
+	virtual bool setRotationMode(Common::RotationMode rotation) { return false; }
 	virtual uint getDefaultScaler() const { return 0; }
 	virtual uint getDefaultScaleFactor() const { return 1; }
 	virtual bool setScaler(uint mode, int factor) { return false; }
@@ -90,6 +91,7 @@ public:
 	virtual void fillScreen(uint32 col) = 0;
 	virtual void fillScreen(const Common::Rect &r, uint32 col) = 0;
 	virtual void updateScreen() = 0;
+	virtual void presentBuffer() {}
 	virtual void setShakePos(int shakeXOffset, int shakeYOffset) = 0;
 	virtual void setFocusRectangle(const Common::Rect& rect) = 0;
 	virtual void clearFocusRectangle() = 0;
@@ -103,6 +105,13 @@ public:
 	virtual void copyRectToOverlay(const void *buf, int pitch, int x, int y, int w, int h) = 0;
 	virtual int16 getOverlayHeight() const = 0;
 	virtual int16 getOverlayWidth() const = 0;
+	virtual Common::Rect getSafeOverlayArea(int16 *width, int16 *height) const {
+		int16 w = getOverlayWidth(),
+			  h = getOverlayHeight();
+		if (width) *width = w;
+		if (height) *height = h;
+		return Common::Rect(w, h);
+	}
 	virtual float getHiDPIScreenFactor() const { return 1.0f; }
 
 	virtual bool showMouse(bool visible) = 0;

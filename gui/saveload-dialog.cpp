@@ -21,10 +21,10 @@
 
 #include "gui/saveload-dialog.h"
 
-#if defined(USE_CLOUD) && defined(USE_LIBCURL)
+#ifdef USE_CLOUD
 #include "backends/cloud/cloudmanager.h"
 #include "backends/cloud/savessyncrequest.h"
-#include "backends/networking/curl/connectionmanager.h"
+#include "backends/networking/http/connectionmanager.h"
 #endif
 
 #include "common/translation.h"
@@ -43,7 +43,7 @@ namespace GUI {
 
 #define SCALEVALUE(val) ((val) * g_gui.getScaleFactor())
 
-#if defined(USE_CLOUD) && defined(USE_LIBCURL)
+#ifdef USE_CLOUD
 
 enum {
 	kCancelSyncCmd = 'PDCS',
@@ -178,7 +178,7 @@ SaveLoadChooserDialog::SaveLoadChooserDialog(const Common::String &dialogName, c
 #ifndef DISABLE_SAVELOADCHOOSER_GRID
 	, _listButton(nullptr), _gridButton(nullptr)
 #endif // !DISABLE_SAVELOADCHOOSER_GRID
-#if defined(USE_CLOUD) && defined(USE_LIBCURL)
+#ifdef USE_CLOUD
 	, _pollFrame(0), _didUpdateAfterSync(true)
 #endif
 	{
@@ -194,7 +194,7 @@ SaveLoadChooserDialog::SaveLoadChooserDialog(int x, int y, int w, int h, const b
 #ifndef DISABLE_SAVELOADCHOOSER_GRID
 	, _listButton(nullptr), _gridButton(nullptr)
 #endif // !DISABLE_SAVELOADCHOOSER_GRID
-#if defined(USE_CLOUD) && defined(USE_LIBCURL)
+#ifdef USE_CLOUD
 	, _pollFrame(0), _didUpdateAfterSync(true)
 #endif
 	{
@@ -259,7 +259,7 @@ void SaveLoadChooserDialog::handleCommand(CommandSender *sender, uint32 cmd, uin
 	return Dialog::handleCommand(sender, cmd, data);
 }
 
-#if defined(USE_CLOUD) && defined(USE_LIBCURL)
+#ifdef USE_CLOUD
 void SaveLoadChooserDialog::runSaveSync(bool hasSavepathOverride) {
 	if (!CloudMan.isSyncing()) {
 		if (hasSavepathOverride) {
@@ -272,7 +272,7 @@ void SaveLoadChooserDialog::runSaveSync(bool hasSavepathOverride) {
 #endif
 
 void SaveLoadChooserDialog::handleTickle() {
-#if defined(USE_CLOUD) && defined(USE_LIBCURL)
+#ifdef USE_CLOUD
 	if (!_dialogWasShown && CloudMan.isSyncing()) {
 		Common::Array<Common::String> files = CloudMan.getSyncingFiles();
 		if (!files.empty()) {
@@ -317,7 +317,7 @@ void SaveLoadChooserDialog::reflowLayout() {
 }
 
 void SaveLoadChooserDialog::updateSaveList(bool external) {
-#if defined(USE_CLOUD) && defined(USE_LIBCURL)
+#ifdef USE_CLOUD
 	Common::Array<Common::String> files = CloudMan.getSyncingFiles(); //returns empty array if not syncing
 	g_system->getSavefileManager()->updateSavefilesList(files);
 #endif
@@ -328,7 +328,7 @@ void SaveLoadChooserDialog::listSaves() {
 	if (!_metaEngine) return; //very strange
 	_saveList = _metaEngine->listSaves(_target.c_str(), _saveMode);
 
-#if defined(USE_CLOUD) && defined(USE_LIBCURL)
+#ifdef USE_CLOUD
 	//if there is Cloud support, add currently synced files as "locked" saves in the list
 	if (_metaEngine->hasFeature(MetaEngine::kSimpleSavesNames)) {
 		Common::String pattern = _target + ".###";
@@ -356,7 +356,7 @@ void SaveLoadChooserDialog::listSaves() {
 #endif
 }
 
-void SaveLoadChooserDialog::activate(int slot, const Common::U32String &description) {
+void SaveLoadChooserDialog::activate(int slot, const Common::String &description) {
 	if (!_saveList.empty() && slot < int(_saveList.size())) {
 		const SaveStateDescriptor &desc = _saveList[slot];
 		if (_saveMode)
@@ -401,7 +401,7 @@ ButtonWidget *SaveLoadChooserDialog::createSwitchButton(const Common::String &na
 }
 #endif // !DISABLE_SAVELOADCHOOSER_GRID
 
-#if defined(USE_CLOUD) && defined(USE_LIBCURL)
+#ifdef USE_CLOUD
 void SaveLoadChooserDialog::pollCloudMan() {
 	_pollFrame = (_pollFrame + 1) % 60;
 	if (_pollFrame != 1)
@@ -487,9 +487,9 @@ int SaveLoadChooserSimple::runIntern() {
 	return Dialog::runModal();
 }
 
-const Common::U32String SaveLoadChooserSimple::getResultString() const {
+const Common::String SaveLoadChooserSimple::getResultString() const {
 	int selItem = _list->getSelected();
-	return (selItem >= 0) ? _list->getSelectedString() : _resultString;
+	return (selItem >= 0) ? _list->getSelectedString().encode() : _resultString;
 }
 
 void SaveLoadChooserSimple::handleCommand(CommandSender *sender, uint32 cmd, uint32 data) {
@@ -517,7 +517,7 @@ void SaveLoadChooserSimple::handleCommand(CommandSender *sender, uint32 cmd, uin
 				Common::U32String description;
 				if (!_saveList.empty())
 					description = _list->getSelectedString();
-				activate(selItem, description);
+				activate(selItem, description.encode());
 			}
 		}
 		break;
@@ -527,7 +527,7 @@ void SaveLoadChooserSimple::handleCommand(CommandSender *sender, uint32 cmd, uin
 			Common::U32String description;
 			if (!_saveList.empty())
 				description = _list->getSelectedString();
-			activate(selItem, description);
+			activate(selItem, description.encode());
 		}
 		break;
 	case kListSelectionChangedCmd:
@@ -768,7 +768,7 @@ void SaveLoadChooserSimple::updateSaveList(bool external) {
 		}
 
 		// Show "Untitled saved game" for empty/whitespace saved game descriptions
-		Common::U32String description = x->getDescription();
+		Common::U32String description = x->getDescription().decode();
 		Common::U32String trimmedDescription = description;
 		trimmedDescription.trim();
 		if (trimmedDescription.empty()) {
@@ -856,14 +856,14 @@ SaveLoadChooserGrid::~SaveLoadChooserGrid() {
 	delete _pageDisplay;
 }
 
-const Common::U32String SaveLoadChooserGrid::getResultString() const {
+const Common::String SaveLoadChooserGrid::getResultString() const {
 	return _resultString;
 }
 
 void SaveLoadChooserGrid::handleCommand(CommandSender *sender, uint32 cmd, uint32 data) {
 	const int slot = cmd + _curPage * _entriesPerPage - 1;
 	if (cmd <= _entriesPerPage && slot < (int)_saveList.size()) {
-		activate(slot, Common::U32String());
+		activate(slot, Common::String());
 	}
 
 	switch (cmd) {
@@ -1180,10 +1180,10 @@ void SaveLoadChooserGrid::updateSaves() {
 		} else {
 			curButton.button->setGfx(kThumbnailWidth, kThumbnailHeight2, 0, 0, 0);
 		}
-		curButton.description->setLabel(Common::U32String(Common::String::format("%d. ", saveSlot)) + _saveList[i].getDescription());
+		curButton.description->setLabel(Common::U32String::format("%d. %s", saveSlot, _saveList[i].getDescription().c_str()));
 
 		Common::U32String tooltip(_("Name: "));
-		tooltip += _saveList[i].getDescription();
+		tooltip += _saveList[i].getDescription().decode();
 
 		if (_saveDateSupport) {
 			const Common::U32String &saveDate = desc.getSaveDate();
@@ -1248,12 +1248,12 @@ SavenameDialog::SavenameDialog()
 	_targetSlot = 0;
 }
 
-void SavenameDialog::setDescription(const Common::U32String &desc) {
-	_description->setEditString(desc);
+void SavenameDialog::setDescription(const Common::String &desc) {
+	_description->setEditString(desc.decode());
 }
 
-const Common::U32String &SavenameDialog::getDescription() {
-	return _description->getEditString();
+const Common::String SavenameDialog::getDescription() {
+	return _description->getEditString().encode();
 }
 
 void SavenameDialog::open() {

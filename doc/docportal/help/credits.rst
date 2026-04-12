@@ -62,6 +62,8 @@ Access
      -
    * - Paul Gilbert
      -
+   * - Matthew Duggan
+     -
 
 ADL
 ^^^
@@ -70,6 +72,15 @@ ADL
    :widths: 35 65
 
    * - Walter van Niftrik
+     -
+
+AGDS
+^^^^
+
+.. list-table::
+   :widths: 35 65
+
+   * - Vladimir Menshakov
      -
 
 AGI
@@ -203,6 +214,26 @@ AGS
    * - Berian Williams
      - AgsCreditz
 
+Alcachofa
+^^^^^^^^^
+
+.. list-table::
+   :widths: 35 65
+
+   * - Hermann Noll
+     -
+
+ALG
+^^^
+
+.. list-table::
+   :widths: 35 65
+
+   * - Filippos Karapetis
+     -
+   * - David Kment
+     -
+
 Asylum
 ^^^^^^
 
@@ -233,6 +264,17 @@ Avalanche
    * - Peter Bozsó
      -
    * - Arnaud Boutonné
+     -
+
+awe
+^^^
+
+.. list-table::
+   :widths: 35 65
+
+   * - Gregory Montoir
+     -
+   * - Paul Gilbert
      -
 
 Bagel
@@ -534,7 +576,18 @@ Freescape
 
    * - Chris Allen
      - Sound engine programming
+   * - Dhruv
+     - Render engine fixes
    * - Gustavo Grieco
+     -
+
+Gamos
+^^^^^
+
+.. list-table::
+   :widths: 35 65
+
+   * - Anton Yarcev
      -
 
 Glk
@@ -595,6 +648,8 @@ Got
    * - Paul Gilbert
      -
    * - Arnaud Boutonné
+     -
+   * - Coen Rampen
      -
 
 Griffon
@@ -792,6 +847,8 @@ Lastexpress
 .. list-table::
    :widths: 35 65
 
+   * - Andrea Boscarino
+     - Engine rewrite
    * - Matthew Hoops
      - (retired)
    * - Jordi Vilalta Prat
@@ -1007,6 +1064,17 @@ Petka
      -
    * - Eugene Sandulenko
      -
+
+PhoenixVR
+^^^^^^^^^
+
+.. list-table::
+   :widths: 35 65
+
+   * - Vladimir Menshakov
+     -
+   * - Hermann Noll
+     - Help with 3D VR projections
 
 Pink
 ^^^^
@@ -1383,6 +1451,15 @@ Toon
    * - Sylvain Dupont
      -
 
+Tot
+^^^
+
+.. list-table::
+   :widths: 35 65
+
+   * - Gabriel Sanmartín
+     -
+
 Touché
 ^^^^^^^
 
@@ -1475,6 +1552,8 @@ Ultima
      -
    * - Matthew Jimenez
      -
+   * - Paul Robson
+     - (Akalabeth)
    * - Daniel c. Würl
      - (Nuvie)
    * - Eric Fry
@@ -1538,8 +1617,12 @@ WAGE
 .. list-table::
    :widths: 35 65
 
+   * - Alikhan Balpykov
+     -
    * - Eugene Sandulenko
      -
+   * - Alexei Svitkine
+     - (Java implementation author)
 
 Watchmaker
 ^^^^^^^^^^
@@ -1548,6 +1631,17 @@ Watchmaker
    :widths: 35 65
 
    * - Einar Johan Troan Somaen;
+     -
+
+Wayne's World
+^^^^^^^^^^^^^
+
+.. list-table::
+   :widths: 35 65
+
+   * - Arnaud Boutonné
+     -
+   * - Benjamin Haisch
      -
 
 Wintermute
@@ -1579,6 +1673,8 @@ Z-Vision
      -
    * - Anton Yarcev
      -
+   * - Thomas N McEwan
+     - Widescreen mod, HQ panoramas, 3D audio enhancement
 
 Backend Teams
 *************
@@ -2153,8 +2249,8 @@ Win64
    * - Lothar Serra Mari
      -
 
-GUI Translations
-****************
+GUI Translations (with 10+ translations)
+****************************************
 
 .. list-table::
    :widths: 35 65
@@ -2162,12 +2258,23 @@ GUI Translations
    * - Thierry Crozat
      - Translation Lead
 
+Arabic
+^^^^^^
+
+.. list-table::
+   :widths: 35 65
+
+   * - Malek Bellasfar
+     -
+
 Basque
 ^^^^^^
 
 .. list-table::
    :widths: 35 65
 
+   * - Josu Igoa
+     -
    * - Mikel Iturbe Urretxa
      -
 
@@ -2180,13 +2287,41 @@ Belarusian
    * - Ivan Lukyanov
      -
 
+Belarusian (Taraškievica)
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. list-table::
+   :widths: 35 65
+
+   * - Kage
+     -
+
 Catalan
 ^^^^^^^
 
 .. list-table::
    :widths: 35 65
 
+   * - Sergi Pérez Labernia
+     -
    * - Jordi Vilalta Prat
+     -
+   * - Xaviu
+     -
+
+Chinese (Simplified Han script)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. list-table::
+   :widths: 35 65
+
+   * - 复予
+     -
+   * - Crane yang
+     -
+   * - Xiao Zheng
+     -
+   * - kane159
      -
 
 Czech
@@ -2197,6 +2332,8 @@ Czech
 
    * - Zbynìk Schwarz
      -
+   * - AsciiWolf
+     -
 
 Danish
 ^^^^^^
@@ -2204,6 +2341,8 @@ Danish
 .. list-table::
    :widths: 35 65
 
+   * - Bo Mortensen
+     -
    * - Steffen Nyeland
      -
    * - scootergrisen
@@ -2217,6 +2356,8 @@ Dutch
 
    * - Ben Castricum
      -
+   * - SecularSteve
+     -
 
 Finnish
 ^^^^^^^
@@ -2224,11 +2365,15 @@ Finnish
 .. list-table::
    :widths: 35 65
 
-   * - Linus Virtanen
+   * - Timo Mikkolainen
      -
    * - Toni Saarela
      -
-   * - Timo Mikkolainen
+   * - Linus Virtanen
+     -
+   * - jepael
+     -
+   * - LINUX-SAUNA
      -
 
 French
@@ -2238,6 +2383,8 @@ French
    :widths: 35 65
 
    * - Thierry Crozat
+     -
+   * - dwa
      -
    * - Purple T
      -
@@ -2251,15 +2398,26 @@ Galician
    * - Santiago G. Sanz
      -
 
+Georgian
+^^^^^^^^
+
+.. list-table::
+   :widths: 35 65
+
+   * - NorwayFun
+     -
+
 German
 ^^^^^^
 
 .. list-table::
    :widths: 35 65
 
+   * - Lothar Serra Mari
+     -
    * - Simon Sawatzki
      -
-   * - Lothar Serra Mari
+   * - SecularSteve
      -
 
 Greek
@@ -2268,9 +2426,33 @@ Greek
 .. list-table::
    :widths: 35 65
 
-   * - Thanasis Antoniou
-     -
    * - Filippos Karapetis
+     -
+   * - Antoniou Thanasis
+     -
+
+Hebrew
+^^^^^^
+
+.. list-table::
+   :widths: 35 65
+
+   * - Niv Baehr
+     -
+
+Hindi
+^^^^^
+
+.. list-table::
+   :widths: 35 65
+
+   * - Krish
+     -
+   * - Aditya Mohan
+     -
+   * - Aashwin Vaish
+     -
+   * - barryspacezero
      -
 
 Hungarian
@@ -2283,6 +2465,8 @@ Hungarian
      -
    * - George Kormendi
      -
+   * - Hovánszki Tamás
+     -
 
 Italian
 ^^^^^^^
@@ -2290,11 +2474,37 @@ Italian
 .. list-table::
    :widths: 35 65
 
+   * - Walter Agazzi
+     -
    * - Matteo Angelino
      -
    * - Paolo Bossi
      -
-   * - Walter Agazzi
+
+Japanese
+^^^^^^^^
+
+.. list-table::
+   :widths: 35 65
+
+   * - iplaysomegames101
+     -
+   * - VAN-Gluon
+     -
+
+Korean
+^^^^^^
+
+.. list-table::
+   :widths: 35 65
+
+   * - Joohan Lee
+     -
+   * - Hoseok Seo
+     -
+   * - Won Star
+     -
+   * - papercutter0324
      -
 
 Norwegian (Bokmål)
@@ -2303,7 +2513,11 @@ Norwegian (Bokmål)
 .. list-table::
    :widths: 35 65
 
+   * - Thomas Risan
+     -
    * - Einar Johan Sømåen
+     -
+   * - Stian Schultz
      -
 
 Norwegian (Nynorsk)
@@ -2321,7 +2535,13 @@ Polish
 .. list-table::
    :widths: 35 65
 
+   * - Paweł Kołodziejski
+     -
+   * - Eryk Michalak
+     -
    * - GrajPoPolsku.pl Team
+     -
+   * - SkiffPL
      -
 
 Brazilian Portuguese
@@ -2330,9 +2550,9 @@ Brazilian Portuguese
 .. list-table::
    :widths: 35 65
 
-   * - ScummBR Team
-     -
    * - Marcel Souza Lemes
+     -
+   * - ScummBR Team
      -
 
 Portuguese
@@ -2352,6 +2572,8 @@ Russian
 
    * - Eugene Sandulenko
      -
+   * - iplaysomegames101
+     -
 
 Spanish
 ^^^^^^^
@@ -2363,9 +2585,9 @@ Spanish
      -
    * - Jordi Vilalta Prat
      -
-   * - IlDucci
-     -
    * - Rodrigo Vegas Sánchez-Ferrero
+     -
+   * - IlDucci
      -
 
 Swedish
@@ -2374,9 +2596,26 @@ Swedish
 .. list-table::
    :widths: 35 65
 
+   * - Henrik Andersson
+     -
    * - Hampus Flink
      -
    * - Adrian Frühwirth
+     -
+   * - Daniel Nylander
+     -
+   * - Sebastian Rasmussen
+     -
+
+Turkish
+^^^^^^^
+
+.. list-table::
+   :widths: 35 65
+
+   * - Ahmet Furkan
+     -
+   * - mdenizdemirci
      -
 
 Ukrainian
@@ -2386,6 +2625,10 @@ Ukrainian
    :widths: 35 65
 
    * - Lubomyr Lisen
+     -
+   * - Eugene Sandulenko
+     -
+   * - iplaysomegames101
      -
 
 Game Translations
@@ -2397,6 +2640,8 @@ CGE
 .. list-table::
    :widths: 35 65
 
+   * - Arnaud Boutonné
+     - Soltys English translation
    * - Dan Serban
      - Soltys English translation
    * - Víctor González
@@ -2434,6 +2679,8 @@ Mortevielle
 .. list-table::
    :widths: 35 65
 
+   * - Arnaud Boutonné
+     - First English translation, improve German translation
    * - Hugo Labrande
      - Improve English translation
    * - Thierry Crozat
@@ -2893,4 +3140,6 @@ Bret Mogilefsky, for managing to create a SPUTM-style 3D LUA engine, and avoidin
 Benjamin Haisch, for emimeshviewer, which our EMI code borrows heavily from.
 
 Fabrizio Lagorio from Trecision S.p.A., for finding and providing the source code of many of their games.
+
+Ron Davis for releasing the sources and generously giving away the three chapters of God of Thunder.
 

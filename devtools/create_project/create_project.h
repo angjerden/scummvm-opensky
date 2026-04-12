@@ -26,8 +26,8 @@
 #define __has_feature(x) 0 // Compatibility with non-clang compilers.
 #endif
 
-#if __cplusplus < 201103L && (!defined(_MSC_VER) || _MSC_VER < 1700)
-#define override           // Compatibility with non-C++11 compilers.
+#if defined(_MSC_VER) && _MSC_VER < 1900
+#error MSVC support requires MSVC 2015 or newer
 #endif
 
 #include <list>
@@ -254,6 +254,16 @@ bool setFeatureBuildState(const std::string &name, FeatureList &features, bool e
 bool getFeatureBuildState(const std::string &name, const FeatureList &features);
 
 /**
+ * Specifies the required SDL version of a feature.
+ */
+enum SDLVersion {
+	kSDLVersionAny = 0,
+	kSDLVersion1, ///< SDL 1.2
+	kSDLVersion2, ///< SDL 2
+	kSDLVersion3  ///< SDL 3
+};
+
+/**
  * Structure to describe a build setup.
  *
  * This includes various information about which engines to
@@ -284,16 +294,19 @@ struct BuildSetup {
 	bool tests = false;                ///< Generate project files for the tests
 	bool runBuildEvents = false;       ///< Run build events as part of the build (generate revision number and copy engine/theme data & needed files to the build folder
 	bool createInstaller = false;      ///< Create installer after the build
-	bool useSDL2 = true;               ///< Whether to use SDL2 or not.
+	SDLVersion useSDL = kSDLVersion2;  ///< Which version of SDL to use.
 	bool useStaticDetection = true;    ///< Whether to link detection features inside the executable or not.
 	bool useWindowsUnicode = true;     ///< Whether to use Windows Unicode APIs or ANSI APIs.
 	bool useWindowsSubsystem = false;  ///< Whether to use Windows subsystem or Console subsystem (default: Console)
+	bool appleEmbedded = false;        ///< Whether the build will target iOS or tvOS instead of macOS.
 	bool useXCFramework = false;       ///< Whether to use Apple XCFrameworks instead of static libraries
 	bool useVcpkg = false;             ///< Whether to load libraries from vcpkg or SCUMMVM_LIBS
+	bool useSlnx = false;              ///< Whether to use old .sln or new .slnx format
 	bool win32 = false;                ///< Target is Windows
 
 	bool featureEnabled(const std::string &feature) const;
 	Feature getFeature(const std::string &feature) const;
+	const char *getSDLName() const;
 };
 
 /**
@@ -531,8 +544,8 @@ struct FileNode {
 	explicit FileNode(const std::string &n) : name(n), children() {}
 
 	~FileNode() {
-		for (NodeList::iterator i = children.begin(); i != children.end(); ++i)
-			delete *i;
+		for (auto &i : children)
+			delete i;
 	}
 
 	std::string name;  ///< Name of the node
@@ -555,7 +568,7 @@ public:
 	 * @param project_warnings List of project-specific warnings
 	 * @param version Target project version.
 	 */
-	ProjectProvider(StringList &global_warnings, std::map<std::string, StringList> &project_warnings, StringList &global_errors, const int version = 0);
+	ProjectProvider(StringList &global_warnings, std::map<std::string, StringList> &project_warnings, StringList &global_errors);
 	virtual ~ProjectProvider() {}
 
 	/**
@@ -574,7 +587,6 @@ public:
 	static std::string getLastPathComponent(const std::string &path);
 
 protected:
-	const int _version;                                  ///< Target project version
 	StringList &_globalWarnings;                         ///< Global (ignored) warnings
 	StringList &_globalErrors;                           ///< Global errors (promoted from warnings)
 	std::map<std::string, StringList> &_projectWarnings; ///< Per-project warnings

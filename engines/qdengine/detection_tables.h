@@ -36,13 +36,13 @@ const PlainGameDescriptor GAME_NAMES[] = {
 	{ "shveik", "The Adventures of the Good Soldier Schweik" }, // Похождения бравого солдата Швейка
 	{ "klepa", "Klepa: Symbolic Rivets" },  // Клёпа: Символические Заклепки
 	{ "3mice2", "Marvellous Mice Adventures: Sea Rat's Birthday" }, // Три маленькие белые мышки. День рождения морской крысы
-	{ "dogncat", "Dog-n-cat: Island of Dr Ratiarty" }, // Агентство "КотоПес": Остров доктора Крысарди
-	{ "dogncat2", "Dog-n-cat: In the Footsteps of Unprecedented Beasts" }, // Агентство "КотоПес": По следам невиданных зверей
+	{ "dogncat", "Dog-n-cat: In the Footsteps of Unprecedented Beasts" }, // Агентство "КотоПес": По следам невиданных зверей
+	{ "dogncat2", "Dog-n-cat: Island of Dr Ratiarty" }, // Агентство "КотоПес": Остров доктора Крысарди
 
 	{ 0, 0 }
 };
 
-#define SUPPORT_STATUS ADGF_UNSTABLE
+#define SUPPORT_STATUS ADGF_NO_FLAGS
 
 #define GAMEelf(id,extra,md5,size,exefile,exemd5,exesize,lang,flags) { \
         id, \
@@ -65,10 +65,10 @@ const ADGameDescription GAME_DESCRIPTIONS[] = {
 	GAME("karliknos", "a3f1b86c07bf72f688e7f2b5f20aa7f9", 3225385,
 			"qd_game.exe", "fcc99749c0ec55d4b112450755ae97b8", 1808636),
 	// Nykštukas Nosis
-	//GAMEl("karliknos", "???", 3225385, Common::LT_LIT),
+	// 2004/04/19 Akelote
+	GAMEl("karliknos", "89077e9322d92b080406d3807f548fe2", 3225327,
+			"qd_game.exe", "607fa1a3b2c2b7810a5de49b5e7c1521", 917504, Common::LT_LTU),
 
-#undef SUPPORT_STATUS
-#define SUPPORT_STATUS ADGF_NO_FLAGS
 	// Ну, погоди! Выпуск 3. Песня для зайца
 	// 2003/12/11. K D-Lab
 	GAME("nupogodi3", "7394a5d28590680cfeb6a037101a9c81", 1675230,
@@ -82,9 +82,6 @@ const ADGameDescription GAME_DESCRIPTIONS[] = {
 	// No počkaj! 3: Pieseň pre zajaca
 	//GAMEl("nupogodi3", "???", 1674743,
 	//		"qd_game.exe", "???", 909312, Common::SK_SVK),
-
-#undef SUPPORT_STATUS
-#define SUPPORT_STATUS ADGF_UNSTABLE
 
 	// Братья Пилоты. Обратная сторона Земли
 	// 2004/06/11. K D-Lab / Pipe Studio
@@ -116,8 +113,6 @@ const ADGameDescription GAME_DESCRIPTIONS[] = {
 	GAMEd("mng", "da3a6e591d4896ca3176c5866aef278f", 2541094,
 			"qd_game.exe", "233ac221814568e5c278f952e76495ce", 757760),
 
-#undef SUPPORT_STATUS
-#define SUPPORT_STATUS ADGF_NO_FLAGS
 	// Маски-шоу
 	// 2005/12/16. Lazy Games
 	GAME("maski", "9a40b7491cac0dd80657cfe52e28ea74", 23128230,
@@ -143,16 +138,11 @@ const ADGameDescription GAME_DESCRIPTIONS[] = {
 	GAME("shveik", "3877afbb780996a5608a5b358dd59726", 30233418,
 			"shveik.exe", "a56cb058b46e47754019652d27d974b3", 962560),
 
-#undef SUPPORT_STATUS
-#define SUPPORT_STATUS ADGF_UNSTABLE
-
 	// Клёпа: Символические Заклепки
 	// 2007/10/19. K-D Logic
 	GAME("klepa", "a09e1f072942d88c06abccfb820f46a9", 20260975,
 			"qd_game.exe", "a56cb058b46e47754019652d27d974b3", 962560),
 
-#undef SUPPORT_STATUS
-#define SUPPORT_STATUS ADGF_NO_FLAGS
 	// Три маленькие белые мышки. День рождения морской крысы
 	// 2007/12/27. Lazy Games
 	GAME("3mice2", "93d8311ff9c00453f25192743c9e98d9", 8176962,
@@ -179,7 +169,7 @@ const ADGameDescription GAME_DESCRIPTIONS[] = {
 		GUIO1(GUIO_NONE)
 	},
 
-	{ // Demo2, original
+	{ // Demo2, recoded
 	  // Video is recoded with: ffmpeg -i martha.mpg -b:v 6000k -maxrate:v 9000k martha-new.mpeg
 	  // The full game has this video also broken: the video frames get frozen at the last several seconds
 		"3mice2",
@@ -189,19 +179,17 @@ const ADGameDescription GAME_DESCRIPTIONS[] = {
 				   "Resource/Video/martha.mpg", "4dc93c37c0cdd75c01c58412f68e4874", 32499712),
 		Common::RU_RUS,
 		Common::kPlatformWindows,
-		ADGF_UNSTABLE | ADGF_DROPPLATFORM | ADGF_DEMO,
+		ADGF_DROPPLATFORM | ADGF_DEMO,
 		GUIO1(GUIO_NONE)
 	},
 
-#undef SUPPORT_STATUS
-#define SUPPORT_STATUS ADGF_UNSTABLE
-	// Агентство "КотоПес": Остров доктора Крысарди
-	// 2008/09/19 KD Vision Games
+	// Агентство "КотоПес": По следам невиданных зверей
+	// 2008/03/21 KD Vision Games
 	GAME("dogncat", "db4e0081fdaf575e82910cf7399cef62", 17759363,
 			"qd_game.exe", "ed659f0fc79e772f1f1ff8107fa94dea", 962560),
 
-	// Агентство "КотоПес": По следам невиданных зверей
-	// 2008/03/21 KD Vision Games
+	// Агентство "КотоПес": Остров доктора Крысарди
+	// 2008/09/19 KD Vision Games
 	GAME("dogncat2", "c250f79a8e404b13a588e6a03e3a6d20", 10483617,
 			"qd_game.exe", "ed659f0fc79e772f1f1ff8107fa94dea", 962560),
 

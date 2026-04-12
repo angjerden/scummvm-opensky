@@ -29,6 +29,7 @@
 #include "director/frame.h"
 #include "director/movie.h"
 #include "director/score.h"
+#include "director/types.h"
 #include "director/util.h"
 #include "director/window.h"
 #include "director/lingo/lingo.h"
@@ -36,6 +37,10 @@
 #include "director/lingo/lingo-codegen.h"
 #include "director/lingo/lingo-object.h"
 #include "director/lingo/lingo-the.h"
+
+#ifdef USE_IMGUI
+#include "director/debugger/dt-internal.h"
+#endif
 
 namespace Director {
 
@@ -89,6 +94,8 @@ Debugger::Debugger(): GUI::Debugger() {
 	registerCmd("c", WRAP_METHOD(Debugger, cmdExit));
 	registerCmd("windows", WRAP_METHOD(Debugger, cmdWindows));
 	registerCmd("w", WRAP_METHOD(Debugger, cmdWindows));
+	registerCmd("xlibs", WRAP_METHOD(Debugger, cmdXLibs));
+	registerCmd("xl", WRAP_METHOD(Debugger, cmdXLibs));
 
 	registerCmd("bpset", WRAP_METHOD(Debugger, cmdBpSet));
 	registerCmd("b", WRAP_METHOD(Debugger, cmdBpSet));
@@ -168,6 +175,7 @@ bool Debugger::cmdHelp(int argc, const char **argv) {
 	debugPrintf(" finish / fin - Steps until the current stack frame returns\n");
 	debugPrintf(" continue / c - Continues execution\n");
 	debugPrintf(" windows / w - Lists all of the windows\n");
+	debugPrintf(" xlibs / xl - Lists all of the Lingo XObject/Xtras loaded\n");
 	debugPrintf("\n");
 	debugPrintf("Breakpoints:\n");
 	debugPrintf(" bpset / b - Creates a breakpoint at the current Lingo function and offset\n");
@@ -328,10 +336,10 @@ bool Debugger::cmdMovie(int argc, const char **argv) {
 bool Debugger::cmdChannels(int argc, const char **argv) {
 	Score *score = g_director->getCurrentMovie()->getScore();
 
-	int maxSize = (int)score->getFramesNum();
 	int frameId = score->getCurrentFrameNum();
+	int maxFrames = score->getFramesNum();
 	if (argc == 1) {
-		debugPrintf("Channel info for current frame %d of %d\n", frameId, maxSize);
+		debugPrintf("Channel info for current frame %d of %d\n", frameId, maxFrames);
 		debugPrintf("%s\n", score->formatChannelInfo().c_str());
 		return true;
 	}
@@ -339,8 +347,8 @@ bool Debugger::cmdChannels(int argc, const char **argv) {
 	if (argc == 2)
 		frameId = atoi(argv[1]);
 
-	if (frameId >= 1 && frameId <= maxSize) {
-		debugPrintf("Channel info for frame %d of %d\n", frameId, maxSize);
+	if (frameId >= 1 && frameId <= maxFrames) {
+		debugPrintf("Channel info for frame %d of %d\n", frameId, maxFrames);
 		Frame *frame = score->_scoreCache[frameId - 1];
 		if (frame) {
 			debugPrintf("%s\n", frame->formatChannelInfo().c_str());
@@ -348,7 +356,7 @@ bool Debugger::cmdChannels(int argc, const char **argv) {
 			debugPrintf("  not found\n");
 		}
 	} else {
-		debugPrintf("Must specify a frame number between 1 and %d.\n", maxSize);
+		debugPrintf("Must specify a frame number between 1 and %d.\n", maxFrames);
 	}
 	return true;
 }
@@ -489,8 +497,24 @@ bool Debugger::cmdFuncs(int argc, const char **argv) {
 			}
 		}
 	}
+	if (g_director->getVersion() >= 600) {
+		debugPrintf("Sprite behaviors:\n");
+		for (int i = 0; i < (int)score->_scoreCache.size(); i++) {
+			Frame *frame = score->_scoreCache[i];
+			if (frame) {
+				for (int j = 0; j < (int)frame->_sprites.size(); j++) {
+					Sprite *sprite = frame->_sprites[j];
+					if (!sprite->_behaviors.empty()) {
+						debugPrintf("  %d, sprite %d:\n", i + 1, j);
+						for (auto &it : sprite->_behaviors) {
+							debugPrintf("    %s\n", it.toString().c_str());
+						}
+					}
+				}
+			}
+		}
 
-
+	}
 	return true;
 }
 
@@ -679,6 +703,16 @@ bool Debugger::cmdWindows(int argc, const char **argv) {
 	for (auto &it : *g_director->getWindowList()) {
 		debugPrintf("%s\n", it->formatWindowInfo().c_str());
 	}
+	debugPrintf("\n");
+	return true;
+}
+
+bool Debugger::cmdXLibs(int argc, const char **argv) {
+	debugPrintf("XLibs:\n");
+	for (auto &it : g_lingo->_openXLibs) {
+		debugPrintf("%s: %s\n", it._key.c_str(), it._value == kXObj ? "XObj" : (it._value == kXtraObj ? "Xtra" : "unknown"));
+	}
+
 	debugPrintf("\n");
 	return true;
 }
@@ -973,6 +1007,8 @@ bool Debugger::cmdBpList(int argc, const char **argv) {
 
 bool Debugger::cmdDraw(int argc, const char **argv) {
 	if (argc > 1) {
+		int prevDraw = g_director->_debugDraw;
+
 		for (int i = 1; i < argc; i++) {
 			if (!scumm_stricmp(argv[i], "off")) {
 				g_director->_debugDraw = 0;
@@ -986,6 +1022,10 @@ bool Debugger::cmdDraw(int argc, const char **argv) {
 				debugPrintf("Valid parameters are 'cast', 'frame', 'all' or 'off'.\n");
 				return true;
 			}
+		}
+
+		if (prevDraw != (int)g_director->_debugDraw) {
+			g_director->getCurrentWindow()->render(true);
 		}
 	}
 
@@ -1176,6 +1216,7 @@ bool Debugger::lingoEval(const char *inputOrig) {
 	_lingoEval = true;
 	LC::call(sym, 0, true);
 	g_lingo->execute();
+	_lingoEval = false;
 
 	debugPrintf("\n");
 	return true;
@@ -1346,6 +1387,43 @@ void Debugger::varWriteHook(const Common::String &name) {
 			}
 		}
 	}
+
+#ifdef USE_IMGUI
+	if (!DT::_state || !DT::_state->_variables.contains(name))
+		return;
+
+	DT::ImGuiState::WatchLogEntry entry;
+	entry.varName = name;
+
+	entry.value = "(unknown)";
+	if (g_lingo->_state->localVars && g_lingo->_state->localVars->contains(name))
+		entry.value = formatStringForDump(g_lingo->_state->localVars->getVal(name).asString(true));
+	else if (g_lingo->_globalvars.contains(name))
+		entry.value = formatStringForDump(g_lingo->_globalvars.getVal(name).asString(true));
+
+	entry.scriptRef = "(unknown)";
+	if (!g_lingo->_state->callstack.empty()) {
+		CFrame *head = g_lingo->_state->callstack.back();
+		if (head && head->sp.ctx && head->sp.name) {
+			entry.scriptRef = DT::formatHandlerName(
+				head->sp.ctx->_scriptId,
+				head->sp.ctx->_id,
+				*head->sp.name,
+				head->sp.ctx->_scriptType,
+				false
+			);
+		}
+	}
+
+	DT::_state->_watchLog.push_back(entry);
+	if (DT::_state->_watchLog.size() > 100)
+		DT::_state->_watchLog.remove_at(0);
+
+	debug("Var write: '%s' = %s  [%s]",
+		entry.varName.c_str(),
+		entry.value.c_str(),
+		entry.scriptRef.c_str());
+#endif
 }
 
 void Debugger::entityReadHook(int entity, int field) {

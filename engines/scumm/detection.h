@@ -37,6 +37,7 @@ namespace Scumm {
 #define GAMEOPTION_NETWORK                                   GUIO_GAMEOPTIONS6
 #define GAMEOPTION_COPY_PROTECTION                           GUIO_GAMEOPTIONS7
 #define GAMEOPTION_USE_REMASTERED_AUDIO                      GUIO_GAMEOPTIONS8
+#define GAMEOPTION_TTS                                       GUIO_GAMEOPTIONS9
 
 /**
  * Descriptor of a specific SCUMM game. Used internally to store
@@ -279,6 +280,7 @@ enum {
 	DEBUG_SMUSH,		// Track SMUSH
 	DEBUG_MOONBASE_AI,	// Moonbase AI
 	DEBUG_NETWORK,		// Track Networking
+	DEBUG_IMGUI,		// Show ImGui debug window (if available)
 };
 
 } // End of namespace Scumm

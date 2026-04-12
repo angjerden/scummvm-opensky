@@ -11,6 +11,7 @@ MODULE_OBJS := \
 	midi.o \
 	misc.o \
 	networking.o \
+	printing.o \
 	savegame.o \
 	sound.o \
 	testbed.o \
@@ -18,10 +19,8 @@ MODULE_OBJS := \
 	video.o
 
 ifdef USE_CLOUD
-ifdef USE_LIBCURL
 MODULE_OBJS += \
 	cloud.o
-endif
 endif
 
 ifdef USE_SDL_NET
@@ -37,6 +36,13 @@ endif
 ifdef USE_IMGUI
 MODULE_OBJS += \
 	imgui.o
+endif
+
+ifdef USE_TINYGL
+ifdef USE_OPENGL_GAME # Currently only direct comparisons are implemented
+MODULE_OBJS += \
+    tinygl.o
+endif
 endif
 
 MODULE_DIRS += \

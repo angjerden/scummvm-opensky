@@ -29,19 +29,6 @@
 namespace Director {
 namespace DT {
 
-void showCallStack() {
-	if (!_state->_w.callStack)
-		return;
-
-	Director::Lingo *lingo = g_director->getLingo();
-	ImGui::SetNextWindowPos(ImVec2(20, 160), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(120, 120), ImGuiCond_FirstUseEver);
-	if (ImGui::Begin("CallStack", &_state->_w.callStack)) {
-		ImGui::Text("%s", lingo->formatCallStack(lingo->_state->pc).c_str());
-	}
-	ImGui::End();
-}
-
 static void cacheVars() {
 	// take a snapshot of the variables every 500 ms
 	if ((g_director->getTotalPlayTime() - _state->_vars._lastTimeRefreshed) > 500) {
@@ -75,12 +62,17 @@ void showVars() {
 				keyBuffer.push_back(it._key);
 			}
 			Common::sort(keyBuffer.begin(), keyBuffer.end());
+
+			uint32 id = 0;
 			for (auto &i : keyBuffer) {
+				ImGui::PushID(id);
 				Datum &val = _state->_vars._globals.getVal(i);
 				bool changed = !_state->_vars._prevGlobals.contains(i) || !(_state->_vars._globals.getVal(i) == _state->_vars._prevGlobals.getVal(i));
 				displayVariable(i, changed);
 				ImGui::SameLine();
 				ImGui::Text(" - [%s] %s", val.type2str(), formatStringForDump(val.asString(true)).c_str());
+				ImGui::PopID();
+				id += 1;
 			}
 			keyBuffer.clear();
 		}
@@ -90,12 +82,17 @@ void showVars() {
 					keyBuffer.push_back(it._key);
 				}
 				Common::sort(keyBuffer.begin(), keyBuffer.end());
+
+				uint32 id = 0;
 				for (auto &i : keyBuffer) {
+					ImGui::PushID(id);
 					Datum &val = _state->_vars._locals.getVal(i);
 					bool changed = !_state->_vars._prevLocals.contains(i) || !(_state->_vars._locals.getVal(i) == _state->_vars._prevLocals.getVal(i));
 					displayVariable(i, changed);
 					ImGui::SameLine();
 					ImGui::Text(" - [%s] %s", val.type2str(), formatStringForDump(val.asString(true)).c_str());
+					ImGui::PopID();
+					id += 1;
 				}
 				keyBuffer.clear();
 			} else {
@@ -109,11 +106,16 @@ void showVars() {
 					keyBuffer.push_back(script->getPropAt(i));
 				}
 				Common::sort(keyBuffer.begin(), keyBuffer.end());
+
+				uint32 id = 0;
 				for (auto &i : keyBuffer) {
+					ImGui::PushID(id);
 					Datum val = script->getProp(i);
 					displayVariable(i, false);
 					ImGui::SameLine();
 					ImGui::Text(" - [%s] %s", val.type2str(), formatStringForDump(val.asString(true)).c_str());
+					ImGui::PopID();
+					id += 1;
 				}
 				keyBuffer.clear();
 			} else {
@@ -133,18 +135,48 @@ void showWatchedVars() {
 	ImGui::SetNextWindowPos(ImVec2(20, 20), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowSize(ImVec2(300, 250), ImGuiCond_FirstUseEver);
 	if (ImGui::Begin("Watched Vars", &_state->_w.watchedVars)) {
+		int id = -1;
 		for (auto &v : _state->_variables) {
 			Datum name(v._key);
 			name.type = VARREF;
 			Datum val = g_lingo->varFetch(name, true);
 
-			displayVariable(v._key, false);
+			bool outOfScope = (val.type == VOID);
+
+			id += 1;
+			ImGui::PushID(id);
+			displayVariable(v._key, false, outOfScope);
+			ImGui::PopID();
+
 			ImGui::SameLine();
 			ImGui::Text(" - [%s] %s", val.type2str(), formatStringForDump(val.asString(true)).c_str());
 		}
 
 		if (_state->_variables.empty())
 			ImGui::Text("(no watched variables)");
+
+		ImGui::Separator();
+		if (ImGui::CollapsingHeader("Write Log")) {
+			if (ImGui::BeginChild("##watchlog", ImVec2(0, 150), true)) {
+				for (int i = (int)_state->_watchLog.size() - 1; i >= 0; i--) {
+					ImGuiState::WatchLogEntry &entry = _state->_watchLog[i];
+					ImGui::TextColored(
+						ImVec4(1.0f, 0.4f, 0.4f, 1.0f),
+						"write '%s': %s  [%s]",
+						entry.varName.c_str(),
+						entry.value.c_str(),
+						entry.scriptRef.c_str()
+					);
+				}
+
+				if (_state->_watchLog.empty())
+					ImGui::Text("(no writes logged)");
+			}
+			ImGui::EndChild();
+
+			if (ImGui::Button("Clear Log"))
+				_state->_watchLog.clear();
+		}
 	}
 	ImGui::End();
 }
@@ -183,26 +215,26 @@ void showBreakpointList() {
 				ImVec2 pos = ImGui::GetCursorScreenPos();
 				const ImVec2 mid(pos.x + 7, pos.y + 7);
 
-				ImVec4 color = bps[i].enabled ? _state->_colors._bp_color_enabled : _state->_colors._bp_color_disabled;
+				ImVec4 color = bps[i].enabled ? _state->theme->bp_color_enabled : _state->theme->bp_color_disabled;
 				ImGui::InvisibleButton("Line", ImVec2(16, ImGui::GetFontSize()));
 				if (ImGui::IsItemClicked(0)) {
 					if (bps[i].enabled) {
 						bps[i].enabled = false;
-						color = _state->_colors._bp_color_disabled;
+						color = _state->theme->bp_color_disabled;
 					} else {
 						bps[i].enabled = true;
-						color = _state->_colors._bp_color_enabled;
+						color = _state->theme->bp_color_enabled;
 					}
 				}
 
 				if (!bps[i].enabled && ImGui::IsItemHovered()) {
-					color = _state->_colors._bp_color_hover;
+					color = _state->theme->bp_color_hover;
 				}
 
 				if (bps[i].enabled)
 					dl->AddCircleFilled(mid, 4.0f, ImColor(color));
 				else
-					dl->AddCircle(mid, 4.0f, ImColor(_state->_colors._line_color));
+					dl->AddCircle(mid, 4.0f, ImColor(_state->theme->line_color));
 
 				// enabled column
 				ImGui::TableNextColumn();

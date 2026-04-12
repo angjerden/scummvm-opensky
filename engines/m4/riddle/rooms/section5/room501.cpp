@@ -20,8 +20,9 @@
  */
 
 #include "m4/riddle/rooms/section5/room501.h"
-#include "m4/graphics/gr_series.h"
 #include "m4/riddle/vars.h"
+#include "m4/adv_r/adv_control.h"
+#include "m4/graphics/gr_series.h"
 
 namespace M4 {
 namespace Riddle {
@@ -867,7 +868,7 @@ void Room501::daemon() {
 		break;
 
 	case 562:
-		midi_play("SADBOY2", 255, 0, -1, 949);
+		midi_play("SADBOY2", 255, false, -1, 949);
 		_xyzzy10 = 0;
 		break;
 
@@ -1342,7 +1343,7 @@ void Room501::conv501a() {
 	} else {
 		if (who <= 0) {
 			if (node == 15 && entry == 5)
-				midi_play("SADBOY1", 255, 0, -1, 949);
+				midi_play("SADBOY1", 255, false, -1, 949);
 
 			if (node == 7 && entry == 0) {
 				_G(kernel).trigger_mode = KT_DAEMON;

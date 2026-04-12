@@ -377,6 +377,9 @@ void Movies::playGIFMovie(const char *flaName) {
 bool Movies::playMovie(const char *name) { // PlayAnimFla
 	if (_engine->isLBA2()) {
 		const int index = _engine->_resources->findSmkMovieIndex(name);
+		if (index == -1) {
+			return false;
+		}
 		return playSmkMovie(name, index);
 	}
 
@@ -464,7 +467,10 @@ bool Movies::playMovie(const char *name) { // PlayAnimFla
 		warning("Unsupported fla version: %u, %s", version, fileNamePath.c_str());
 	}
 
-	_engine->_screens->fadeToBlack(_paletteOrg);
+	// this might happen if the movie was interrupted before it even started to load the palette.
+	if (!_paletteOrg.empty()) {
+		_engine->_screens->fadeToBlack(_paletteOrg);
+	}
 
 	_engine->_sound->stopSamples();
 	_engine->_screens->setBlackPal();

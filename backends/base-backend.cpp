@@ -33,6 +33,7 @@
 
 
 #include "gui/message.h"
+#include "common/printman.h"
 
 bool BaseBackend::setScaler(const char *name, int factor) {
 	if (!name)
@@ -65,6 +66,10 @@ void BaseBackend::initBackend() {
 		_audiocdManager = new DefaultAudioCDManager();
 #endif
 	OSystem::initBackend();
+
+	// Initialize default printing manager unless overridden by backend
+	if (!_printingManager)
+		_printingManager = new Common::PrintingManager();
 }
 
 void BaseBackend::fillScreen(uint32 col) {

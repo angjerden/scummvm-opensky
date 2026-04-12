@@ -19,12 +19,16 @@
  *
  */
 
+#include "audio/decoders/aiff.h"
+#include "common/platform.h"
+#include "common/stream.h"
 #include "common/macresman.h"
 
 #include "graphics/paletteman.h"
 #include "graphics/surface.h"
 #include "graphics/macgui/macwidget.h"
 
+#include "video/video_decoder.h"
 #include "video/avi_decoder.h"
 #include "video/qt_decoder.h"
 
@@ -38,6 +42,78 @@
 #include "director/lingo/lingo-the.h"
 
 namespace Director {
+
+
+class NoVideoAIFFDecoder : public Video::VideoDecoder {
+
+protected:
+	class AIFFAudioTrack : public Video::VideoDecoder::AudioTrack {
+	private:
+		Audio::RewindableAudioStream *_audioStream = nullptr;
+	public:
+		AIFFAudioTrack(Audio::Mixer::SoundType soundType, Audio::RewindableAudioStream *stream) : AudioTrack(soundType) {
+			_audioStream = stream;
+		}
+
+		virtual Audio::AudioStream *getAudioStream() const {
+			return _audioStream;
+		}
+	};
+
+public:
+	bool loadFile(const Common::Path &filename) override {
+		Common::SeekableReadStream *file = Common::MacResManager::openFileOrDataFork(filename);
+		if (!file) {
+			delete file;
+			return false;
+		}
+
+		bool result = loadStream(file);
+		if (!result)
+			delete file;
+		return result;
+	}
+
+	virtual bool loadStream(Common::SeekableReadStream *stream) override {
+		addTrack(new AIFFAudioTrack(Audio::Mixer::SoundType::kSFXSoundType, Audio::makeAIFFStream(stream, DisposeAfterUse::Flag::NO)));
+		return true;
+	}
+
+};
+
+DigitalVideoCastMember::DigitalVideoCastMember(Cast *cast, uint16 castId)
+		: CastMember(cast, castId) {
+	_type = kCastDigitalVideo;
+	_video = nullptr;
+	_lastFrame = nullptr;
+	_channel = nullptr;
+
+	_getFirstFrame = false;
+	_duration = 0;
+
+	_vflags = 0;
+	_frameRate = 0;
+
+	_frameRateType = kFrameRateDefault;
+	_videoType = kDVUnknown;
+	_qtmovie = true;
+	_avimovie = false;
+	_preload = false;
+	_enableVideo = true;
+	_pausedAtStart = false;
+	_showControls = false;
+	_directToStage = false;
+	_looping = false;
+	_enableSound = true;
+	_crop = false;
+	_center = false;
+	_dirty = false;
+	_emptyFile = false;
+
+	memset(_ditheringPalette, 0, 256*3);
+}
+
+
 
 DigitalVideoCastMember::DigitalVideoCastMember(Cast *cast, uint16 castId, Common::SeekableReadStreamEndian &stream, uint16 version)
 		: CastMember(cast, castId, stream) {
@@ -72,6 +148,8 @@ DigitalVideoCastMember::DigitalVideoCastMember(Cast *cast, uint16 castId, Common
 	_dirty = false;
 	_emptyFile = false;
 
+	memset(_ditheringPalette, 0, 256*3);
+
 	if (debugChannelSet(2, kDebugLoading))
 		_initialRect.debugPrint(2, "DigitalVideoCastMember(): rect:");
 
@@ -92,7 +170,8 @@ DigitalVideoCastMember::DigitalVideoCastMember(Cast *cast, uint16 castId, Digita
 
 	_initialRect = source._initialRect;
 	_boundingRect = source._boundingRect;
-	_children = source._children;
+	if (cast == source._cast)
+		_children = source._children;
 
 	_filename = source._filename;
 
@@ -140,14 +219,17 @@ bool DigitalVideoCastMember::loadVideoFromCast() {
 }
 
 bool DigitalVideoCastMember::loadVideo(Common::String path) {
-	// TODO: detect file type (AVI, QuickTime, FLIC) based on magic number,
-	// insert the right video decoder
+	if (_filename == path) {
+		// we've already loaded this video, or not. no point trying again.
+		return _video ? true : false;
+	}
 
-	if (_video)
+	if (_video) {
 		delete _video;
+		_video = nullptr;
+	}
 
 	_filename = path;
-	_video = new Video::QuickTimeDecoder();
 
 	Common::Path location = findPath(path);
 	if (location.empty()) {
@@ -155,40 +237,101 @@ bool DigitalVideoCastMember::loadVideo(Common::String path) {
 		return false;
 	}
 
+	Common::SeekableReadStream *copiedStream = Common::MacResManager::openFileOrDataFork(location);
+	if (!copiedStream) {
+		warning("DigitalVideoCastMember::loadVideo Failed to open %s", path.c_str());
+		return false;
+	}
+
+	uint32 magic1 = copiedStream->readUint32BE();
+	uint32 magic2 = copiedStream->readUint32BE();
+	uint32 magic3 = copiedStream->readUint32BE();
+	delete copiedStream;
+	bool result = false;
+	bool tryQuickTime = false;
+
 	debugC(2, kDebugLoading, "Loading video %s -> %s", path.c_str(), location.toString(Common::Path::kNativeSeparator).c_str());
-	bool result = _video->loadFile(location);
-	if (!result) {
-		delete _video;
-		_video = nullptr;
-
-		// Probe for empty file
-		Common::MacResManager mgr;
-		if (mgr.open(location)) {
-			if (!mgr.hasDataFork()) {
-				debugC(8, kDebugLevelGVideo, "DigitalVideoCastMember::loadVideo(): skipping empty stream");
-				_emptyFile = true;
-			}
-
+	if (magic1 == MKTAG('F', 'O', 'R', 'M') &&
+				(magic3 == MKTAG('A', 'I', 'F', 'F') || magic3 == MKTAG('A', 'I', 'F', 'C'))) {
+		_video = new NoVideoAIFFDecoder();
+		result = _video->loadFile(location);
+		if (!result) {
+			delete _video;
+			_video = nullptr;
 			return false;
+		} else {
+			// Pretend that this is our friend QuickTime
+			_videoType = kDVQuickTime;
 		}
 
+	} else if (magic2 == MKTAG('m', 'o', 'o', 'v') || magic2 == MKTAG('m', 'd', 'a', 't')) {
+		tryQuickTime = true;
+	} else if (magic1 == MKTAG('R', 'I', 'F', 'F') && (magic3 == MKTAG('A', 'V', 'I', ' '))) {
 		_video = new Video::AVIDecoder();
 		result = _video->loadFile(location);
 		if (!result) {
 		    warning("DigitalVideoCastMember::loadVideo(): format not supported, skipping video '%s'", path.c_str());
 		    delete _video;
 		    _video = nullptr;
+			return false;
 		} else {
 			_videoType = kDVVideoForWindows;
 		}
 	} else {
-		_videoType = kDVQuickTime;
+		// early QuickTime videos are a nightmare for magic ID detection,
+		// but let's be honest it's probably going to be QuickTime with Cinepak,
+		// the little postage-stamp-sized video format that could
+		debugC(8, kDebugLevelGVideo, "DigitalVideoCastMember::loadVideo(): couldn't find magic ID, trying QuickTime");
+		tryQuickTime = true;
+	}
+
+	if (tryQuickTime) {
+		_video = new Video::QuickTimeDecoder();
+		result = _video->loadFile(location);
+		if (!result) {
+			delete _video;
+			_video = nullptr;
+
+			// Probe for empty file
+			Common::MacResManager mgr;
+			if (mgr.open(location)) {
+				if (!mgr.hasDataFork()) {
+					debugC(8, kDebugLevelGVideo, "DigitalVideoCastMember::loadVideo(): skipping empty stream");
+					_emptyFile = true;
+				}
+
+				return false;
+			}
+		} else {
+			_videoType = kDVQuickTime;
+		}
+	}
+
+	if (!result) {
+		warning("DigitalVideoCastMember::loadVideo: Unknown file format for video '%s', skipping", path.c_str());
 	}
 
 	if (result && g_director->_pixelformat.bytesPerPixel == 1) {
 		// Director supports playing back RGB and paletted video in 256 colour mode.
 		// In both cases they are dithered to match the Director palette.
-		_video->setDitheringPalette(g_director->getPalette());
+		memcpy(_ditheringPalette, g_director->getPalette(), 256*3);
+		// In Windows, the first 8 and last 8 colors are reserved for the system palette.
+		// Generally you don't want these as part of the video, and Video for Windows
+		// seems to deliberately exclude them.
+		// Keep colour 0 and 255 as they are pure white and pure black, respectively.
+		if (g_director->_vfwPaletteHack && g_director->getPlatform() == Common::kPlatformWindows) {
+			for (int i = 1; i < 8; i++) {
+				_ditheringPalette[i*3+0] = _ditheringPalette[0];
+				_ditheringPalette[i*3+1] = _ditheringPalette[1];
+				_ditheringPalette[i*3+2] = _ditheringPalette[2];
+			}
+			for (int i = 248; i < 255; i++) {
+				_ditheringPalette[i*3+0] = _ditheringPalette[0];
+				_ditheringPalette[i*3+1] = _ditheringPalette[1];
+				_ditheringPalette[i*3+2] = _ditheringPalette[2];
+			}
+		}
+		_video->setDitheringPalette(_ditheringPalette);
 	}
 
 	_duration = getMovieTotalTime();
@@ -249,7 +392,7 @@ void DigitalVideoCastMember::startVideo() {
 	else
 		_video->start();
 
-	debugC(2, kDebugImages, "STARTING VIDEO %s", _filename.c_str());
+	debugC(2, kDebugImages, "STARTING VIDEO %s %d/%d", _filename.c_str(), getMovieCurrentTime(), getMovieTotalTime());
 
 	if (_channel && _channel->_stopTime == 0)
 		_channel->_stopTime = getMovieTotalTime();
@@ -283,21 +426,16 @@ Graphics::MacWidget *DigitalVideoCastMember::createWidget(Common::Rect &bbox, Ch
 	if (_emptyFile)
 		return nullptr;
 
-	Graphics::MacWidget *widget = new Graphics::MacWidget(g_director->getCurrentWindow(), bbox.left, bbox.top, bbox.width(), bbox.height(), g_director->_wm, false);
-
-	_channel = channel;
-
 	if (!_video || !_video->isVideoLoaded()) {
 		// try and load the video if not already
-		loadVideoFromCast();
+		if (!loadVideoFromCast()) {
+			return nullptr;
+		}
 	}
 
-	if (!_video || !_video->isVideoLoaded()) {
-		warning("DigitalVideoCastMember::createWidget: No video decoder");
-		delete widget;
+	Graphics::MacWidget *widget = new Graphics::MacWidget(g_director->getCurrentWindow()->getMacWindow(), bbox.left, bbox.top, bbox.width(), bbox.height(), g_director->_wm, false);
 
-		return nullptr;
-	}
+	_channel = channel;
 
 	// Do not render stopped videos
 	if (_channel->_movieRate == 0.0 && !_getFirstFrame && _lastFrame) {
@@ -307,6 +445,15 @@ Graphics::MacWidget *DigitalVideoCastMember::createWidget(Common::Rect &bbox, Ch
 	}
 
 	const Graphics::Surface *frame = _video->decodeNextFrame();
+
+	// If the video gets stopped, for whatever reason, _video->getPalette() will not work.
+	// Cache it when possible.
+	if (g_director->_pixelformat.bytesPerPixel == 4) {
+		const byte *videoPalette = _video->getPalette();
+		if (videoPalette) {
+			memcpy(_ditheringPalette, videoPalette, 256*3);
+		}
+	}
 
 	debugC(1, kDebugImages, "Video time: %d  rate: %f frame: %p dims: %d x %d", _channel->_movieTime, _channel->_movieRate, (const void *)frame, bbox.width(), bbox.height());
 
@@ -318,13 +465,8 @@ Graphics::MacWidget *DigitalVideoCastMember::createWidget(Common::Rect &bbox, Ch
 		}
 
 		if (frame->getPixels()) {
-			if (g_director->_pixelformat.bytesPerPixel == 1) {
-				// Video should have the dithering palette set, decode using whatever palette we have now
-				_lastFrame = frame->convertTo(g_director->_pixelformat, g_director->getPalette());
-			} else {
-				// 32-bit mode, use the palette bundled with the movie
-				_lastFrame = frame->convertTo(g_director->_pixelformat, _video->getPalette());
-			}
+			// Video should have the dithering palette set, decode using whatever palette we have now
+			_lastFrame = frame->convertTo(g_director->_pixelformat, _ditheringPalette);
 		} else {
 			warning("DigitalVideoCastMember::createWidget(): frame has no pixel data");
 		}
@@ -451,6 +593,9 @@ bool DigitalVideoCastMember::hasField(int field) {
 	case kTheCenter:
 	case kTheController:
 	case kTheCrop:
+	case kTheCuePointNames:		// D6
+	case kTheCuePointTimes:		// D6
+	case kTheCurrentTime:		// D6
 	case kTheDigitalVideoType:
 	case kTheDirectToStage:
 	case kTheDuration:
@@ -527,56 +672,85 @@ Datum DigitalVideoCastMember::getField(int field) {
 	return d;
 }
 
-bool DigitalVideoCastMember::setField(int field, const Datum &d) {
+void DigitalVideoCastMember::setField(int field, const Datum &d) {
 	switch (field) {
 	case kTheCenter:
 		_center = (bool)d.asInt();
-		return true;
+		return;
 	case kTheController:
 		_showControls = (bool)d.asInt();
-		return true;
+		return;
 	case kTheCrop:
 		_crop = (bool)d.asInt();
-		return true;
+		return;
 	case kTheDigitalVideoType:
 		warning("DigitalVideoCastMember::setField(): Attempt to set read-only field %s of cast %d", g_lingo->entity2str(field), _castId);
-		return false;
+		return;
 	case kTheDirectToStage:
 		_directToStage = (bool)d.asInt();
-		return true;
+		return;
 	case kTheDuration:
 		warning("DigitalVideoCastMember::setField(): Attempt to set read-only field %s of cast %d", g_lingo->entity2str(field), _castId);
-		return false;
+		return;
+	case kTheFileName:
+		// Update the filename, then force the video to be replaced.
+		// Channel dimensions are replaced by the video.
+		CastMember::setField(field, d);
+		loadVideoFromCast();
+		if (_channel) {
+			_channel->setWidth(_initialRect.width());
+			_channel->setHeight(_initialRect.height());
+		}
+		return;
 	case kTheFrameRate:
 		_frameRate = d.asInt();
 		setFrameRate(d.asInt());
-		return true;
+		return;
 	case kTheLoop:
 		_looping = (bool)d.asInt();
 		if (_looping && _channel && _channel->_movieRate == 0.0) {
 			setMovieRate(1.0);
 		}
-		return true;
+		return;
 	case kThePausedAtStart:
 		_pausedAtStart = (bool)d.asInt();
-		return true;
+		return;
 	case kThePreLoad:
 		_preload = (bool)d.asInt();
-		return true;
+		return;
 	case kTheSound:
 		_enableSound = (bool)d.asInt();
-		return true;
+		return;
 	case kTheTimeScale:
 		warning("DigitalVideoCastMember::setField(): Attempt to set read-only field %s of cast %d", g_lingo->entity2str(field), _castId);
-		return false;
+		return;
 	case kTheVideo:
 		_enableVideo = (bool)d.asInt();
-		return true;
+		return;
 	default:
 		break;
 	}
 
-	return CastMember::setField(field, d);
+	CastMember::setField(field, d);
+}
+
+uint32 DigitalVideoCastMember::getCastDataSize() {
+	// We're only reading the _initialRect and _vflags from the Cast Data
+	// _initialRect : 8 bytes + _vflags : 4 bytes + castType and flags1 (see Cast::loadCastData() for Director 4 only) 2 byte
+	if (_cast->_version >= kFileVer400 && _cast->_version < kFileVer500) {
+		// It has been observed that the DigitalVideoCastMember has _flags set to 0x00
+		return (_flags1 == 0xFF) ? 13 : 14;
+	} else if (_cast->_version >= kFileVer500 && _cast->_version < kFileVer600) {
+		return 8 + 4;
+	}
+
+	warning("DigitalVideoCastMember::getCastDataSize(): unhandled or invalid cast version: %d", _cast->_version);
+	return 0;
+}
+
+void DigitalVideoCastMember::writeCastData(Common::SeekableWriteStream *writeStream) {
+	Movie::writeRect(writeStream, _initialRect);
+	writeStream->writeUint32BE(_vflags);
 }
 
 } // End of namespace Director

@@ -20,10 +20,11 @@
  */
 
 #include "m4/riddle/rooms/section6/room604.h"
-#include "m4/graphics/gr_series.h"
 #include "m4/riddle/vars.h"
+#include "m4/adv_r/adv_control.h"
 #include "m4/adv_r/adv_file.h"
 #include "m4/adv_r/other.h"
+#include "m4/graphics/gr_series.h"
 
 namespace M4 {
 namespace Riddle {
@@ -133,7 +134,7 @@ void Room604::init() {
 	switch (_G(game).previous_room) {
 	case KERNEL_RESTORING_GAME:
 		if (_G(flags)[V203] == 8)
-			midi_play("tensions", 255, 1, -1, 949);
+			midi_play("tensions", 255, true, -1, 949);
 
 		_shedDoor = series_show("SHED DOOR OPENS", 0xf00, 16);
 
@@ -954,9 +955,6 @@ void Room604::killRipley() {
 		digi_play("dooropn2", 3);
 
 		switch (_G(flags)[V189]) {
-		case 1:
-			_shedDoor = series_play("SHED DOOR OPENS", 0x300, 16, 1, 11);
-			break;
 		case 2:
 			terminateMachineAndNull(_doorWireGone);
 			terminateMachineAndNull(_cord);
@@ -968,6 +966,7 @@ void Room604::killRipley() {
 			_shedDoor = series_play("604 DOOR OPEN PLUG IN", 0x300, 0, 556, 5, 0, 100, 0, 0, 0, 1);
 			break;
 		default:
+			_shedDoor = series_play("SHED DOOR OPENS", 0x300, 16, 1, 11);
 			break;
 		}
 		break;
@@ -996,7 +995,7 @@ void Room604::takePullCord() {
 		terminateMachineAndNull(_pullCord1);
 		hotspot_set_active("PULL CORD", false);
 		inv_give_to_player("PULL CORD");
-		kernel_examine_inventory_object("ping pull cord", 5, 1, 312, 250, 3);
+		kernel_examine_inventory_object("ping pull cord", _G(master_palette), 5, 1, 312, 250, 3, nullptr, -1);
 		break;
 
 	case 3:
@@ -1026,8 +1025,8 @@ void Room604::takeSparkPlugTool() {
 	case 2:
 		hotspot_set_active("SPARK PLUG TOOL", false);
 		inv_give_to_player("SPARK PLUG TOOL");
-		kernel_examine_inventory_object("ping spark plug tool",
-			5, 1, 282, 247, 3);
+		kernel_examine_inventory_object("ping spark plug tool", _G(master_palette),
+			5, 1, 282, 247, 3, nullptr, -1);
 		terminateMachineAndNull(_sparkPlugTool);
 		break;
 
@@ -1148,7 +1147,7 @@ void Room604::daemon1() {
 	if (_suppressChatter)
 		return;
 
-	static const char *DIGI[3] = { "610_s03a", "610_s03b", "610_s03" };
+	static const char *DIGI[3] = { "610_s03", "610_s03a", "610_s03b" };
 
 	switch (_G(kernel).trigger) {
 	case 126:
@@ -1160,7 +1159,7 @@ void Room604::daemon1() {
 		if (++_val1 >= 8)
 			_val1 = 1;
 
-		digi_play(Common::String::format("610k%.2d", _val1 + 6).c_str(), 3, 130, 136);
+		digi_play(Common::String::format("610k%.2d", _val1 + 6).c_str(), 3, 130, (_val1 == 6) ? 137 : 136);
 		break;
 
 	case 136:

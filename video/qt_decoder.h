@@ -237,7 +237,6 @@ private:
 	float _fov = 56.0f;
 	float _hfov = 56.0f;
 	int _zoomState = kZoomNone;
-	bool _repeatTimerActive = false;
 
 	const PanoHotSpot *_rolloverHotspot = nullptr;
 	int _rolloverHotspotID = 0;
@@ -250,6 +249,9 @@ private:
 			const Common::Rational &scaleFactorX, const Common::Rational &scaleFactorY);
 
 	bool _enableEditListBoundsCheckQuirk;
+
+	bool _cursorDirty;
+	Common::Point _cursorPos;
 
 	class VideoSampleDesc : public Common::QuickTimeParser::SampleDesc {
 	public:
@@ -345,7 +347,7 @@ private:
 		const Graphics::Surface *decodeNextFrame();
 		Audio::Timestamp getFrameTime(uint frame) const;
 		const byte *getPalette() const;
-		bool hasDirtyPalette() const { return _curPalette; }
+		bool hasDirtyPalette() const { return _dirtyPalette; }
 		bool setReverse(bool reverse);
 		bool isReversed() const { return _reversed; }
 		bool canDither() const;
@@ -368,12 +370,6 @@ private:
 		const byte *_curPalette;
 		mutable bool _dirtyPalette;
 		bool _reversed;
-
-		// Forced dithering of frames
-		Graphics::Palette _forcedDitherPalette;
-		byte *_ditherTable;
-		Graphics::Surface *_ditherFrame;
-		const Graphics::Surface *forceDither(const Graphics::Surface &frame);
 
 		Common::SeekableReadStream *getNextFramePacket(uint32 &descId);
 		uint32 getCurFrameDuration();            // media time
@@ -430,8 +426,10 @@ private:
 		Graphics::Surface *_projectedPano;
 		Graphics::Surface *_planarProjection;
 
-		// Current upscale level (1 or 2) of _upscaledConstructedPanorama compared to _constructedPano
-		// Level 1 means only upscaled height (2x pixels), level 2 means upscaled height and width (4x pixels)
+		// Current upscale level (0 or 1 or 2) of _upscaledConstructedPanorama compared to _constructedPano
+		// level 0 means that constructedPano was just contructed and hasn't been upscaled yet
+		// level 1 means only upscaled height (2x pixels)
+		// level 2 means upscaled height and width (4x pixels)
 		uint8 _upscaleLevel = 0;
 
 		// Defining these to make the swing transition happen

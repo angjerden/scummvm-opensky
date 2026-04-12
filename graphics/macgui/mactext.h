@@ -64,6 +64,8 @@ public:
 	void setScrollBar(bool enable);
 	void resizeScrollBar(int w, int h);
 
+	void setAutoSelect(bool enable) { _autoSelect = enable; }
+
 	void render();
 	void undrawCursor();
 	void draw(ManagedSurface *g, int x, int y, int w, int h, int xoff, int yoff);
@@ -73,6 +75,9 @@ public:
 	void drawToPoint(ManagedSurface *g, Common::Point dstPoint);
 
 	ManagedSurface *getSurface() { return _canvas._surface; }
+	ManagedSurface *getGlyphMask() { return _canvas._glyphMask; }
+	ManagedSurface *getCharBoxMask() { return _canvas._charBoxMask; }
+
 	int getInterLinear() { return _canvas._interLinear; }
 	void setInterLinear(int interLinear);
 	void setMaxWidth(int maxWidth);
@@ -85,6 +90,7 @@ public:
 	virtual Common::Point calculateOffset();
 	void setActive(bool active) override;
 	void setEditable(bool editable);
+	void setInputPadding(bool enable){ _addInputPadding = enable; }
 
 	void setColors(uint32 fg, uint32 bg) override;
 	// set fgcolor for line x
@@ -159,6 +165,7 @@ public:
 
 	void getChunkPosFromIndex(int index, uint &lineNum, uint &chunkNum, uint &offset);
 	void getRowCol(int x, int y, int *sx, int *sy, int *row, int *col, int *chunk_ = nullptr);
+	void getLineCharacter(int x, int y, int *sx, int *sy, int *line, int *character, int *chunk_ = nullptr);
 	Common::U32String getTextChunk(int startRow, int startCol, int endRow, int endCol, bool formatted = false, bool newlines = true);
 
 	Common::U32String getSelection(bool formatted = false, bool newlines = true);
@@ -166,6 +173,7 @@ public:
 	void clearSelection();
 	Common::U32String cutSelection();
 	const SelectedText *getSelectedText() { return &_selectedText; }
+	bool hasSelection() { return _selectedText.endY != -1; }
 
 	int getLineSpacing() { return _canvas._interLinear; }
 
@@ -227,6 +235,7 @@ protected:
 	bool _scrollBar;
 	MacWindowBorder _scrollBorder;
 	ManagedSurface _borderSurface;
+	ManagedSurface _borderMaskSurface;
 
 	int _selEnd;
 	int _selStart;
@@ -242,10 +251,15 @@ private:
 
 	int _editableRow;
 
+	bool _addInputPadding;
+
 	bool _inTextSelection;
 	SelectedText _selectedText;
+	bool _selectionIsDirty;
 
 	MacMenu *_menu;
+
+	bool _autoSelect;
 };
 
 int getStringWidth(MacFontRun &format, const Common::U32String &str);

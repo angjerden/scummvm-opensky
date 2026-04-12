@@ -30,6 +30,9 @@ class ShapeCastMember : public CastMember {
 public:
 	ShapeCastMember(Cast *cast, uint16 castId, Common::SeekableReadStreamEndian &stream, uint16 version);
 	ShapeCastMember(Cast *cast, uint16 castId, ShapeCastMember &source);
+
+	CastMember *duplicate(Cast *cast, uint16 castId) override { return (CastMember *)(new ShapeCastMember(cast, castId, *this)); }
+
 	uint32 getForeColor() override { return _fgCol; }
 	uint32 getBackColor() override { return _bgCol; }
 	void setBackColor(uint32 bgCol) override;
@@ -37,9 +40,12 @@ public:
 
 	bool hasField(int field) override;
 	Datum getField(int field) override;
-	bool setField(int field, const Datum &value) override;
+	void setField(int field, const Datum &value) override;
 
 	Common::String formatInfo() override;
+
+	uint32 getCastDataSize() override;
+	void writeCastData(Common::SeekableWriteStream *writeStream) override;
 
 	ShapeType _shapeType;
 	uint16 _pattern;

@@ -49,15 +49,13 @@ static const GfxMode3DS _modeRGBX8 = { Graphics::PixelFormat(4, 8, 8, 8, 8, 24, 
 									   GPU_RGB8, TEXTURE_TRANSFER_FLAGS(GX_TRANSFER_FMT_RGBA8, GX_TRANSFER_FMT_RGB8) };
 static const GfxMode3DS _modeRGB565 = { Graphics::PixelFormat(2, 5, 6, 5, 0, 11, 5, 0, 0),
 										GPU_RGB565, TEXTURE_TRANSFER_FLAGS(GX_TRANSFER_FMT_RGB565, GX_TRANSFER_FMT_RGB565) };
-static const GfxMode3DS _modeRGB555 = { Graphics::PixelFormat(2, 5, 5, 5, 1, 11, 6, 1, 0),
-										GPU_RGBA5551, TEXTURE_TRANSFER_FLAGS(GX_TRANSFER_FMT_RGB5A1, GX_TRANSFER_FMT_RGB5A1) };
 static const GfxMode3DS _modeRGB5A1 = { Graphics::PixelFormat(2, 5, 5, 5, 1, 11, 6, 1, 0),
 										GPU_RGBA5551, TEXTURE_TRANSFER_FLAGS(GX_TRANSFER_FMT_RGB5A1, GX_TRANSFER_FMT_RGB5A1) };
 static const GfxMode3DS _modeRGBA4 = { Graphics::PixelFormat(2, 4, 4, 4, 4, 12, 8, 4, 0),
 										GPU_RGBA4, TEXTURE_TRANSFER_FLAGS(GX_TRANSFER_FMT_RGBA4, GX_TRANSFER_FMT_RGBA4) };
 static const GfxMode3DS _modeCLUT8 = _modeRGBX8;
 
-static const GfxMode3DS *gfxModes[] = { &_modeRGBX8, &_modeRGB565, &_modeRGB555, &_modeRGB5A1, &_modeRGBA4, &_modeCLUT8 };
+static const GfxMode3DS *gfxModes[] = { &_modeRGBX8, &_modeRGB565, &_modeRGB5A1, &_modeRGBA4, &_modeCLUT8 };
 
 
 void OSystem_3DS::init3DSGraphics() {
@@ -166,8 +164,6 @@ GraphicsModeID OSystem_3DS::chooseMode(Graphics::PixelFormat *format) {
 			return RGBA4;
 		} else if (format->gBits() > 5) {
 			return RGB565;
-		} else if (format->aBits() == 0) {
-			return RGB555;
 		} else {
 			return RGB5A1;
 		}
@@ -179,7 +175,6 @@ bool OSystem_3DS::setGraphicsMode(GraphicsModeID modeID) {
 	switch (modeID) {
 	case RGBA8:
 	case RGB565:
-	case RGB555:
 	case RGB5A1:
 	case RGBA4:
 	case CLUT8:
@@ -219,7 +214,13 @@ void OSystem_3DS::initSize(uint width, uint height,
 	}
 
 	_gameTopTexture.create(width, height, _gfxState.gfxMode, true);
-	_gameScreen.create(width, height, _pfGame);
+
+	if (_pfGame == _gameTopTexture.format)
+		_gameScreen.free();
+	else
+		_gameScreen.create(width, height, _pfGame);
+
+	_blitFunc = Graphics::getFastBlitFunc(_gameTopTexture.format, _pfGame);
 
 	_focusDirty = true;
 	_focusRect = Common::Rect(_gameWidth, _gameHeight);
@@ -291,8 +292,7 @@ Common::List<Graphics::PixelFormat> OSystem_3DS::getSupportedFormats() const {
 	list.push_back(Graphics::PixelFormat(2, 5, 5, 5, 1, 11, 6, 1, 0)); // GPU_RGBA5551
 	list.push_back(Graphics::PixelFormat(2, 4, 4, 4, 4, 12, 8, 4, 0)); // GPU_RGBA4
 
-	// The following formats require software conversion
-	list.push_back(Graphics::PixelFormat(2, 5, 5, 5, 0, 10, 5, 0, 0)); // RGB555 (needed for FMTOWNS?)
+	// The following format requires software conversion
 	list.push_back(Graphics::PixelFormat::createFormatCLUT8());
 	return list;
 }
@@ -357,7 +357,9 @@ void OSystem_3DS::setPalette(const byte *colors, uint start, uint num) {
 	assert(start + num <= 256);
 	memcpy(_palette + 3 * start, colors, 3 * num);
 	Graphics::convertPaletteToMap(_paletteMap + start, colors, num, _modeCLUT8.surfaceFormat);
-	_gameTextureDirty = true;
+
+	// Palette changes invalidate the entire surface
+	_dirtyRects.emplace_back(getWidth(), getHeight());
 }
 
 void OSystem_3DS::grabPalette(byte *colors, uint start, uint num) const {
@@ -365,66 +367,70 @@ void OSystem_3DS::grabPalette(byte *colors, uint start, uint num) const {
 	memcpy(colors, _palette + 3 * start, 3 * num);
 }
 
-static void copyRect555To5551(const Graphics::Surface &srcSurface, Graphics::Surface &destSurface, uint16 destX, uint16 destY, const Common::Rect &srcRect) {
-	const uint16 *src = (const uint16 *)srcSurface.getBasePtr(srcRect.left, srcRect.top);
-	uint16 *dst = (uint16 *)destSurface.getBasePtr(destX, destY);
-	for (int i = 0; i < srcRect.height(); i++) {
-		for (int j = 0; j < srcRect.width(); j++) {
-			*dst++ = (*src++ << 1) | 1;
-		}
-		src += srcSurface.pitch / 2 - srcRect.width();
-		dst += destSurface.pitch / 2 - srcRect.width();
+void OSystem_3DS::fillScreen(uint32 col) {
+	fillScreen(Common::Rect(getWidth(), getHeight()), col);
+}
+
+void OSystem_3DS::fillScreen(const Common::Rect &r, uint32 col) {
+	if (_pfGame == _gameTopTexture.format) {
+		_gameTopTexture.fillRect(r, col);
+		_gameTopTexture.markDirty();
+		return;
 	}
+
+	_gameScreen.fillRect(r, col);
+	_dirtyRects.push_back(r);
 }
 
 void OSystem_3DS::copyRectToScreen(const void *buf, int pitch, int x,
 								   int y, int w, int h) {
-	Common::Rect rect(x, y, x+w, y+h);
-	_gameScreen.copyRectToSurface(buf, pitch, x, y, w, h);
-	Graphics::Surface subSurface = _gameScreen.getSubArea(rect);
-
 	if (_pfGame == _gameTopTexture.format) {
-		_gameTopTexture.copyRectToSurface(subSurface, x, y, Common::Rect(w, h));
-	} else if (_gfxState.gfxMode == &_modeRGB555) {
-		copyRect555To5551(subSurface, _gameTopTexture, x, y, Common::Rect(w, h));
-	} else if (_gfxState.gfxMode == &_modeCLUT8) {
-		byte *dst = (byte *)_gameTopTexture.getBasePtr(x, y);
-		Graphics::crossBlitMap(dst, (const byte *)buf, _gameTopTexture.pitch, pitch,
-			w, h, _gameTopTexture.format.bytesPerPixel, _paletteMap);
-	} else {
-		byte *dst = (byte *)_gameTopTexture.getBasePtr(x, y);
-		Graphics::crossBlit(dst, (const byte *)buf, _gameTopTexture.pitch, pitch,
-			w, h, _gameTopTexture.format, _pfGame);
+		_gameTopTexture.copyRectToSurface(buf, pitch, x, y, w, h);
+		_gameTopTexture.markDirty();
+		return;
 	}
 
-	_gameTopTexture.markDirty();
+	_gameScreen.copyRectToSurface(buf, pitch, x, y, w, h);
+	_dirtyRects.emplace_back(x, y, x + w, y + h);
 }
 
 void OSystem_3DS::flushGameScreen() {
-	if (_pfGame == _gameTopTexture.format) {
-		_gameTopTexture.copyRectToSurface(_gameScreen, 0, 0, Common::Rect(_gameScreen.w, _gameScreen.h));
-	} else if (_gfxState.gfxMode == &_modeRGB555) {
-		copyRect555To5551(_gameScreen, _gameTopTexture, 0, 0, Common::Rect(_gameScreen.w, _gameScreen.h));
-	} else if (_gfxState.gfxMode == &_modeCLUT8) {
-		const byte *src = (const byte *)_gameScreen.getPixels();
-		byte *dst = (byte *)_gameTopTexture.getPixels();
-		Graphics::crossBlitMap(dst, src, _gameTopTexture.pitch, _gameScreen.pitch,
-			_gameScreen.w, _gameScreen.h, _gameTopTexture.format.bytesPerPixel, _paletteMap);
-	} else {
-		const byte *src = (const byte *)_gameScreen.getPixels();
-		byte *dst = (byte *)_gameTopTexture.getPixels();
-		Graphics::crossBlit(dst, src, _gameTopTexture.pitch, _gameScreen.pitch,
-			_gameScreen.w, _gameScreen.h, _gameTopTexture.format, _pfGame);
+	if (_pfGame == _gameTopTexture.format)
+		return;
+
+	_dirtyRects.merge();
+
+	for (const Common::Rect &r : _dirtyRects) {
+		const byte *src = (const byte *)_gameScreen.getBasePtr(r.left, r.top);
+		byte *dst = (byte *)_gameTopTexture.getBasePtr(r.left, r.top);
+
+		if (_blitFunc) {
+			_blitFunc(dst, src, _gameTopTexture.pitch, _gameScreen.pitch,
+				r.width(), r.height());
+		} else if (_gfxState.gfxMode == &_modeCLUT8) {
+			Graphics::crossBlitMap(dst, src, _gameTopTexture.pitch, _gameScreen.pitch,
+				r.width(), r.height(), _gameTopTexture.format.bytesPerPixel, _paletteMap);
+		} else {
+			Graphics::crossBlit(dst, src, _gameTopTexture.pitch, _gameScreen.pitch,
+				r.width(), r.height(), _gameTopTexture.format, _pfGame);
+		}
 	}
 
 	_gameTopTexture.markDirty();
 }
 
 Graphics::Surface *OSystem_3DS::lockScreen() {
-	return &_gameScreen;
+	if (_pfGame == _gameTopTexture.format)
+		return &_gameTopTexture;
+	else
+		return &_gameScreen;
 }
+
 void OSystem_3DS::unlockScreen() {
-	_gameTextureDirty = true;
+	if (_pfGame == _gameTopTexture.format)
+		_gameTopTexture.markDirty();
+	else
+		_dirtyRects.emplace_back(getWidth(), getHeight());
 }
 
 void OSystem_3DS::updateScreen() {
@@ -432,9 +438,9 @@ void OSystem_3DS::updateScreen() {
 		return;
 	}
 
-	if (_gameTextureDirty) {
+	if (!_dirtyRects.empty()) {
 		flushGameScreen();
-		_gameTextureDirty = false;
+		_dirtyRects.clear();
 	}
 
 // 	updateFocus();
@@ -746,11 +752,11 @@ void OSystem_3DS::displayActivityIconOnOSD(const Graphics::Surface *icon) {
 	}
 }
 
-int16 OSystem_3DS::getOverlayHeight() {
+int16 OSystem_3DS::getOverlayHeight() const {
 	return 240;
 }
 
-int16 OSystem_3DS::getOverlayWidth() {
+int16 OSystem_3DS::getOverlayWidth() const {
 	return _screen == kScreenTop ? 400 : 320;
 }
 

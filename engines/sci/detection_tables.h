@@ -19,6 +19,7 @@
  *
  */
 
+#include "common/gui_options.h"
 #include "common/translation.h"
 
 namespace Sci {
@@ -225,6 +226,12 @@ static const struct ADGameDescription SciGameDescriptions[] = {
 	// file was run: CHEST.BAT or SHIELD.BAT. The second would use SHIELD.CFG
 	// and include the SHIELD patch directory and change the title.
 	{"chest", "", {
+		{"resource.map", 0, "9dd015e79cac4f91e7de805448f39775", 1912},
+		{"resource.000", 0, "e4efcd042f86679dd4e1834bb3a38edb", 3770943},
+		AD_LISTEND},
+		Common::EN_ANY, Common::kPlatformDOS, ADGF_NO_FLAGS, GUIO7(GUIO_NOSUBTITLES, GUIO_NOMUSIC, GUIO_NOSPEECH, GUIO_NOSFX, GUIO_NOMIDI, GUIO_NOLAUNCHLOAD, GUIO_NOASPECT)	},
+
+	{"shield", "", {
 		{"resource.map", 0, "9dd015e79cac4f91e7de805448f39775", 1912},
 		{"resource.000", 0, "e4efcd042f86679dd4e1834bb3a38edb", 3770943},
 		AD_LISTEND},
@@ -786,13 +793,13 @@ static const struct ADGameDescription SciGameDescriptions[] = {
 		Common::RU_RUS, Common::kPlatformDOS, ADGF_NO_FLAGS, GUIO_STD16	},
 
 	// Eco Quest 2 - Korean DOS Floppy (from swkim01)
-    // using swkim01's SCI Message Editor: http://github.com/swkim01/scime/
-    {"ecoquest2", "Floppy", {
-        {"resource.map", 0, "28fb7b6abb9fc1cb8882d7c2e701b63f", 5658},
-        {"resource.000", 0, "cc1d17e5637528dbe4a812699e1cbfc6", 4208192},
-        {"resource.msg", 0, "a0fbf7c183ea64f4bc224f71f2862aa0", 219798},
-        AD_LISTEND},
-        Common::KO_KOR, Common::kPlatformDOS, ADGF_NO_FLAGS, GUIO_STD16 },
+	// using swkim01's SCI Message Editor: https://github.com/swkim01/scime/
+	{"ecoquest2", "Floppy", {
+		{"resource.map", 0, "28fb7b6abb9fc1cb8882d7c2e701b63f", 5658},
+		{"resource.000", 0, "cc1d17e5637528dbe4a812699e1cbfc6", 4208192},
+		{"resource.msg", 0, "a0fbf7c183ea64f4bc224f71f2862aa0", 219798},
+		AD_LISTEND},
+		Common::KO_KOR, Common::kPlatformDOS, ADGF_NO_FLAGS, GUIO_STD16 },
 
 #undef GUIO_ECO2_WINDOWS
 
@@ -907,17 +914,19 @@ static const struct ADGameDescription SciGameDescriptions[] = {
 							  GAMEOPTION_ORIGINAL_SAVELOAD, \
 							  GAMEOPTION_TTS, \
 							  GAMEOPTION_ENABLE_GMM_SAVE)
-#define GUIO_GK1_CD_DOS GUIO6(GUIO_LINKSPEECHTOSFX, \
+#define GUIO_GK1_CD_DOS GUIO7(GUIO_LINKSPEECHTOSFX, \
 							  GAMEOPTION_ORIGINAL_SAVELOAD, \
 							  GAMEOPTION_HIGH_RESOLUTION_GRAPHICS, \
 							  GAMEOPTION_HQ_VIDEO, \
 							  GAMEOPTION_ENABLE_GMM_SAVE, \
-							  GAMEOPTION_GK1_ENABLE_AUDIO_POPFIX)
-#define GUIO_GK1_CD_WIN GUIO5(GUIO_LINKSPEECHTOSFX, \
+							  GAMEOPTION_GK1_ENABLE_AUDIO_POPFIX, \
+							  GUIO_PLATFORM(kPlatformWindows))
+#define GUIO_GK1_CD_WIN GUIO6(GUIO_LINKSPEECHTOSFX, \
 							  GAMEOPTION_ORIGINAL_SAVELOAD, \
 							  GAMEOPTION_HQ_VIDEO, \
 							  GAMEOPTION_ENABLE_GMM_SAVE, \
-							  GAMEOPTION_GK1_ENABLE_AUDIO_POPFIX)
+							  GAMEOPTION_GK1_ENABLE_AUDIO_POPFIX, \
+							  GUIO_PLATFORM(kPlatformDOS))
 #define GUIO_GK1_MAC    GUIO3(GUIO_NOSPEECH, \
 							  GAMEOPTION_TTS, \
 							  GAMEOPTION_ENABLE_GMM_SAVE)
@@ -1079,7 +1088,7 @@ static const struct ADGameDescription SciGameDescriptions[] = {
 		Common::EN_ANY, Common::kPlatformDOS, ADGF_NO_FLAGS, GUIO_GK2 },
 
 	// Gabriel Knight 2 - Korean DOS (GOG version) (from swkim01)
-	// using swkim01's SCI Message Editor: http://github.com/swkim01/scime/
+	// using swkim01's SCI Message Editor: https://github.com/swkim01/scime/
 	{"gk2", "", {
 		{"resmap.000", 0, "b996fa1e57389a1e179a00a0049de1f4", 8110},
 		{"ressci.000", 0, "a19fc3604c6e5407abcf03d59ee87217", 168522221},
@@ -1875,6 +1884,19 @@ static const struct ADGameDescription SciGameDescriptions[] = {
 		AD_LISTEND},
 		Common::RU_RUS, Common::kPlatformDOS, ADGF_NO_FLAGS, GUIO_STD16_UNDITHER	},
 
+	// King's Quest 4 - Fanmade Hebrew translation, based on the series GOG version
+	// Game version 1.006.004
+	// SCI interpreter version 0.000.502
+	// Released: August 7, 1989 (Information from About screen in scripts)
+	{"kq4sci", "SCI", {
+		{"resource.map", 0, "3164a39790b599c954ecf716d0b32be8", 7476},
+		{"resource.001", 0, "77615c595388acf3d1df8e107bfb6b52", 452523},
+		{"resource.002", 0, "77615c595388acf3d1df8e107bfb6b52", 536573},
+		{"resource.003", 0, "77615c595388acf3d1df8e107bfb6b52", 707591},
+		{"font.000", 0, "5053e202adbd7a4fdebb30b2ea76ce27", 2835},
+		AD_LISTEND},
+		Common::HE_ISR, Common::kPlatformDOS, ADGF_NO_FLAGS, GUIO_STD16_UNDITHER},
+
 #define GUIO_KQ5_CD_WINDOWS GUIO7(GUIO_MIDIGM,                         \
 								  GAMEOPTION_PREFER_DIGITAL_SFX,       \
 								  GAMEOPTION_ORIGINAL_SAVELOAD,        \
@@ -1957,6 +1979,16 @@ static const struct ADGameDescription SciGameDescriptions[] = {
 		{"resource.001", 0, "b45a581ff8751e052c7e364f58d3617f", 16800210},
 		AD_LISTEND},
 		Common::EN_ANY, Common::kPlatformWindows, ADGF_CD, GUIO_KQ5_CD_WINDOWS },
+
+	// King's Quest 5 - Fanmade Hebrew translation Windows CD (based on the series GOG version)
+	// Executable scanning reports "x.yyy.zzz", VERSION file reports "1.000.052"
+	{"kq5", "CD", {
+		{"resource.map", 0, "f68ba690e5920725dcf9328001b90e33", 13122},
+		{"resource.000", 0, "449471bfd77be52f18a3773c7f7d843d", 571368},
+		{"resource.001", 0, "b45a581ff8751e052c7e364f58d3617f", 16800210},
+		{"0.fon", 0, "a2fc0fd2c4ddcf1f1dc5207126cd998b", 3419},
+		AD_LISTEND},
+		Common::HE_ISR, Common::kPlatformWindows, ADGF_CD, GUIO_KQ5_CD_WINDOWS},
 
 	// King's Quest 5 - English DOS Floppy
 	// SCI interpreter version 1.000.060
@@ -4672,8 +4704,7 @@ static const struct ADGameDescription SciGameDescriptions[] = {
 		AD_LISTEND},
 		Common::ES_ESP, Common::kPlatformDOS, ADGF_ADDENGLISH, GUIO_STD16	},
 
-	// Police Quest 3 EGA
-	// Reported by musiclyinspired in bug report #5251
+	// Police Quest 3 EGA - (720k disks)
 	{"pq3", "EGA", {
 		{"resource.map", 0, "1341f7c9643947414a8e238b88f68d82", 5901},
 		{"resource.000", 0, "7659713720d61d9465a59091b7ee63ea", 402208},
@@ -4682,6 +4713,16 @@ static const struct ADGameDescription SciGameDescriptions[] = {
 		{"resource.003", 0, "31c226bf01b69c8182b8ca0e8760b0a7", 527848},
 		{"resource.004", 0, "b96a86ab681769e4cbb439670d967ca6", 449682},
 		{"resource.005", 0, "9e6c53a0e7eef53694d260fade8b1fc7", 724000},
+		AD_LISTEND},
+		Common::EN_ANY, Common::kPlatformDOS, ADGF_NO_FLAGS, GUIO_STD16	},
+
+	// Police Quest 3 EGA - (1.2M disks)
+	{"pq3", "EGA", {
+		{"resource.map", 0, "aa938c5c3ffd4927bba4edfb9db640df", 5535},
+		{"resource.000", 0, "7659713720d61d9465a59091b7ee63ea", 504069},
+		{"resource.001", 0, "0284ca44341fbc3cb7a047e49d230234", 869158},
+		{"resource.002", 0, "31c226bf01b69c8182b8ca0e8760b0a7", 983665},
+		{"resource.003", 0, "9e6c53a0e7eef53694d260fade8b1fc7", 930048},
 		AD_LISTEND},
 		Common::EN_ANY, Common::kPlatformDOS, ADGF_NO_FLAGS, GUIO_STD16	},
 
@@ -5309,19 +5350,19 @@ static const struct ADGameDescription SciGameDescriptions[] = {
 							   GAMEOPTION_HQ_VIDEO, \
 							   GAMEOPTION_ENABLE_GMM_SAVE)
 
+	// Quest for Glory 4 1.0 Floppy - English DOS
+	// SCI interpreter version 2.000.000
+	{"qfg4", "", {
+		{"resource.map", 0, "d10a4cc177d2091d744e2ad8c049b0ae", 9295},
+		{"resource.000", 0, "f64fd6aa3977939a86ff30783dd677e1", 11003589},
+		AD_LISTEND},
+		Common::EN_ANY, Common::kPlatformDOS, ADGF_NO_FLAGS, GUIO_QFG4_FLOPPY },			   
+
 	// Quest for Glory 4 1.1 Floppy - English DOS (supplied by markcool in bug report #4280)
 	// SCI interpreter version 2.000.000
 	{"qfg4", "", {
 		{"resource.map", 0, "685bdb1ed47bbbb0e5e25db392da83ce", 9301},
 		{"resource.000", 0, "f64fd6aa3977939a86ff30783dd677e1", 11004993},
-		AD_LISTEND},
-		Common::EN_ANY, Common::kPlatformDOS, ADGF_NO_FLAGS, GUIO_QFG4_FLOPPY },
-
-	// Quest for Glory 4 1.1 Floppy - English DOS (supplied by abevi in bug report #4176)
-	// SCI interpreter version 2.000.000
-	{"qfg4", "", {
-		{"resource.map", 0, "d10a4cc177d2091d744e2ad8c049b0ae", 9295},
-		{"resource.000", 0, "f64fd6aa3977939a86ff30783dd677e1", 11003589},
 		AD_LISTEND},
 		Common::EN_ANY, Common::kPlatformDOS, ADGF_NO_FLAGS, GUIO_QFG4_FLOPPY },
 
@@ -5608,8 +5649,8 @@ static const struct ADGameDescription SciGameDescriptions[] = {
 
 	// Slater & Charlie Go Camping - English Macintosh
 	{"slater", "", {
-		{"Data1", 0, "7243b4390e5f0182d8133fbcae4b50c5", 2298853}, // FIXMEMD5
-		{"Data2", 0, "6b6f18f9b502dc0923eeae0ef47f02d5", 2276956},
+		{"Data1", 0, "7243b4390e5f0182d8133fbcae4b50c5", 2298597},
+		{"Data2", 0, "6b6f18f9b502dc0923eeae0ef47f02d5", 2276700},
 		AD_LISTEND},
 		Common::EN_ANY, Common::kPlatformMacintosh, ADGF_MACRESFORK, GUIO1(GUIO_NONE)	},
 
@@ -5902,7 +5943,7 @@ static const struct ADGameDescription SciGameDescriptions[] = {
 		{"resource.004", 0, "0d8dfe42683b46f3131823233a91ce6a", 787066},
 		AD_LISTEND},
 		Common::EN_ANY, Common::kPlatformMacintosh, ADGF_UNSTABLE, GUIO_STD16_MAC_PALETTEMODS	},
-		
+
 	// Space Quest 3 - Hebrew DOS (from the Space Quest Collection)
 	// Executable scanning reports "0.000.685", VERSION file reports "1.018"
 	// This translation is still a work in progress
@@ -5914,7 +5955,7 @@ static const struct ADGameDescription SciGameDescriptions[] = {
 		{"PATCHES/font.000", 0, "6fab182f1c071d1ed47be27776964baf", 3334},
 		AD_LISTEND},
 		Common::HE_ISR, Common::kPlatformDOS, ADGF_NO_FLAGS, GUIO_STD16_PALETTEMODS },
-		
+
 	// Space Quest 3 - Spanish fan translation. VERSION file reports "06/03/2002"
 	{ "sq3", "", {
 		{"resource.map", 0, "9ba042c797b62dd46d8979caeed61116", 3726},
@@ -6254,7 +6295,7 @@ static const struct ADGameDescription SciGameDescriptions[] = {
 		Common::EN_ANY, Common::kPlatformDOS, ADGF_NO_FLAGS, GUIO_STD16	},
 
 	// Space Quest 5 - English DOS - THIS IS THE UNOFFICIAL BETA VERSION, WHICH IS OBVIOUSLY PIRATED AND CONTAINS MANY BUGS
-	//  refer to http://www.akril15.com/sr/sq5alt/sq5alt.html =DO NOT RE-ADD=
+	//  refer to https://www.akril15.com/sr/sq5alt/sq5alt.html =DO NOT RE-ADD=
 	// SCI interpreter version 1.001.067
 	{"sq5", "", {
 		{"resource.map", 0, "8bde0a9adb9a3e9aaa861826874c9834", 6473},

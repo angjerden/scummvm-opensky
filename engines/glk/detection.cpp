@@ -19,6 +19,8 @@
  *
  */
 
+#define FORBIDDEN_SYMBOL_EXCEPTION_printf
+
 #include "base/plugins.h"
 #include "common/md5.h"
 #include "common/memstream.h"
@@ -314,23 +316,6 @@ uint GlkMetaEngineDetection::getMD5Bytes() const {
 	return 5000;
 }
 
-// Add backslash before double quotes (") and backslashes themselves (\)
-static Common::String escapeString(const char *string) {
-	if (string == nullptr)
-		return "";
-
-	Common::String res = "";
-
-	for (int i = 0; string[i] != '\0'; i++) {
-		if (string[i] == '"' || string[i] == '\\')
-			res += "\\";
-
-		res += string[i];
-	}
-
-	return res;
-}
-
 void GlkMetaEngineDetection::dumpDetectionEntries() const {
 #if 0
 	enum class EngineName : uint8 {
@@ -360,10 +345,12 @@ void GlkMetaEngineDetection::dumpDetectionEntries() const {
         { Glk::Quest::QuestMetaEngine::getDetectionEntries(), EngineName::OTHER },
         { Glk::Scott::ScottMetaEngine::getDetectionEntries(), EngineName::OTHER },
         { Glk::ZCode::ZCodeMetaEngine::getDetectionEntries(), EngineName::OTHER },
+#ifndef RELEASE_BUILD
         { Glk::TADS::TADSMetaEngine::getDetectionEntries(), EngineName::OTHER },
+#endif
         { nullptr, EngineName::OTHER }
     };
-   
+
 	for (const Detection *detection = detectionEntries; detection->entries; ++detection) {
 		EngineName engineName =	detection->engineName;
 
@@ -372,29 +359,29 @@ void GlkMetaEngineDetection::dumpDetectionEntries() const {
 			const char *title = pd.description;
 			const char *extra = engineName == EngineName::COMPREHEND ? "" : entry->_extra;
 
-			debug("game (");
-			debug("\tname \"%s\"", escapeString(entry->_gameId).c_str());
-			debug("\ttitle \"%s\"", escapeString(title).c_str());
-			debug("\textra \"%s\"", escapeString(extra).c_str());
-			debug("\tlanguage \"%s\"", escapeString(getLanguageLocale(entry->_language)).c_str());
-			debug("\tplatform \"%s\"", escapeString(getPlatformCode(entry->_platform)).c_str());
-			debug("\tsourcefile \"%s\"", escapeString(getName()).c_str());
-			debug("\tengine \"%s\"", escapeString(getEngineName()).c_str());
+			printf("game (\n");
+			printf("\tname \"%s\"\n", escapeString(entry->_gameId).c_str());
+			printf("\ttitle \"%s\"\n", escapeString(title).c_str());
+			printf("\textra \"%s\"\n", escapeString(extra).c_str());
+			printf("\tlanguage \"%s\"\n", escapeString(getLanguageLocale(entry->_language)).c_str());
+			printf("\tplatform \"%s\"\n", escapeString(getPlatformCode(entry->_platform)).c_str());
+			printf("\tsourcefile \"%s\"\n", escapeString(getName()).c_str());
+			printf("\tengine \"%s\"\n", escapeString(getName()).c_str());
 
 			Common::String checksum = entry->_md5;
 
-			// Filename for Comprehend Engine's md5 is stored in the extra field. 
+			// Filename for Comprehend Engine's md5 is stored in the extra field.
 			// For other engines, filename is not available, so it has been kept as the gameId
 			const char *fname = engineName == EngineName::COMPREHEND ? entry->_extra : entry->_gameId;
 
-			// Level9 engine does not use md5 checksums, so checksums are not printed. 
+			// Level9 engine does not use md5 checksums, so checksums are not printed.
 			if (engineName == EngineName::LEVEL9) {
-				debug("\trom (name \"%s\" size %lld)", escapeString(fname).c_str(), static_cast<long long int>(entry->_filesize));
+				printf("\trom ( name \"%s\" size %lld )\n", escapeString(fname).c_str(), static_cast<long long int>(entry->_filesize));
 			} else {
-				debug("\trom (name \"%s\" size %lld md5-%d %s)", escapeString(fname).c_str(), static_cast<long long int>(entry->_filesize), getMD5Bytes(), checksum.c_str());
+				printf("\trom ( name \"%s\" size %lld md5-%d %s )\n", escapeString(fname).c_str(), static_cast<long long int>(entry->_filesize), getMD5Bytes(), checksum.c_str());
 			}
-			
-			debug(")\n");
+
+			printf(")\n\n");
 		}
 	}
 #endif

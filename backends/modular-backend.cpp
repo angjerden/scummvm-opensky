@@ -52,11 +52,6 @@ bool ModularGraphicsBackend::getFeatureState(Feature f) {
 	return _graphicsManager->getFeatureState(f);
 }
 
-GraphicsManager *ModularGraphicsBackend::getGraphicsManager() {
-	assert(_graphicsManager);
-	return (GraphicsManager *)_graphicsManager;
-}
-
 const OSystem::GraphicsMode *ModularGraphicsBackend::getSupportedGraphicsModes() const {
 	return _graphicsManager->getSupportedGraphicsModes();
 }
@@ -103,6 +98,10 @@ bool ModularGraphicsBackend::setStretchMode(int mode) {
 
 int ModularGraphicsBackend::getStretchMode() const {
 	return _graphicsManager->getStretchMode();
+}
+
+bool ModularGraphicsBackend::setRotationMode(Common::RotationMode rotation) {
+	return _graphicsManager->setRotationMode(rotation);
 }
 
 uint ModularGraphicsBackend::getDefaultScaler() const {
@@ -203,6 +202,10 @@ void ModularGraphicsBackend::updateScreen() {
 #endif
 }
 
+void ModularGraphicsBackend::presentBuffer() {
+	_graphicsManager->presentBuffer();
+}
+
 void ModularGraphicsBackend::setShakePos(int shakeXOffset, int shakeYOffset) {
 	_graphicsManager->setShakePos(shakeXOffset, shakeYOffset);
 }
@@ -242,12 +245,16 @@ void ModularGraphicsBackend::copyRectToOverlay(const void *buf, int pitch, int x
 	_graphicsManager->copyRectToOverlay(buf, pitch, x, y, w, h);
 }
 
-int16 ModularGraphicsBackend::getOverlayHeight() {
+int16 ModularGraphicsBackend::getOverlayHeight() const {
 	return _graphicsManager->getOverlayHeight();
 }
 
-int16 ModularGraphicsBackend::getOverlayWidth() {
+int16 ModularGraphicsBackend::getOverlayWidth() const {
 	return _graphicsManager->getOverlayWidth();
+}
+
+Common::Rect ModularGraphicsBackend::getSafeOverlayArea(int16 *width, int16 *height) const {
+	return _graphicsManager->getSafeOverlayArea(width, height);
 }
 
 float ModularGraphicsBackend::getHiDPIScreenFactor() const {

@@ -21,23 +21,32 @@
 
 #include "m4/riddle/rooms/section2/room204.h"
 #include "m4/riddle/rooms/section2/section2.h"
+#include "m4/riddle/riddle.h"
+#include "m4/riddle/vars.h"
+#include "m4/adv_r/adv_control.h"
 #include "m4/graphics/gr_series.h"
 #include "m4/gui/gui_vmng.h"
 #include "m4/gui/gui_vmng_screen.h"
-#include "m4/riddle/riddle.h"
-#include "m4/riddle/vars.h"
 
 namespace M4 {
 namespace Riddle {
 namespace Rooms {
 
-const int16 ROOM204_NORMAL_DIRS[] = {
-	200, -1, -1};
-const int16 ROOM204_SHADOW_DIRS[6] = {
-	210, -1, -1};
-static const char *ROOM204_NORMAL_NAMES[5] = { "priest walker" };
-static const char *ROOM204_SHADOW_NAMES[5] = { "kuangs shadow 2" };
+const int16 ROOM204_NORMAL_DIRS[] = { 200, -1};
+const int16 ROOM204_SHADOW_DIRS[] = { 210, -1};
+static const char *ROOM204_NORMAL_NAMES[] = { "priest walker" };
+static const char *ROOM204_SHADOW_NAMES[] = { "kuangs shadow 2" };
 
+static const char *const SAID[][2] = {
+	{"ZHENMU SHOU FIGURINE", "204r27"},
+	{"BRONZE LANTERN", "204r07"},
+	{"PAGODA", "204r08"},
+	{"GIANT URN", "204r09"},
+	{"ACOLYTE", "204r12"},
+	{"YOUNG PRIEST", "204r13"},
+	{"FOO DOG", "204r28"},
+	{nullptr, nullptr}
+};
 
 void Room204::preload() {
 	_G(player).walker_type = WALKER_ALT;
@@ -355,6 +364,7 @@ void Room204::parser() {
 				_fieldE0_x = 555;
 				deleteMeiCheiHotspot();
 				addMovingMeiHotspot();
+				player_set_commands_allowed(true);
 				break;
 
 			default:
@@ -607,11 +617,11 @@ void Room204::parser() {
 		goto done;
 	}
 
-	if (lookFl && player_said("ZHENMU SHOU FIGURINE")) {
+	if (lookFl && _G(walker).ripley_said(SAID)) {
 		goto done;
 	}
 
-	if (lookFl && player_said("SILVER BUTTERFLY") && inv_player_has("SILVER BUTTERFLY")) {
+	if (lookFl && player_said("SILVER BUTTERFLY") && inv_object_is_here("SILVER BUTTERFLY")) {
 		switch (_G(kernel).trigger) {
 		case -1:
 		case 666:
@@ -1018,7 +1028,7 @@ void Room204::daemon() {
 
 	case 12:
 		interface_show();
-		_G(game).new_room = 205;
+		_G(game).setRoom(205);
 		break;
 
 	case 15:
@@ -2207,7 +2217,7 @@ void Room204::daemon() {
 
 	case 629:
 	case 711:
-		_G(game).new_room = 203;
+		_G(game).setRoom(203);
 		break;
 
 	case 630:
@@ -2410,7 +2420,7 @@ void Room204::daemon() {
 	case 675:
 		player_set_commands_allowed(false);
 		digi_preload("950_s34", -1);
-		midi_play("RIPTHEM1", 180, 0, -1, 949);
+		midi_play("RIPTHEM1", 180, false, -1, 949);
 		_204pu99Series = series_load("204PU99", -1, nullptr);
 		_ripSketchingInNotebookPos2Series = series_load("RIP SKETCHING IN NOTEBOOK POS 2", -1, nullptr);
 		setGlobals1(_ripSketchingInNotebookPos2Series, 1, 17, 17, 17, 0, 18, 39, 39, 39, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);

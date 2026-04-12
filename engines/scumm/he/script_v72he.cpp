@@ -29,6 +29,7 @@
 #include "scumm/charset.h"
 #include "scumm/dialogs.h"
 #include "scumm/file.h"
+#include "scumm/he/font_he.h"
 #include "scumm/he/intern_he.h"
 #include "scumm/he/localizer.h"
 #include "scumm/object.h"
@@ -165,7 +166,7 @@ int ScummEngine_v72he::readArray(int array, int idx2, int idx1) {
 			  FROM_LE_32(ah->downMin), FROM_LE_32(ah->downMax));
 	}
 
-#if defined(USE_ENET) && defined(USE_LIBCURL)
+#if defined(USE_ENET) && defined(USE_BASIC_NET)
 	if (_enableHECompetitiveOnlineMods) {
 		// Mod for Backyard Baseball 2001 online competitive play: allow baserunners to be
 		// turned around while they're jogging to the next base on a pop-up.
@@ -173,9 +174,9 @@ int ScummEngine_v72he::readArray(int array, int idx2, int idx1) {
 		// and if they are then basepath clicks to turn them around have no effect.
 		// Here we return 0 (false) under certain conditions, so these clicks now have the desired effect.
 		if (_game.id == GID_BASEBALL2001 &&
-			_currentRoom == 3 && vm.slot[_currentScript].number == 2076 &&  // This is the script that handles basepath clicks
+			_currentRoom == 3 && currentScriptSlotIs(2076) &&  // This is the script that handles basepath clicks
 			readVar(399) == 1 &&  // This checks that we're playing online
-			readVar(0x8000 + 11) == 1 &&  // The ball is a pop-up
+			readVar(ROOM_VAL(11)) == 1 &&  // The ball is a pop-up
 			readVar(291) < 2 &&  // Less than two outs
 			// This is the array of baserunner status info, and the value in position 8 specifies whether the runner is forced
 			array == 295 && idx1 == 8) {
@@ -1776,7 +1777,7 @@ void ScummEngine_v72he::getStringFromArray(int arrayNumber, char *buffer, int ma
 
 	// this function makes a C-string out of <arrayNumber> contents
 
-	VAR(0) = arrayNumber; // it was 0 in original code, but I've seen ScummVM Moonbase code which uses VAR_U32_ARRAY_UNK
+	VAR(0) = arrayNumber; // it was 0 in original code, but I've seen ScummVM Moonbase code which uses VAR_U32_RESERVED
 
 	int i, ch;
 	for (i = 0; i < maxLength; ++i) {
@@ -2084,7 +2085,7 @@ void ScummEngine_v72he::copyArray(int dstVariable, int dstDownMin, int dstDownMa
 
 				useMemcpy = (dstAcrossMin <= srcAcrossMin);
 			}
-			
+
 			if (useMemcpy) {
 				for (int dstDownCounter = dstDownMin; dstDownCounter <= dstDownMax; dstDownCounter++) {
 					memcpy(dstPtr, srcPtr, dataSize);
@@ -2139,7 +2140,7 @@ void ScummEngine_v72he::o72_readINI() {
 	case ScummEngine_v100he::SO_DWORD: // HE 100
 	case SO_DWORD: // number
 		if (!strcmp((char *)option, "DisablePrinting") || !strcmp((char *)option, "NoPrinting")) {
-			push(1);
+			push(0);
 		} else if (!strcmp((char *)option, "DisableMaiaUpdates")) {
 			// WORKAROUND: Override the update checks.
 			// This gets checked in Baseball 2001 and will check for
@@ -2167,6 +2168,44 @@ void ScummEngine_v72he::o72_readINI() {
 				push(4);
 			else
 				push(2);
+		} else if (_game.heversion >= 99 && !strcmp((char *)option, "NoFontsInstalled")) {
+			// The three FunShop came with these six exact optional TrueType fonts:
+			// Augie, Dot2Dot, Frosty, Goo Puff, Smilage and Zodiastic.
+			//
+			// These fonts are an optional choice from the installer, and if not installed,
+			// this NoFontsInstalled flag will be set to 1.
+			//
+			// In our case, some users might not have a suitable Windows OS to run the
+			// InstallShield installers, and they might just take the plain data files
+			// from the CD. So let's check for exactly those fonts in our HEFont class
+			// and set this flag accordingly.
+			//
+			// The perceived effect of this is that without these fonts, premade printing
+			// models won't be available, instead of crashing the engine. ;-)
+#ifdef USE_FREETYPE2
+			static const char *funShopFonts[] = {
+				"Augie",
+				"Dot2Dot",
+				"Frosty",
+				"Goo Puff",
+				"Smilage",
+				"Zodiastic"
+			};
+
+			((ScummEngine_v99he *)this)->_heFont->enumInit();
+
+			bool allFontsFound = true;
+			for (int i = 0; i < ARRAYSIZE(funShopFonts); i++) {
+				if (((ScummEngine_v99he *)this)->_heFont->enumFind(funShopFonts[i]) == -1) {
+					allFontsFound = false;
+					break;
+				}
+			}
+
+			push(allFontsFound ? 0 : 1);
+#else
+			push(0);
+#endif
 		} else {
 			push(ConfMan.getInt((char *)option));
 		}

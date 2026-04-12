@@ -55,11 +55,6 @@ ChamberEngine::ChamberEngine(OSystem *syst, const ADGameDescription *desc)
 	_videoMode = Common::kRenderCGA;
 	_screenH = _screenW = _screenBits = _screenBPL = _screenPPB = 0;
 	_line_offset = _line_offset2 = _fontHeight = _fontWidth = 0;
-
-
-
-	_speakerHandle = NULL;
-	_speakerStream = NULL;
 }
 
 ChamberEngine::~ChamberEngine() {
@@ -93,6 +88,14 @@ void ChamberEngine::syncGameStream(Common::Serializer &s) {
 	// Use methods of Serializer to save/load fields
 	int16 dummy = 0;
 	s.syncAsUint16LE(dummy);
+}
+
+int ChamberEngine::getX(int original_x) {
+	return original_x; 
+}
+
+int ChamberEngine::getY(int original_y) {
+	return original_y;
 }
 
 } // End of namespace Chamber

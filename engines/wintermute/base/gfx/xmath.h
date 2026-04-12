@@ -31,7 +31,7 @@
 #ifndef WINTERMUTE_XMATH_H
 #define WINTERMUTE_XMATH_H
 
-#include "engines/wintermute/math/rect32.h"
+#include "common/scummsys.h"
 
 namespace Wintermute {
 
@@ -43,8 +43,30 @@ struct DXVector2 {
 	float           _x;
 	float           _y;
 
-	DXVector2() {}
+	DXVector2();
+	DXVector2(const float *pf);
 	DXVector2(float fx, float fy);
+
+	operator float* ();
+	operator const float* () const;
+
+	DXVector2 &operator += (const DXVector2 &);
+	DXVector2 &operator -= (const DXVector2 &);
+	DXVector2 &operator *= (float);
+	DXVector2 &operator /= (float);
+
+	DXVector2 operator + () const;
+	DXVector2 operator - () const;
+
+	DXVector2 operator + (const DXVector2 &) const;
+	DXVector2 operator - (const DXVector2 &) const;
+	DXVector2 operator * (float) const;
+	DXVector2 operator / (float) const;
+
+	friend DXVector2 operator * (float, const DXVector2 &);
+
+	bool operator == (const DXVector2 &) const;
+	bool operator != (const DXVector2 &) const;
 };
 
 struct DXVector3 {
@@ -111,6 +133,7 @@ struct DXPlane {
 	float           _d;
 
 	DXPlane() {}
+	DXPlane(float fa, float fb, float fc, float fd);
 };
 
 struct DXMatrix {
@@ -124,7 +147,7 @@ struct DXMatrix {
 		float _m[4][4];
 		float _m4x4[16];
 	};
-	
+
 	DXMatrix() {}
 	DXMatrix(const float *pf);
 
@@ -173,9 +196,11 @@ DXVector3 *DXVec3TransformCoord(DXVector3 *pout, const DXVector3 *pv, const DXMa
 DXVector3 *DXVec3TransformNormal(DXVector3 *pout, const DXVector3 *pv, const DXMatrix *pm);
 DXMatrix *DXMatrixMultiply(DXMatrix *pout, const DXMatrix *pm1, const DXMatrix *pm2);
 DXVector3 *DXVec3Project(DXVector3 *pout, const DXVector3 *pv, const DXViewport *pviewport,
-                         const DXMatrix *pprojection, const DXMatrix *pview, const DXMatrix *pworld);
+						 const DXMatrix *pprojection, const DXMatrix *pview, const DXMatrix *pworld);
 DXMatrix *DXMatrixTranspose(DXMatrix *pout, const DXMatrix *pm);
 DXVector4 *DXVec4Transform(DXVector4 *pout, const DXVector4 *pv, const DXMatrix *pm);
+DXMatrix *DXMatrixShadow(DXMatrix *pout, const DXVector4 *plight, const DXPlane *pplane);
+DXVector2 *DXVec2TransformCoord(DXVector2 *pout, const DXVector2 *pv, const DXMatrix *pm);
 
 static inline DXMatrix *DXMatrixIdentity(DXMatrix *pout) {
 	(*pout)._m[0][1] = 0.0f;
@@ -231,6 +256,20 @@ static inline DXVector3 *DXVec3Subtract(DXVector3 *pout, const DXVector3 *pv1, c
 
 static inline float DXVec3Length(const DXVector3 *pv) {
 	return sqrtf(pv->_x * pv->_x + pv->_y * pv->_y + pv->_z * pv->_z);
+}
+
+static inline float DXVec4Dot(const DXVector4 *pv1, const DXVector4 *pv2) {
+	return (pv1->_x) * (pv2->_x) + (pv1->_y) * (pv2->_y) + (pv1->_z) * (pv2->_z) + (pv1->_w) * (pv2->_w);
+}
+
+static inline float DXPlaneDot(const DXPlane *pp, const DXVector4 *pv) {
+	return ((pp->_a) * (pv->_x) + (pp->_b) * (pv->_y) + (pp->_c) * (pv->_z) + (pp->_d) * (pv->_w) );
+}
+
+static inline float DXVec2Length(const DXVector2 *pv) {
+	if (!pv)
+		return 0.0f;
+	return sqrtf(pv->_x * pv->_x + pv->_y * pv->_y);
 }
 
 } // End of namespace Wintermute

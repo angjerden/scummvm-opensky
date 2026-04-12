@@ -94,6 +94,7 @@ enum {
 	kWMModeNoCursorOverride     = (1 << 12),
 	kWMModeForceMacBorder       = (1 << 13),
 	kWMModeForceMacFonts        = (1 << 14), // Enforce Mac fonts even when there are viable TTF substitutions
+	kWMModeNoSystemRedraw       = (1 << 15), // Skip g_system->copyRectToScreen (for 3D game backends)
 };
 
 }
@@ -179,8 +180,8 @@ public:
 	 * @return Pointer to the newly created window.
 	 */
 	MacWindow *addWindow(bool scrollable, bool resizable, bool editable);
-	MacTextWindow *addTextWindow(const MacFont *font, int fgcolor, int bgcolor, int maxWidth, TextAlign textAlignment, MacMenu *menu, bool cursorHandler = true);
-	MacTextWindow *addTextWindow(const Font *font, int fgcolor, int bgcolor, int maxWidth, TextAlign textAlignment, MacMenu *menu, bool cursorHandler = true);
+	MacTextWindow *addTextWindow(const MacFont *font, int fgcolor, int bgcolor, int maxWidth, TextAlign textAlignment, MacMenu *menu, int padding = 0);
+	MacTextWindow *addTextWindow(const Font *font, int fgcolor, int bgcolor, int maxWidth, TextAlign textAlignment, MacMenu *menu, int padding = 0);
 	void resizeScreen(int w, int h);
 
 	/**
@@ -233,6 +234,8 @@ public:
 	 */
 	void setActiveWindow(int id);
 
+	int getActiveWindow() { return _activeWindow; }
+
 	/**
 	 * Return Top Window containing a point
 	 * @param x x coordinate of point
@@ -280,7 +283,11 @@ public:
 	 * @param id The id of the desired window.
 	 * @return Pointer to the requested window, if it exists.
 	 */
-	BaseMacWindow *getWindow(int id) { return _windows[id]; }
+	BaseMacWindow *getWindow(int id) {
+		if (id >= 0 && id < (int)_windows.size())
+			return _windows[id];
+		return nullptr;
+	}
 
 	/**
 	 * Retrieve the patterns used to fill surfaces.
@@ -326,6 +333,8 @@ private:
 
 public:
 	MacCursorType getCursorType() const;
+	static bool getBuiltInCursorData(MacCursorType type, const byte *&data, const byte *&palette,
+		const byte *&mask, int &w, int &h, int &hotspotX, int &hotspotY, int &transColor);
 
 	void pushCursor(MacCursorType type, Cursor *cursor = nullptr);
 	void replaceCursor(MacCursorType type, Cursor *cursor = nullptr);
@@ -363,7 +372,7 @@ public:
 	void cleanupDataBundle();
 	void cleanupDesktopBmp();
 
-	BorderOffsets getBorderOffsets(uint32 windowType);
+	const BorderOffsets &getBorderOffsets(uint32 windowType);
 	Common::SeekableReadStream *getBorderFile(uint32 windowType, uint32 flags);
 	Common::SeekableReadStream *getFile(const Common::Path &filename);
 
@@ -393,6 +402,9 @@ public:
 	int getMenuItemAction(MacMenuItem *menuItem);
 	MacMenu *getMenu();
 	MacMenu *getMenu(int id);
+
+	void sayText(const Common::U32String &text) const;
+	void setTTSEnabled(bool enabled);
 
 public:
 	MacFontManager *_fontMan;
@@ -484,6 +496,8 @@ private:
 	Common::Archive *_dataBundle;
 
 	Common::U32String _clipboard;
+
+	bool _ttsEnabled;
 };
 
 const Common::U32String::value_type *readHex(uint16 *res, const Common::U32String::value_type *s, int len);

@@ -101,11 +101,21 @@ NancyEngine::~NancyEngine() {
 }
 
 NancyEngine *NancyEngine::create(GameType type, OSystem *syst, const NancyGameDescription *gd) {
-	if (type >= kGameTypeVampire && type <= kGameTypeNancy11) {
+	if (type >= kGameTypeVampire && type <= kGameTypeNancy13) {
 		return new NancyEngine(syst, gd);
 	}
 
 	error("Unknown GameType");
+}
+
+Common::Error NancyEngine::loadGameState(int slot) {
+	auto save = g_nancy->getMetaEngine()->querySaveMetaInfos(ConfMan.getActiveDomainName().c_str(), slot);
+	if (save.isValid() && save.getDescription() != "SECOND CHANCE") {
+		// Ensure the nancy8+ save screen will display the last non-autosave name
+		ConfMan.setInt("display_slot", slot, Common::ConfigManager::kTransientDomain);
+	}
+
+	return Engine::loadGameState(slot);
 }
 
 Common::Error NancyEngine::loadGameStream(Common::SeekableReadStream *stream) {
@@ -262,6 +272,10 @@ Common::Error NancyEngine::run() {
 		}
 	}
 
+	if (!ConfMan.getBool("originalsaveload")) {
+		ConfMan.setInt("nancy_max_saves", 999, ConfMan.getActiveDomainName());
+	}
+
 	// Boot the engine
 	setState(NancyState::kBoot);
 
@@ -414,7 +428,8 @@ void NancyEngine::bootGameEngine() {
 	// Setup mixer
 	syncSoundSettings();
 
-	if (getGameType() >= kGameTypeNancy10) {
+	if (getGameType() >= kGameTypeNancy13) {
+		// Nancy13+ games use 24/32bpp images, which we don't support yet.
 		error("Game not supported; Use console to inspect game data");
 	}
 
@@ -463,10 +478,42 @@ void NancyEngine::bootGameEngine() {
 	LOAD_BOOT(TABL)
 	LOAD_BOOT(MARK)
 
+	// Nancy 10+
+	// FONT chunk has been moved into a separate file
+	// FR0 chunk has been removed
+	LOAD_BOOT(SHUI)	// Shared UI elements
+	LOAD_BOOT(TASK)	// Task list UI
+	LOAD_BOOT(UIIV)	// Inventory UI
+	LOAD_BOOT(UICO)	// Conversation UI
+	LOAD_BOOT(UICL) // Cell phone UI
+	LOAD_BOOT(UIBW) // Web browser UI
+	LOAD_BOOT(UINB) // Notebook UI
+
+	// Nancy 11+
+	LOAD_BOOT(SCTB)	// Scheduled talk (?) UI
+
+	// Nancy 12+
+	// HINT chunk has been removed
+	// LOAD_BOOT(EVNT)
+	// LOAD_BOOT(UIRC)
+
+	// Nancy 13+
+	// RCPR and RCLB chunks have been removed
+	// LOAD_BOOT(MMIX)
+	
 	_cursor->init(iff->getChunkStream("CURS"));
 
 	_graphics->init();
-	_graphics->loadFonts(iff->getChunkStream("FONT"));
+
+	if (getGameType() <= kGameTypeNancy9) {
+		_graphics->loadFonts(iff->getChunkStream("FONT"));
+	} else {
+		IFF *fontIFF = _resource->loadIFF("font");
+		if (!fontIFF)
+			error("Failed to load font IFF");
+		_graphics->loadFonts(fontIFF->getChunkStream("FONT"));
+		delete fontIFF;
+	}
 
 	preloadCals();
 

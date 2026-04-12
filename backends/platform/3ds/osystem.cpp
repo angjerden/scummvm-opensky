@@ -77,7 +77,6 @@ OSystem_3DS::OSystem_3DS():
 	_magY(0),
 	_magWidth(400),
 	_magHeight(240),
-	_gameTextureDirty(false),
 	_filteringEnabled(true),
 	_overlayVisible(false),
 	_overlayInGUI(false),
@@ -89,7 +88,8 @@ OSystem_3DS::OSystem_3DS():
 	_showCursor(true),
 	_snapToBorder(true),
 	_stretchToFit(false),
-	_screen(kScreenBoth)
+	_screen(kScreenBoth),
+	_blitFunc(nullptr)
 {
 	chdir("sdmc:/");
 
@@ -194,6 +194,9 @@ Common::Path OSystem_3DS::getDefaultLogFileName() {
 
 void OSystem_3DS::addSysArchivesToSearchSet(Common::SearchSet &s, int priority) {
 	s.add("RomFS", new Common::FSDirectory(DATA_PATH"/"), priority);
+	// Add the current dir as a very last resort (cf. bug #3984).
+	// TODO: check if it's really needed
+	s.addDirectory(".", ".", priority - 1);
 }
 
 uint32 OSystem_3DS::getMillis(bool skipRecord) {

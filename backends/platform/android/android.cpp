@@ -47,6 +47,7 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <sys/system_properties.h>
+#include <errno.h> // For remove error codes
 #include <time.h>
 #include <unistd.h>
 #include <dlfcn.h>
@@ -62,7 +63,6 @@
 #include "backends/fs/posix/posix-iostream.h"
 
 #include "backends/graphics/android/android-graphics.h"
-#include "backends/graphics3d/android/android-graphics3d.h"
 
 #include "backends/audiocd/default/default-audiocd.h"
 #include "backends/events/default/default-events.h"
@@ -103,6 +103,16 @@ extern "C" {
 	}
 }
 
+static bool androidErrorHandler(const char *msg) {
+	if (g_system) {
+		g_system->quit();
+	}
+	__android_log_assert(nullptr, android_log_tag,
+	                     "ERROR: %s", msg);
+	// If we end up here, we failed to handle the error
+	return false;
+}
+
 #ifdef ANDROID_DEBUG_GL
 static const char *getGlErrStr(GLenum error) {
 	switch (error) {
@@ -138,12 +148,12 @@ class AndroidSaveFileManager : public DefaultSaveFileManager {
 public:
 	AndroidSaveFileManager(const Common::Path &defaultSavepath) : DefaultSaveFileManager(defaultSavepath) {}
 
-	bool removeSavefile(const Common::String &filename) override {
-		Common::String path = getSavePath().join(filename).toString(Common::Path::kNativeSeparator);
+	Common::ErrorCode removeFile(const Common::FSNode &fileNode) override {
+		Common::String path(fileNode.getPath().toString(Common::Path::kNativeSeparator));
 		AbstractFSNode *node = AndroidFilesystemFactory::instance().makeFileNodePath(path);
 
 		if (!node) {
-			return false;
+			return Common::kPathDoesNotExist;
 		}
 
 		AndroidFSNode *anode = dynamic_cast<AndroidFSNode *>(node);
@@ -152,17 +162,22 @@ public:
 			// This should never happen
 			warning("Invalid node received");
 			delete node;
-			return false;
+			return Common::kUnknownError;
 		}
 
-		bool ret = anode->remove();
-
+		int err = anode->remove();
 		delete anode;
 
-		if (!ret) {
-			setError(Common::kUnknownError, Common::String::format("Couldn't delete the save file: %s", path.c_str()));
+		switch (err) {
+		case 0:
+			return Common::kNoError;
+		case EACCES:
+			return Common::kWritePermissionDenied;
+		case ENOENT:
+			return Common::kPathDoesNotExist;
+		default:
+			return Common::kUnknownError;
 		}
-		return ret;
 	}
 };
 
@@ -170,6 +185,7 @@ OSystem_Android::OSystem_Android(int audio_sample_rate, int audio_buffer_size) :
 	_audio_sample_rate(audio_sample_rate),
 	_audio_buffer_size(audio_buffer_size),
 	_screen_changeid(0),
+	_virtkeybd_on(false),
 	_mixer(0),
 	_event_queue_lock(0),
 	_touch_pt_down(),
@@ -210,6 +226,8 @@ OSystem_Android::OSystem_Android(int audio_sample_rate, int audio_buffer_size) :
 	// JNI::getAndroidSDKVersionId() should be identical to the result from ("ro.build.version.sdk"),
 	// though getting it via JNI is maybe the most reliable option (?)
 	// Also __system_property_get which is used by getSystemProperty() is being deprecated in recent NDKs
+
+	Common::setErrorHandler(androidErrorHandler);
 
 	int sdkVersion = JNI::getAndroidSDKVersionId();
 
@@ -576,7 +594,7 @@ void OSystem_Android::initBackend() {
 void OSystem_Android::engineInit() {
 	_engineRunning = true;
 	updateOnScreenControls();
-	dynamic_cast<AndroidCommonGraphics *>(_graphicsManager)->applyTouchSettings();
+	dynamic_cast<AndroidGraphicsManager *>(_graphicsManager)->applyTouchSettings();
 
 	JNI::setCurrentGame(ConfMan.getActiveDomainName());
 }
@@ -707,11 +725,6 @@ bool OSystem_Android::hasFeature(Feature f) {
 			f == kFeatureTouchscreen) {
 		return true;
 	}
-	/* Even if we are using the 2D graphics manager,
-	 * we are at one initGraphics3d call of supporting GLES2 */
-	if (f == kFeatureOpenGLForGame) return true;
-	/* GLES2 always supports shaders */
-	if (f == kFeatureShadersForGame) return true;
 
 	if (f == kFeatureCpuNEON) {
 #if defined(__aarch64__)
@@ -783,6 +796,17 @@ bool OSystem_Android::getFeatureState(Feature f) {
 	}
 }
 
+void OSystem_Android::setPause(bool value) {
+	if (g_engine) {
+		LOGD("pauseEngine: %d", value);
+
+		if (value)
+			_pauseToken = g_engine->pauseEngine();
+		else if (_pauseToken.isActive())
+			_pauseToken.clear();
+	}
+}
+
 // TODO Re-eval if we need this here
 Common::HardwareInputSet *OSystem_Android::getHardwareInputSet() {
 	using namespace Common;
@@ -815,8 +839,16 @@ Common::KeymapperDefaultBindings *OSystem_Android::getKeymapperDefaultBindings()
 	//      The engines use those as much as possible when defining keymaps.
 	//      Then, the backends can override the default bindings to make use of the platform specific keys.
 	//
+	// Also Note: Using setDefaultBinding() will override any default/fallback keymap(s) for an action.
+	//            (for default see the ones in MetaEngine::initKeymaps() and DefaultEventManager::getGlobalKeymap())
+	//            Using addDefaultBinding() after a setDefaultBinding() here will (as expected) add another keymap to the action,
+	//            and all keymaps for the action will be listed in this method.
+	//            Using addDefaultBinding() without setDefaultBinding() will add another keymap to the action,
+	//            in addition to the existing default/fallback ones (ie. not all keymaps for the action are listed here).
 	//
-	keymapperDefaultBindings->setDefaultBinding(Common::kGlobalKeymapName, "MENU", "MENU");
+	keymapperDefaultBindings->setDefaultBinding(Common::kGlobalKeymapName, Common::kStandardActionOpenMainMenu, "MENU");
+	keymapperDefaultBindings->addDefaultBinding(Common::kGlobalKeymapName, Common::kStandardActionOpenMainMenu, "JOY_START");
+	keymapperDefaultBindings->addDefaultBinding(Common::kGlobalKeymapName, Common::kStandardActionOpenMainMenu, "C+F5");
 	//
 	// We want the AC_BACK key to be the default (until overridden explicitly by the user or a game engine)
 	// mapped key for the standard SKIP action.
@@ -832,10 +864,12 @@ Common::KeymapperDefaultBindings *OSystem_Android::getKeymapperDefaultBindings()
 	// [kStandardActionsKeymapName is defined  as (constant char*) in ./backends/keymapper/keymap, and utilised in getActionDefaultMappings()]
 	// ["If no keymap-specific default mapping was found, look for a standard action binding"]
 	keymapperDefaultBindings->setDefaultBinding(Common::kStandardActionsKeymapName, Common::kStandardActionSkip, "AC_BACK");
+	keymapperDefaultBindings->addDefaultBinding(Common::kStandardActionsKeymapName, Common::kStandardActionSkip, "JOY_Y");
 
 	// The "CLOS" action ID is not a typo.
 	// See: backends/keymapper/remap-widget.cpp:	kCloseCmd        = 'CLOS'
 	keymapperDefaultBindings->setDefaultBinding(Common::kGuiKeymapName, "CLOS", "AC_BACK");
+	keymapperDefaultBindings->addDefaultBinding(Common::kGuiKeymapName, "CLOS", "JOY_Y");
 
 	// By default DPAD directions will be used for virtual mouse in GUI context
 	// If the user wants to remap them, they will be able to navigate to Global Options -> Keymaps and do so.
@@ -983,96 +1017,36 @@ Common::String OSystem_Android::getSystemProperty(const char *name) const {
 	return Common::String(value, len);
 }
 
-const OSystem::GraphicsMode *OSystem_Android::getSupportedGraphicsModes() const {
-	// We only support one mode
-	static const OSystem::GraphicsMode s_supportedGraphicsModes[] = {
-		{ "default", "Default", 0 },
-		{ 0, 0, 0 },
-	};
+#if defined(USE_OPENGL_GAME) || defined(USE_OPENGL_SHADERS)
+Common::Array<uint> OSystem_Android::getSupportedAntiAliasingLevels() const {
+	Common::Array<uint> levels;
 
-	return s_supportedGraphicsModes;
-}
-
-int OSystem_Android::getDefaultGraphicsMode() const {
-	// We only support one mode
-	return 0;
-}
-
-bool OSystem_Android::setGraphicsMode(int mode, uint flags) {
-	bool render3d = flags & OSystem::kGfxModeRender3d;
-
-	// Very hacky way to set up the old graphics manager state, in case we
-	// switch from SDL->OpenGL or OpenGL->SDL.
-	//
-	// This is a probably temporary workaround to fix bugs like #5799
-	// "SDL/OpenGL: Crash when switching renderer backend".
-	//
-	// It's also used to restore state from 3D to 2D GFX manager
-	AndroidCommonGraphics *androidGraphicsManager = dynamic_cast<AndroidCommonGraphics *>(_graphicsManager);
-	AndroidCommonGraphics::State gfxManagerState = androidGraphicsManager->getState();
-	bool supports3D = _graphicsManager->hasFeature(kFeatureOpenGLForGame);
-
-	bool switchedManager = false;
-
-	// If the new mode and the current mode are not from the same graphics
-	// manager, delete and create the new mode graphics manager
-	debug(5, "requesting 3D: %d, supporting 3D: %d", render3d, supports3D);
-	if (render3d && !supports3D) {
-		debug(5, "switching to 3D graphics");
-		delete _graphicsManager;
-		_graphicsManager = nullptr;
-		AndroidGraphics3dManager *manager = new AndroidGraphics3dManager();
-		_graphicsManager = manager;
-		androidGraphicsManager = manager;
-		switchedManager = true;
-	} else if (!render3d && supports3D) {
-		debug(5, "switching to 2D graphics");
-		delete _graphicsManager;
-		_graphicsManager = nullptr;
-		AndroidGraphicsManager *manager = new AndroidGraphicsManager();
-		_graphicsManager = manager;
-		androidGraphicsManager = manager;
-		switchedManager = true;
+	if (!OpenGLContext.framebufferObjectMultisampleSupported) {
+		return levels;
 	}
 
-	androidGraphicsManager->syncVirtkeyboardState(_virtkeybd_on);
+	GLint numLevels = 0;
+	GLint *glLevels;
 
-	if (switchedManager) {
-		// Setup the graphics mode and size first
-		// This is needed so that we can check the supported pixel formats when
-		// restoring the state.
-		_graphicsManager->beginGFXTransaction();
-		if (!_graphicsManager->setGraphicsMode(mode, flags))
-			return false;
-		_graphicsManager->initSize(gfxManagerState.screenWidth, gfxManagerState.screenHeight);
-		_graphicsManager->endGFXTransaction();
-
-		// This failing will probably have bad consequences...
-		if (!androidGraphicsManager->setState(gfxManagerState)) {
-			return false;
-		}
-
-		// Next setup the cursor again
-		CursorMan.pushCursor(0, 0, 0, 0, 0, 0);
-		CursorMan.popCursor();
-
-		// Next setup cursor palette if needed
-		if (_graphicsManager->getFeatureState(kFeatureCursorPalette)) {
-			CursorMan.pushCursorPalette(0, 0, 0);
-			CursorMan.popCursorPalette();
-		}
-
-		_graphicsManager->beginGFXTransaction();
-		return true;
-	} else {
-		return _graphicsManager->setGraphicsMode(mode, flags);
+	// We take the format used by Renderer3D
+	glGetInternalformativ(GL_RENDERBUFFER, GL_RGBA8, GL_NUM_SAMPLE_COUNTS, 1, &numLevels);
+	if (numLevels == 0) {
+		return levels;
 	}
-}
 
-int OSystem_Android::getGraphicsMode() const {
-	// We only support one mode
-	return 0;
+	glLevels = new GLint[numLevels];
+	glGetInternalformativ(GL_RENDERBUFFER, GL_RGBA8, GL_SAMPLES, numLevels, glLevels);
+
+	// SDL returns values in ascending order while glGetInternalformativ returns them in descending order.
+	// Revert our result to match SDL
+	for(numLevels--; numLevels >= 0; numLevels--) {
+		levels.push_back(glLevels[numLevels]);
+	}
+
+	delete glLevels;
+	return levels;
 }
+#endif
 
 #if defined(USE_OPENGL) && defined(USE_GLAD)
 void *OSystem_Android::getOpenGLProcAddress(const char *name) const {
@@ -1179,21 +1153,21 @@ _s(
 "\n"
 "2. Inside the ScummVM file browser, select **Go Up** until you reach the root folder which has the **<Add a new folder>** option. \n"
 "\n"
-"  ![ScummVM file browser root](browser-root.png \"ScummVM file browser root\"){w=70%}\n"
+"  ![ScummVM file browser root](browser-root.png \"ScummVM file browser root\"){w=70%,maxw=50em}\n"
 "\n"
 "3. Double-tap **<Add a new folder>**. In your device's file browser, navigate to the folder containing all your game folders. For example, **SD Card > ScummVMgames**. \n"
 "\n"
 "4. Select **Use this folder**. \n"
 "\n"
-"  ![OS selectable folder](fs-folder.png \"OS selectable folder\"){w=70%}\n"
+"  ![OS selectable folder](fs-folder.png \"OS selectable folder\"){w=70%,maxw=50em}\n"
 "\n"
 "5. Select **ALLOW** to give ScummVM permission to access the folder. \n"
 "\n"
-"  ![OS access permission dialog](fs-permission.png \"OS access permission\"){w=70%}\n"
+"  ![OS access permission dialog](fs-permission.png \"OS access permission\"){w=70%,maxw=50em}\n"
 "\n"
 "6. In the ScummVM file browser, double-tap to browse through your added folder. Add a game by selecting the sub-folder containing the game files, then tap **Choose**. \n"
 "\n"
-"  ![SAF folder added](browser-folder-in-list.png \"SAF folder added\"){w=70%}\n"
+"  ![SAF folder added](browser-folder-in-list.png \"SAF folder added\"){w=70%,maxw=50em}\n"
 "\n"
 "Step 2 and 3 are done only once. To add more games, repeat Steps 1 and 6. \n"
 "\n"

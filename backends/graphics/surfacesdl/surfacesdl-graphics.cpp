@@ -268,7 +268,6 @@ bool SurfaceSdlGraphicsManager::hasFeature(OSystem::Feature f) const {
 #endif
 		(f == OSystem::kFeatureFilteringMode) ||
 #if SDL_VERSION_ATLEAST(2, 0, 0)
-		(f == OSystem::kFeatureFullscreenToggleKeepsContext) ||
 		(f == OSystem::kFeatureStretchMode) ||
 		(f == OSystem::kFeatureRotationMode) ||
 		(f == OSystem::kFeatureVSync) ||
@@ -302,9 +301,6 @@ void SurfaceSdlGraphicsManager::setFeatureState(OSystem::Feature f, bool enable)
 	case OSystem::kFeatureIconifyWindow:
 		if (enable)
 			_window->iconifyWindow();
-		break;
-	case OSystem::kFeatureRotationMode:
-		notifyResize(getWindowWidth(), getWindowHeight());
 		break;
 	default:
 		break;
@@ -391,9 +387,7 @@ void SurfaceSdlGraphicsManager::beginGFXTransaction() {
 	_transactionDetails.needDisplayResize = false;
 	_transactionDetails.needTextureUpdate = false;
 #endif
-#ifdef USE_RGB_COLOR
 	_transactionDetails.formatChanged = false;
-#endif
 
 	_oldVideoMode = _videoMode;
 }
@@ -447,14 +441,13 @@ OSystem::TransactionError SurfaceSdlGraphicsManager::endGFXTransaction() {
 
 			_videoMode.filtering = _oldVideoMode.filtering;
 		}
-#ifdef USE_RGB_COLOR
+
 		if (_videoMode.format != _oldVideoMode.format) {
 			errors |= OSystem::kTransactionFormatNotSupported;
 
 			_videoMode.format = _oldVideoMode.format;
 			_screenFormat = _videoMode.format;
 		}
-#endif
 
 		if (_videoMode.screenWidth != _oldVideoMode.screenWidth || _videoMode.screenHeight != _oldVideoMode.screenHeight) {
 			errors |= OSystem::kTransactionSizeChangeFailed;
@@ -472,11 +465,7 @@ OSystem::TransactionError SurfaceSdlGraphicsManager::endGFXTransaction() {
 		_oldVideoMode.setup = false;
 	}
 
-#ifdef USE_RGB_COLOR
 	if (_transactionDetails.sizeChanged || _transactionDetails.formatChanged) {
-#else
-	if (_transactionDetails.sizeChanged) {
-#endif
 		unloadGFXMode();
 		if (!loadGFXMode()) {
 			if (_oldVideoMode.setup) {
@@ -587,79 +576,20 @@ Common::List<Graphics::PixelFormat> SurfaceSdlGraphicsManager::getSupportedForma
 	return _supportedFormats;
 }
 
-#if SDL_VERSION_ATLEAST(2, 0, 0)
-static void maskToBitCount(Uint32 mask, uint8 &numBits, uint8 &shift) {
-	numBits = 0;
-	shift = 32;
-	for (int i = 0; i < 32; ++i) {
-		if (mask & 1) {
-			if (i < shift) {
-				shift = i;
-			}
-			++numBits;
-		}
-
-		mask >>= 1;
-	}
-}
-#endif
-
 void SurfaceSdlGraphicsManager::detectSupportedFormats() {
 	_supportedFormats.clear();
 
 	Graphics::PixelFormat format = Graphics::PixelFormat::createFormatCLUT8();
 
-#if SDL_VERSION_ATLEAST(2, 0, 0)
-	{
-#if SDL_VERSION_ATLEAST(3, 0, 0)
-		const SDL_DisplayMode* pDefaultMode = SDL_GetDesktopDisplayMode(_window->getDisplayIndex());
-		if (!pDefaultMode) {
-			error("Could not get default system display mode");
-		}
-
-		int bpp;
-		Uint32 rMask, gMask, bMask, aMask;
-		if (!SDL_GetMasksForPixelFormat(pDefaultMode->format, &bpp, &rMask, &gMask, &bMask, &aMask)) {
-			error("Could not convert system pixel format %s to masks", SDL_GetPixelFormatName(pDefaultMode->format));
-		}
-
-		const uint8 bytesPerPixel = SDL_BYTESPERPIXEL(pDefaultMode->format);
-#else
-		SDL_DisplayMode defaultMode;
-		if (SDL_GetDesktopDisplayMode(_window->getDisplayIndex(), &defaultMode) != 0) {
-			error("Could not get default system display mode");
-		}
-
-		int bpp;
-		Uint32 rMask, gMask, bMask, aMask;
-		if (SDL_PixelFormatEnumToMasks(defaultMode.format, &bpp, &rMask, &gMask, &bMask, &aMask) != SDL_TRUE) {
-			error("Could not convert system pixel format %s to masks", SDL_GetPixelFormatName(defaultMode.format));
-		}
-
-		const uint8 bytesPerPixel = SDL_BYTESPERPIXEL(defaultMode.format);
-#endif
-
-		uint8 rBits, rShift, gBits, gShift, bBits, bShift, aBits, aShift;
-		maskToBitCount(rMask, rBits, rShift);
-		maskToBitCount(gMask, gBits, gShift);
-		maskToBitCount(bMask, bBits, bShift);
-		maskToBitCount(aMask, aBits, aShift);
-
-		format = Graphics::PixelFormat(bytesPerPixel, rBits, gBits, bBits, aBits, rShift, gShift, bShift, aShift);
-
-		_supportedFormats.push_back(format);
-	}
-#endif
-
 	if (_hwScreen) {
 		// Get our currently set hardware format
 		Graphics::PixelFormat hwFormat = convertSDLPixelFormat(_hwScreen->format);
 
+		// This is the first supported format to prevent pixel format conversion
+		// on blitting. This gives us a lot more performance on low perf hardware.
 		_supportedFormats.push_back(hwFormat);
 
-#if !SDL_VERSION_ATLEAST(2, 0, 0)
 		format = hwFormat;
-#endif
 	}
 
 	if (!_isHwPalette) {
@@ -772,10 +702,7 @@ void SurfaceSdlGraphicsManager::setGraphicsModeIntern() {
 
 	// If the scalerIndex has changed, change scaler plugins
 	if (&_scalerPlugins[_videoMode.scalerIndex]->get<ScalerPluginObject>() != _scalerPlugin
-#ifdef USE_RGB_COLOR
-		|| _transactionDetails.formatChanged
-#endif
-		) {
+		|| _transactionDetails.formatChanged) {
 		Graphics::PixelFormat format = convertSDLPixelFormat(_hwScreen->format);
 		delete _scaler;
 
@@ -875,7 +802,6 @@ void SurfaceSdlGraphicsManager::initSize(uint w, uint h, const Graphics::PixelFo
 		getDefaultResolution(w, h);
 	}
 
-#ifdef USE_RGB_COLOR
 	//avoid redundant format changes
 	Graphics::PixelFormat newFormat;
 	if (!format)
@@ -890,7 +816,6 @@ void SurfaceSdlGraphicsManager::initSize(uint w, uint h, const Graphics::PixelFo
 		_transactionDetails.formatChanged = true;
 		_screenFormat = newFormat;
 	}
-#endif
 
 #if !SDL_VERSION_ATLEAST(2, 0, 0)
 	// Avoid redundant res changes, only in SDL1. In SDL2, redundancies may not
@@ -1060,10 +985,8 @@ bool SurfaceSdlGraphicsManager::loadGFXMode() {
 	if (_screen == nullptr)
 		error("allocating _screen failed");
 
-#ifdef USE_RGB_COLOR
 	// Avoid having SDL_SRCALPHA set even if we supplied an alpha-channel in the format.
 	SDL_SetAlpha(_screen, 0, 255);
-#endif
 
 	// SDL 1.2 palettes default to all black,
 	// SDL 1.3 palettes default to all white,
@@ -1149,6 +1072,9 @@ bool SurfaceSdlGraphicsManager::loadGFXMode() {
 		error("allocating _tmpscreen2 failed");
 
 	if (_isHwPalette) {
+		if (!_screenFormat.isCLUT8())
+			return false;
+
 		SDL_SetColors(_tmpscreen2, _overlayPalette, 0, 256);
 		SDL_SetColors(_overlayscreen, _overlayPalette, 0, 256);
 	}
@@ -1220,7 +1146,7 @@ bool SurfaceSdlGraphicsManager::hotswapGFXMode() {
 
 	// Release the HW screen surface
 	if (_hwScreen) {
-		destroySurface(_osdIconSurface);
+		destroySurface(_hwScreen);
 		_hwScreen = nullptr;
 	}
 	if (_tmpscreen) {
@@ -1305,7 +1231,7 @@ void SurfaceSdlGraphicsManager::internUpdateScreen() {
 			blackrect.x = ((_videoMode.screenWidth + _gameScreenShakeXOffset) * _videoMode.scaleFactor);
 		}
 
-		if (_videoMode.aspectRatioCorrection && !_overlayInGUI) {
+		if (_videoMode.aspectRatioCorrection && !_overlayVisible) {
 			blackrect.h = real2Aspect(blackrect.h - 1) + 1;
 		}
 
@@ -1326,7 +1252,7 @@ void SurfaceSdlGraphicsManager::internUpdateScreen() {
 			blackrect.y = ((_videoMode.screenHeight + _gameScreenShakeYOffset) * _videoMode.scaleFactor);
 		}
 
-		if (_videoMode.aspectRatioCorrection && !_overlayInGUI) {
+		if (_videoMode.aspectRatioCorrection && !_overlayVisible) {
 			blackrect.y = real2Aspect(blackrect.y);
 			blackrect.h = real2Aspect(blackrect.h + blackrect.y - 1) - blackrect.y + 1;
 		}
@@ -1440,7 +1366,9 @@ void SurfaceSdlGraphicsManager::internUpdateScreen() {
 	}
 
 	// Only draw anything if necessary
+#if SDL_VERSION_ATLEAST(2, 0, 0)
 	bool doPresent = false;
+#endif
 	if (actualDirtyRects > 0 || _cursorNeedsRedraw) {
 		SDL_Rect *r;
 		SDL_Rect dst;
@@ -1511,7 +1439,7 @@ void SurfaceSdlGraphicsManager::internUpdateScreen() {
 				dst_x *= scale1;
 				dst_y *= scale1;
 
-				if (_videoMode.aspectRatioCorrection && !_overlayInGUI)
+				if (_videoMode.aspectRatioCorrection && !_overlayVisible)
 					dst_y = real2Aspect(dst_y);
 
 				_scaler->scale((byte *)srcSurf->pixels + (src_x + _maxExtraPixels) * bpp + (src_y + _maxExtraPixels) * srcPitch, srcPitch,
@@ -1523,7 +1451,7 @@ void SurfaceSdlGraphicsManager::internUpdateScreen() {
 				r->h = dst_h * scale1;
 
 #ifdef USE_ASPECT
-				if (_videoMode.aspectRatioCorrection && orig_dst_y < height && !_overlayInGUI)
+				if (_videoMode.aspectRatioCorrection && orig_dst_y < height && !_overlayVisible)
 					r->h = stretch200To240((uint8 *) _hwScreen->pixels, dstPitch, r->w, r->h, r->x, r->y, orig_dst_y * scale1, _videoMode.filtering, 	convertSDLPixelFormat(_hwScreen->format));
 #endif
 			}
@@ -1548,7 +1476,7 @@ void SurfaceSdlGraphicsManager::internUpdateScreen() {
 
 #ifdef USE_SDL_DEBUG_FOCUSRECT
 		// We draw the focus rectangle on top of everything, to assure it's easily visible.
-		// Of course when the overlay is visible we do not show it, since it is only for game
+		// Of course when the GUI overlay is visible we do not show it, since it is only for game
 		// specific focus.
 		if (_enableFocusRect && !_overlayInGUI) {
 			int x = _focusRect.left + _currentShakeXOffset;
@@ -1568,7 +1496,7 @@ void SurfaceSdlGraphicsManager::internUpdateScreen() {
 				w *= scale1;
 				h *= scale1;
 
-				if (_videoMode.aspectRatioCorrection && !_overlayInGUI)
+				if (_videoMode.aspectRatioCorrection && !_overlayVisible)
 					y = real2Aspect(y);
 
 				if (h > 0 && w > 0) {
@@ -1638,7 +1566,9 @@ void SurfaceSdlGraphicsManager::internUpdateScreen() {
 		// Finally, blit all our changes to the screen
 		if (!_displayDisabled) {
 			updateScreen(_dirtyRectList, actualDirtyRects);
+#if SDL_VERSION_ATLEAST(2, 0, 0)
 			doPresent = true;
+#endif
 		}
 	}
 
@@ -1911,7 +1841,7 @@ void SurfaceSdlGraphicsManager::addDirtyRect(int x, int y, int w, int h, bool in
 	}
 
 #ifdef USE_ASPECT
-	if (_videoMode.aspectRatioCorrection && !_overlayInGUI && !realCoordinates)
+	if (_videoMode.aspectRatioCorrection && !inOverlay && !realCoordinates)
 		makeRectStretchable(x, y, w, h, _videoMode.filtering);
 #endif
 
@@ -2021,7 +1951,7 @@ void SurfaceSdlGraphicsManager::setFocusRectangle(const Common::Rect &rect) {
 
 	// We just fake this as a dirty rect for now, to easily force a screen update whenever
 	// the rect changes.
-	addDirtyRect(_focusRect.left, _focusRect.top, _focusRect.width(), _focusRect.height(), _overlayVisible);
+	addDirtyRect(_focusRect.left, _focusRect.top, _focusRect.width(), _focusRect.height(), false);
 #endif
 }
 
@@ -2035,7 +1965,7 @@ void SurfaceSdlGraphicsManager::clearFocusRectangle() {
 
 	// We just fake this as a dirty rect for now, to easily force a screen update whenever
 	// the rect changes.
-	addDirtyRect(_focusRect.left, _focusRect.top, _focusRect.width(), _focusRect.height(), _overlayVisible);
+	addDirtyRect(_focusRect.left, _focusRect.top, _focusRect.width(), _focusRect.height(), false);
 #endif
 }
 
@@ -2229,7 +2159,6 @@ void SurfaceSdlGraphicsManager::setMouseCursor(const void *buf, uint w, uint h, 
 		return;
 	}
 
-#ifdef USE_RGB_COLOR
 	if (mask && format && format->bytesPerPixel > 1 && !_isHwPalette) {
 		const uint numPixels = w * h;
 		const uint inBPP = format->bytesPerPixel;
@@ -2280,7 +2209,6 @@ void SurfaceSdlGraphicsManager::setMouseCursor(const void *buf, uint w, uint h, 
 		setMouseCursor(&maskedImage[0], w, h, hotspotX, hotspotY, 0, dontScale, &formatWithAlpha, nullptr, true);
 		return;
 	}
-#endif
 
 	bool formatChanged = false;
 
@@ -3227,20 +3155,22 @@ void SurfaceSdlGraphicsManager::SDL_UpdateRects(SDL_Surface *screen, int numrect
 	SDL_Rect viewport;
 
 	Common::Rect &drawRect = (_overlayVisible) ? _overlayDrawRect : _gameDrawRect;
-	viewport.x = drawRect.left;
-	viewport.y = drawRect.top;
 
-	int rotation = getRotationMode();
-	int rotangle = 0;
-	if (rotation == Common::kRotation90 || rotation == Common::kRotation270) {
-		int delta = (drawRect.width() - drawRect.height()) / 2;
-		viewport.x = drawRect.top - delta;
-		viewport.y = drawRect.left + delta;
+	/* Destination rectangle represents the texture before rotation */
+	if (_rotationMode == Common::kRotation90 || _rotationMode == Common::kRotation270) {
+		viewport.w = drawRect.height();
+		viewport.h = drawRect.width();
+		int delta = (viewport.w - viewport.h) / 2;
+		viewport.x = drawRect.left - delta;
+		viewport.y = drawRect.top + delta;
+	} else {
+		viewport.w = drawRect.width();
+		viewport.h = drawRect.height();
+		viewport.x = drawRect.left;
+		viewport.y = drawRect.top;
 	}
-	rotangle = rotation;
 
-	viewport.w = drawRect.width();
-	viewport.h = drawRect.height();
+	int rotangle = (int)_rotationMode;
 
 	SDL_RenderClear(_renderer);
 
@@ -3324,19 +3254,19 @@ int SurfaceSdlGraphicsManager::SDL_SetColorKey(SDL_Surface *surface, Uint32 flag
 void *SurfaceSdlGraphicsManager::getImGuiTexture(const Graphics::Surface &image, const byte *palette, int palCount) {
 
 	// Upload pixels into texture
-	SDL_Texture *texture = SDL_CreateTexture(_renderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STATIC, image.w, image.h);
+	SDL_Texture *texture = SDL_CreateTexture(_renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, image.w, image.h);
 	if (texture == nullptr) {
 		error("getImGuiTexture: errror creating tetxure: %s", SDL_GetError());
 		return nullptr;
 	}
 
-	Graphics::Surface *s = image.convertTo(Graphics::PixelFormat(4, 8, 8, 8, 8, 0, 8, 16, 24), palette, palCount);
+	Graphics::Surface *s = image.convertTo(Graphics::PixelFormat::createFormatRGBA32(), palette, palCount);
 	SDL_UpdateTexture(texture, nullptr, s->getPixels(), s->pitch);
 	SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
 #ifdef USE_IMGUI_SDLRENDERER3
-	SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_LINEAR);
+	SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
 #elif defined(USE_IMGUI_SDLRENDERER2)
-	SDL_SetTextureScaleMode(texture, SDL_ScaleModeLinear);
+	SDL_SetTextureScaleMode(texture, SDL_ScaleModeNearest);
 #endif
 
 	s->free();

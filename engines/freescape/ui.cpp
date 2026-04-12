@@ -24,18 +24,28 @@
 namespace Freescape {
 
 void FreescapeEngine::waitInLoop(int maxWait) {
-	for (int i = 0; i < maxWait; i++) {
+	long int startTick = _ticks;
+	_inWaitLoop = true;
+	while (_ticks <= startTick + maxWait) {
 		Common::Event event;
 		while (_eventManager->pollEvent(event)) {
+			if (_ticks > startTick + maxWait)
+				break;
+
 			Common::Point mousePos;
 			switch (event.type) {
 			case Common::EVENT_QUIT:
 			case Common::EVENT_RETURN_TO_LAUNCHER:
+				_inWaitLoop = false;
 				quitGame();
 				return;
 
 			case Common::EVENT_MOUSEMOVE:
 				if (_hasFallen || _playerWasCrushed || _gameStateControl != kFreescapeGameStatePlaying)
+					break;
+				if (isCastle() && (isSpectrum() || isCPC()) && getGameBit(31)) // Game is finished
+					break;
+				if (isDriller() && _gameStateVars[32] == 18) // Game is finished
 					break;
 				mousePos = event.mouse;
 
@@ -81,7 +91,7 @@ void FreescapeEngine::waitInLoop(int maxWait) {
 		_gfx->positionCamera(_position, _position + _cameraFront, _roll);
 
 		drawBackground();
-		_currentArea->draw(_gfx, _ticks / 10, _position, _cameraFront);
+		_currentArea->draw(_gfx, _ticks / 10, _position, _cameraFront, true);
 		drawBorder();
 		drawUI();
 
@@ -89,7 +99,10 @@ void FreescapeEngine::waitInLoop(int maxWait) {
 		g_system->updateScreen();
 		g_system->delayMillis(15); // try to target ~60 FPS
 	}
+	_inWaitLoop = false;
 	_gfx->clear(0, 0, 0, true);
+	_eventManager->purgeMouseEvents();
+	_eventManager->purgeKeyboardEvents();
 }
 
 void FreescapeEngine::titleScreen() {
@@ -122,7 +135,7 @@ void FreescapeEngine::titleScreen() {
 			case Common::EVENT_RBUTTONDOWN:
 			// fallthrough
 			case Common::EVENT_LBUTTONDOWN:
-				if (g_system->hasFeature(OSystem::kFeatureTouchscreen))
+				if (isTouchscreenActive())
 					maxWait = -1;
 				break;
 			default:
@@ -182,8 +195,6 @@ Graphics::Surface *FreescapeEngine::drawStringsInSurface(const Common::Array<Com
 	return surface;
 }
 
-extern Common::String centerAndPadString(const Common::String &x, int y);
-
 void FreescapeEngine::borderScreen() {
 	if (!_border)
 		return;
@@ -234,6 +245,26 @@ void FreescapeEngine::borderScreen() {
 				lines.push_back(centerAndPadString("4 JOYSTICK CURSOR  ", pad));
 				lines.push_back("");
 				lines.push_back(centerAndPadString("ENTER: EMPEZAR MISION", pad));
+				lines.push_back(centerAndPadString("(c) 1990 INCENTIVE", pad));
+			} else if (isCastle() && _language == Common::FR_FRA) {
+				lines.push_back(centerAndPadString("MENU CONFIGURATION", pad));
+				lines.push_back("");
+				lines.push_back(centerAndPadString("1 CLAVIER          ", pad));
+				lines.push_back(centerAndPadString("2 JOYSTICK SINCLAIR", pad));
+				lines.push_back(centerAndPadString("3 JOYSTICK KEMSTON ", pad));
+				lines.push_back(centerAndPadString("4 JOYSTICK CURSEUR ", pad));
+				lines.push_back("");
+				lines.push_back(centerAndPadString("RETURN: DEBUT MISSION", pad));
+				lines.push_back(centerAndPadString("(c) 1990 INCENTIVE", pad));
+			} else if (isCastle() && _language == Common::DE_DEU) {
+				lines.push_back(centerAndPadString("AUSWAHL-MENUE", pad));
+				lines.push_back("");
+				lines.push_back(centerAndPadString("1 TASTATUR         ", pad));
+				lines.push_back(centerAndPadString("2 SINCLAIR JOYSTICK", pad));
+				lines.push_back(centerAndPadString("3 KEMSTON JOYSTICK ", pad));
+				lines.push_back(centerAndPadString("4 CURSOR JOYSTICK  ", pad));
+				lines.push_back("");
+				lines.push_back(centerAndPadString("RETURN: MISSION START", pad));
 				lines.push_back(centerAndPadString("(c) 1990 INCENTIVE", pad));
 			} else {
 				lines.push_back(centerAndPadString("CONTROL OPTIONS", pad));
@@ -296,12 +327,22 @@ void FreescapeEngine::drawFullscreenMessageAndWait(Common::String message) {
 }
 
 void FreescapeEngine::drawBorderScreenAndWait(Graphics::Surface *surface, int maxWait) {
+	PauseToken pauseToken = pauseEngine();
+	Graphics::Surface *compositedSurface = nullptr;
+	if (surface)
+		compositedSurface = new Graphics::Surface();
+
 	for (int i = 0; i < maxWait; i++) {
 		Common::Event event;
 		while (_eventManager->pollEvent(event)) {
 			switch (event.type) {
 			case Common::EVENT_QUIT:
 			case Common::EVENT_RETURN_TO_LAUNCHER:
+				if (compositedSurface) {
+					compositedSurface->free();
+					delete compositedSurface;
+				}
+				pauseToken.clear();
 				quitGame();
 				return;
 
@@ -331,7 +372,7 @@ void FreescapeEngine::drawBorderScreenAndWait(Graphics::Surface *surface, int ma
 			case Common::EVENT_RBUTTONDOWN:
 			// fallthrough
 			case Common::EVENT_LBUTTONDOWN:
-				if (g_system->hasFeature(OSystem::kFeatureTouchscreen))
+				if (isTouchscreenActive())
 					maxWait = -1;
 				break;
 			default:
@@ -341,13 +382,22 @@ void FreescapeEngine::drawBorderScreenAndWait(Graphics::Surface *surface, int ma
 
 		_gfx->clear(0, 0, 0, true);
 		drawBorder();
-		if (surface)
-			drawFullscreenSurface(surface);
+		if (surface) {
+			compositedSurface->copyFrom(*surface);
+			if (_currentArea)
+				drawPlatformUI(compositedSurface);
+			drawFullscreenSurface(compositedSurface);
+		}
 		_gfx->flipBuffer();
 		g_system->updateScreen();
 		g_system->delayMillis(15); // try to target ~60 FPS
 	}
-	playSound(_soundIndexMenu, false);
+	if (compositedSurface) {
+		compositedSurface->free();
+		delete compositedSurface;
+	}
+	pauseToken.clear();
+	playSound(_soundIndexMenu, false, _soundFxHandle);
 	_gfx->clear(0, 0, 0, true);
 }
 
@@ -362,16 +412,7 @@ void FreescapeEngine::drawFullscreenSurface(Graphics::Surface *surface) {
 	_gfx->setViewport(_viewArea);
 }
 
-void FreescapeEngine::drawUI() {
-	Graphics::Surface *surface = nullptr;
-	if (_border) { // This can be removed when all the borders are loaded
-		uint32 gray = _gfx->_texturePixelFormat.ARGBToColor(0x00, 0xA0, 0xA0, 0xA0);
-		surface = new Graphics::Surface();
-		surface->create(_screenW, _screenH, _gfx->_texturePixelFormat);
-		surface->fillRect(_fullscreenViewArea, gray);
-	} else
-		return;
-
+void FreescapeEngine::drawPlatformUI(Graphics::Surface *surface) {
 	if (isDOS())
 		drawDOSUI(surface);
 	else if (isC64())
@@ -382,6 +423,19 @@ void FreescapeEngine::drawUI() {
 		drawCPCUI(surface);
 	else if (isAmiga() || isAtariST())
 		drawAmigaAtariSTUI(surface);
+}
+
+void FreescapeEngine::drawUI() {
+	Graphics::Surface *surface = nullptr;
+	if (_border) { // This can be removed when all the borders are loaded
+		uint32 gray = _gfx->_texturePixelFormat.ARGBToColor(0x00, 0xA0, 0xA0, 0xA0);
+		surface = new Graphics::Surface();
+		surface->create(_screenW, _screenH, _gfx->_texturePixelFormat);
+		surface->fillRect(_fullscreenViewArea, gray);
+	} else
+		return;
+
+	drawPlatformUI(surface);
 
 	drawFullscreenSurface(surface);
 

@@ -26,6 +26,7 @@
 
 #include "common/array.h"
 #include "common/error.h"
+#include "common/hashmap.h"
 #include "common/keyboard.h"
 #include "common/random.h"
 #include "common/rect.h"
@@ -68,6 +69,8 @@ class SeekableAudioStream;
 }
 
 namespace AGOS {
+
+class ElviraAtariSTPlayer;
 
 enum {
 	kDebugOpcode = 1,
@@ -383,6 +386,9 @@ protected:
 	bool _backFlag;
 
 	Common::Language _language;
+	Common::Language _simon2OverlayLanguage;
+	bool _useSimon2LanguageOverlay;
+	Common::HashMap<Common::String, Common::String> _simon2LanguageOverlay;
 	bool _copyProtection;
 	bool _pause;
 	bool _speech;
@@ -597,6 +603,8 @@ protected:
 
 	uint8 _currentPalette[768];
 	uint8 _displayPalette[768];
+	uint8 _simon2LanguageFlagTimer;
+	bool _simon2LanguageFlagClearPending;
 
 	byte *_planarBuf;
 	byte _videoBuf1[32000];
@@ -625,6 +633,7 @@ protected:
 	Audio::SoundHandle _modHandle;
 	Audio::SoundHandle _digitalMusicHandle;
 	Audio::SeekableAudioStream *_digitalMusicStream = nullptr;
+	ElviraAtariSTPlayer *_elviraAtariSTPlayer = nullptr;
 
 	Sound *_sound;
 
@@ -638,6 +647,8 @@ protected:
 	// and/or ambient sounds are currently muted.
 	uint16 _effectsVolume;
 	bool _useDigitalSfx;
+	bool _pendingWaitCommandDelay;
+	bool _pendingPNWaitScreenDelay;
 
 	uint8 _saveGameNameLen;
 	uint16 _saveLoadRowCurPos;
@@ -690,6 +701,7 @@ protected:
 	void readGamePcFile(Common::SeekableReadStream *in);
 	void decompressData(const char *srcName, byte *dst, uint32 offset, uint32 srcSize, uint32 dstSize);
 	void decompressPN(Common::Stack<uint32> &dataList, uint8 *&dataOut, int &dataOutSize);
+	void drawPnSqueezedChar(WindowBlock *window, uint x, uint y, byte chr);
 	void loadOffsets(const char *filename, int number, uint32 &file, uint32 &offset, uint32 &compressedSize, uint32 &size);
 	void loadSound(uint16 sound, int16 pan, int16 vol, uint16 type);
 	void playSfx(uint16 sound, uint16 freq, uint16 flags, bool digitalOnly = false, bool midiOnly = false);
@@ -769,6 +781,11 @@ protected:
 
 	void showMessageFormat(MSVC_PRINTF const char *s, ...) GCC_PRINTF(2, 3);
 	const byte *getStringPtrByID(uint16 stringId, bool upperCase = false);
+	void loadSimon2LanguageOverlay();
+	bool hasSimon2LanguageFiles() const;
+	Common::Language getNextSimon2OverlayLanguage() const;
+	void cycleSimon2LanguageOverlay();
+	Common::String translateLanguageOverlay(const Common::String &english) const;
 	const byte *getLocalStringByID(uint16 stringId);
 	uint getNextStringID();
 
@@ -884,6 +901,12 @@ protected:
 
 	void endCutscene();
 	virtual void runSubroutine101();
+	bool isSimon2LanguageToggleKeyPressed() const;
+	void refreshSimon2LanguageText();
+	uint8 mapRGBToPaletteIndex(uint8 r, uint8 g, uint8 b) const;
+	void fillSimon2LanguageFlagRect(int x1, int y1, int x2, int y2, uint8 color);
+	void restoreSimon2LanguageFlagArea();
+	void drawSimon2LanguageFlag();
 
 	virtual void inventoryUp(WindowBlock *window);
 	virtual void inventoryDown(WindowBlock *window);
@@ -1389,7 +1412,11 @@ public:
 	void setupGame() override;
 	void setupOpcodes() override;
 	void setupVideoOpcodes(VgaOpcodeProc *op) override;
-
+	void windowDrawChar(WindowBlock *window, uint x, uint y, byte chr) override;
+	void saveInventoryPalette();
+	void applyInventoryPalette();
+	void restoreInventoryPalette();
+	
 	void executeOpcode(int opcode) override;
 
 	int actCallD(int n);
@@ -1929,6 +1956,10 @@ protected:
 
 	void dumpVgaFile(const byte *vga) override;
 
+	bool loadSimonAcornFloppyDemoPalette(Common::Array<byte> &outPalette);
+	bool _simonAcornFloppyDemoPaletteLoaded = false;
+	void patchSimonAcornFloppyDemoPalettes();
+	
 	void clearName() override;
 
 	void handleMouseWheelUp() override;

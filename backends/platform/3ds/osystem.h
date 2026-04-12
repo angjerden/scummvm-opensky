@@ -25,6 +25,8 @@
 #define FORBIDDEN_SYMBOL_EXCEPTION_time_h
 
 #include "backends/base-backend.h"
+#include "graphics/blit.h"
+#include "graphics/dirtyrects.h"
 #include "graphics/paletteman.h"
 #include "base/main.h"
 #include "audio/mixer_intern.h"
@@ -53,7 +55,6 @@ enum InputMode {
 enum GraphicsModeID {
 	RGBA8,
 	RGB565,
-	RGB555,
 	RGB5A1,
 	RGBA4,
 	CLUT8
@@ -160,6 +161,8 @@ public:
 	                      int h);
 	Graphics::Surface *lockScreen();
 	void unlockScreen();
+	void fillScreen(uint32 col);
+	void fillScreen(const Common::Rect &r, uint32 col);
 	void updateScreen();
 	void setShakePos(int shakeXOffset, int shakeYOffset);
 	void setFocusRectangle(const Common::Rect &rect);
@@ -172,8 +175,8 @@ public:
 	void grabOverlay(Graphics::Surface &surface);
 	void copyRectToOverlay(const void *buf, int pitch, int x, int y, int w,
 	                       int h);
-	virtual int16 getOverlayHeight();
-	virtual int16 getOverlayWidth();
+	virtual int16 getOverlayHeight() const;
+	virtual int16 getOverlayWidth() const;
 	void displayMessageOnOSD(const Common::U32String &msg) override;
 	void displayActivityIconOnOSD(const Graphics::Surface *icon) override;
 
@@ -229,6 +232,7 @@ private:
 	TransactionDetails _transactionDetails;
 
 	GfxState _gfxState, _oldGfxState;
+	Graphics::FastBlitFunc _blitFunc;
 	Graphics::PixelFormat _pfDefaultTexture;
 	Graphics::PixelFormat _pfGame, _oldPfGame;
 	Graphics::PixelFormat _pfCursor;
@@ -237,7 +241,7 @@ private:
 	uint32 _paletteMap[256];
 
 	Graphics::Surface _gameScreen;
-	bool _gameTextureDirty;
+	Graphics::DirtyRectList _dirtyRects;
 	Sprite _gameTopTexture;
 	Sprite _gameBottomTexture;
 	Sprite _overlay;

@@ -53,6 +53,8 @@ protected:
 		Piece(uint z) : RenderObject(z) {}
 		virtual ~Piece() {}
 
+		Piece(Piece &&) = default;
+
 		Common::Point _gridPos;
 		Common::Point _lastPos;
 
@@ -60,7 +62,7 @@ protected:
 		bool isViewportRelative() const override { return true; }
 	};
 
-	Common::String getRecordTypeName() const override { return "MazeChasePuzzle"; };
+	Common::String getRecordTypeName() const override { return "MazeChasePuzzle"; }
 	bool isViewportRelative() const override { return true; }
 
 	Common::Rect getScreenPosition(Common::Point gridPos);

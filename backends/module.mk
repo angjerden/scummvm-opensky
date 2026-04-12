@@ -27,8 +27,18 @@ MODULE_OBJS := \
 	saves/default/default-saves.o \
 	timer/default/default-timer.o
 
+ifdef USE_HTTP
+MODULE_OBJS += \
+	networking/http/connectionmanager.o \
+	networking/http/networkreadstream.o \
+	networking/http/httpjsonrequest.o \
+	networking/http/httprequest.o \
+	networking/http/postrequest.o \
+	networking/http/request.o \
+	networking/http/session.o \
+	networking/http/sessionrequest.o
+
 ifdef USE_CLOUD
-ifdef USE_LIBCURL
 MODULE_OBJS += \
 	cloud/basestorage.o \
 	cloud/cloudicon.o \
@@ -65,10 +75,8 @@ MODULE_OBJS += \
 	cloud/onedrive/onedrivelistdirectoryrequest.o \
 	cloud/onedrive/onedriveuploadrequest.o
 endif
-endif
 
 ifdef USE_SCUMMVMDLC
-ifdef USE_LIBCURL
 MODULE_OBJS += \
 	dlc/scummvmcloud.o
 endif
@@ -81,16 +89,35 @@ endif
 
 ifdef USE_LIBCURL
 MODULE_OBJS += \
-	networking/curl/connectionmanager.o \
-	networking/curl/networkreadstream.o \
-	networking/curl/curlrequest.o \
-	networking/curl/curljsonrequest.o \
-	networking/curl/postrequest.o \
-	networking/curl/request.o \
-	networking/curl/session.o \
-	networking/curl/sessionrequest.o \
-	networking/curl/socket.o \
-	networking/curl/url.o
+	networking/basic/curl/cacert.o \
+	networking/basic/curl/socket.o \
+	networking/basic/curl/url.o
+ifdef USE_HTTP
+MODULE_OBJS += \
+	networking/http/curl/connectionmanager-curl.o \
+	networking/http/curl/networkreadstream-curl.o
+endif
+endif
+
+ifdef EMSCRIPTEN
+MODULE_OBJS += \
+	fs/emscripten/emscripten-fs-factory.o \
+	fs/emscripten/emscripten-posix-fs.o \
+	fs/emscripten/http-fs.o \
+	midi/webmidi.o
+ifdef USE_CLOUD
+MODULE_OBJS += \
+	fs/emscripten/cloud-fs.o
+endif
+ifdef USE_HTTP
+MODULE_OBJS += \
+	networking/http/emscripten/connectionmanager-emscripten.o \
+	networking/http/emscripten/networkreadstream-emscripten.o
+endif
+ifdef USE_TTS
+MODULE_OBJS += \
+	text-to-speech/emscripten/emscripten-text-to-speech.o
+endif
 endif
 
 ifdef USE_SDL_NET
@@ -110,14 +137,10 @@ MODULE_OBJS += \
 	networking/sdl_net/localwebserver.o \
 	networking/sdl_net/reader.o \
 	networking/sdl_net/uploadfileclienthandler.o
-endif
 
 ifdef USE_CLOUD
-ifdef USE_LIBCURL
-ifdef USE_SDL_NET
 MODULE_OBJS += \
 	networking/sdl_net/handlers/connectcloudhandler.o
-endif
 endif
 endif
 
@@ -170,6 +193,7 @@ ifdef USE_OPENGL
 MODULE_OBJS += \
 	graphics/opengl/framebuffer.o \
 	graphics/opengl/opengl-graphics.o \
+	graphics/opengl/renderer3d.o \
 	graphics/opengl/shader.o \
 	graphics/opengl/texture.o \
 	graphics/opengl/pipelines/clut8.o \
@@ -224,11 +248,7 @@ endif
 
 ifdef USE_OPENGL
 MODULE_OBJS += \
-	graphics/openglsdl/openglsdl-graphics.o \
-	graphics3d/opengl/framebuffer.o \
-	graphics3d/opengl/surfacerenderer.o \
-	graphics3d/opengl/tiledsurface.o \
-	graphics3d/openglsdl/openglsdl-graphics3d.o
+	graphics/openglsdl/openglsdl-graphics.o
 endif
 
 ifdef USE_DISCORD
@@ -279,8 +299,13 @@ MODULE_OBJS += \
 	taskbar/macosx/macosx-taskbar.o
 
 ifdef USE_TTS
+ifdef USE_NS_SPEECH_SYNTHESIZER
 MODULE_OBJS += \
 	text-to-speech/macosx/macosx-text-to-speech.o
+else
+MODULE_OBJS += \
+	text-to-speech/avfaudio/avfaudio-text-to-speech.o
+endif
 endif
 
 ifdef SDL_BACKEND
@@ -298,6 +323,7 @@ MODULE_OBJS += \
 	fs/windows/windows-fs-factory.o \
 	midi/windows.o \
 	plugins/win32/win32-provider.o \
+	printing/win32/win32-printman.o \
 	saves/windows/windows-saves.o \
 	updates/win32/win32-updates.o \
 	taskbar/win32/win32-taskbar.o
@@ -320,12 +346,16 @@ MODULE_OBJS += \
 	fs/android/android-posix-fs.o \
 	fs/android/android-saf-fs.o \
 	graphics/android/android-graphics.o \
-	graphics3d/android/android-graphics3d.o \
-	graphics3d/android/texture.o \
-	graphics3d/opengl/framebuffer.o \
-	graphics3d/opengl/surfacerenderer.o \
-	graphics3d/opengl/tiledsurface.o \
-	mutex/pthread/pthread-mutex.o
+	mutex/pthread/pthread-mutex.o \
+	networking/basic/android/jni.o \
+	networking/basic/android/socket.o \
+	networking/basic/android/url.o
+
+ifdef USE_HTTP
+MODULE_OBJS += \
+	networking/http/android/connectionmanager-android.o \
+	networking/http/android/networkreadstream-android.o
+endif
 endif
 
 ifdef AMIGAOS
@@ -381,12 +411,16 @@ endif
 ifeq ($(BACKEND),atari)
 MODULE_OBJS += \
 	events/atari/atari-events.o \
+	fs/atari/atari-fs.o \
+	fs/atari/atari-fs-factory.o \
 	graphics/atari/atari-c2p-asm.o \
 	graphics/atari/atari-cursor.o \
 	graphics/atari/atari-graphics.o \
 	graphics/atari/atari-graphics-asm.o \
 	graphics/atari/atari-pendingscreenchanges.o \
 	graphics/atari/atari-screen.o \
+	graphics/atari/atari-supervidel.o \
+	graphics/atari/atari-surface.o \
 	mixer/atari/atari-mixer.o
 endif
 
@@ -405,13 +439,16 @@ endif
 
 ifdef IPHONE
 MODULE_OBJS += \
+	midi/coremidi.o \
 	mutex/pthread/pthread-mutex.o \
 	graphics/ios/ios-graphics.o \
-	graphics/ios/renderbuffer.o \
-	graphics3d/ios/ios-graphics3d.o \
-	graphics3d/opengl/framebuffer.o \
-	graphics3d/opengl/surfacerenderer.o \
-	graphics3d/opengl/tiledsurface.o
+	graphics/ios/renderbuffer.o
+
+ifdef USE_TTS
+MODULE_OBJS += \
+	text-to-speech/avfaudio/avfaudio-text-to-speech.o
+endif
+
 endif
 
 ifeq ($(BACKEND),maemo)

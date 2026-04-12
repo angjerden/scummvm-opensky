@@ -55,7 +55,7 @@ uint16 ScummEngine::get16BitColor(uint8 r, uint8 g, uint8 b) {
 	return _outputPixelFormat.RGBToColor(r, g, b);
 }
 
-void ScummEngine::resetPalette() {
+void ScummEngine::resetPalette(bool isBootUp) {
 	static const byte tableC64Palette[] = {
 #if 1  // VICE-based palette. See bug #4576
 		0x00, 0x00, 0x00,	0xFF, 0xFF, 0xFF,	0x7E, 0x35, 0x2B,	0x6E, 0xB7, 0xC1,
@@ -153,14 +153,6 @@ void ScummEngine::resetPalette() {
 		{ 0x00, 0x00, 0x00, 0x55, 0xFF, 0xFF, 0xFF, 0x55, 0xFF, 0xFF, 0xFF, 0xFF }
 	};
 
-	static const byte tableHercAPalette[] = {
-		0x00, 0x00, 0x00,	0xAE, 0x69, 0x38
-	};
-
-	static const byte tableHercGPalette[] = {
-		0x00, 0x00, 0x00,	0x00, 0xFF, 0x00
-	};
-
 	// Palette based on Apple IIgs Technical Notes: IIgs 2523063 Master Color Values
 	// Rearranged to match C64 color positions
 	static const byte tableApple2gsPalette[] = {
@@ -195,9 +187,9 @@ void ScummEngine::resetPalette() {
 	_enableEGADithering = false;
 
 	if (_renderMode == Common::kRenderHercA) {
-		setPaletteFromTable(tableHercAPalette, sizeof(tableHercAPalette) / 3);
+		setPaletteFromTable(Graphics::HGC_A_PALETTE, sizeof(Graphics::HGC_A_PALETTE) / 3);
 	} else if (_renderMode == Common::kRenderHercG) {
-		setPaletteFromTable(tableHercGPalette, sizeof(tableHercGPalette) / 3);
+		setPaletteFromTable(Graphics::HGC_G_PALETTE, sizeof(Graphics::HGC_G_PALETTE) / 3);
 	} else if (_renderMode == Common::kRenderCGA || _renderMode == Common::kRenderCGAComp) {
 		setPaletteFromTable(_cgaColors[cgaPalIndex * 2 + cgaPalIntensity], sizeof(_cgaColors[0]) / 3);
 		// Cursor palette
@@ -243,8 +235,11 @@ void ScummEngine::resetPalette() {
 		if ((_game.platform == Common::kPlatformAmiga) && _game.version == 4) {
 			// if rendermode is set to EGA we use the full palette from the resources
 			// else we initialize and then lock down the first 16 colors.
-			if (_renderMode != Common::kRenderEGA)
+			if (_renderMode != Common::kRenderEGA) {
 				setPaletteFromTable(tableAmigaMIPalette, sizeof(tableAmigaMIPalette) / 3);
+			} else {
+				setPaletteFromTable(tableEGAPalette, sizeof(tableEGAPalette) / 3);
+			}
 		} else if (_renderMode == Common::kRenderEGA && _supportsEGADithering) {
 			setPaletteFromTable(tableEGAPalette, sizeof(tableEGAPalette) / 3);
 			_enableEGADithering = true;
@@ -259,7 +254,7 @@ void ScummEngine::resetPalette() {
 			if (_game.id == GID_INDY4 || _game.id == GID_MONKEY2)
 				_townsClearLayerFlag = 0;
 #ifdef USE_RGB_COLOR
-			else if (_game.id == GID_LOOM)
+			else if (_game.id == GID_LOOM || _game.id == GID_MONKEY) // Setting a default for MI1 as well!
 				towns_setTextPaletteFromPtr(tableTownsLoomPalette);
 			else if (_game.version == 3)
 				towns_setTextPaletteFromPtr(tableTownsV3Palette);
@@ -267,9 +262,26 @@ void ScummEngine::resetPalette() {
 
 			_townsScreen->toggleLayers(_townsActiveLayerFlags);
 #endif // DISABLE_TOWNS_DUAL_LAYER_MODE
+		} else if (isBootUp && (_game.version >= 4 && _game.heversion == 0) &&
+			(_game.platform == Common::kPlatformDOS || _game.platform == Common::kPlatformUnknown) &&
+			_renderMode == Common::kRenderDefault) {
+			// VGA games at boot-up have at their disposal whatever mode 13h
+			// is offering at that moment: the default palette.
+			// We just need the first few colors, which are the same as the EGA colors.
+			// (See #15869: "SCUMM: MI1: Message banner can be invisible if palette is all black")
+			setPaletteFromTable(tableEGAPalette, sizeof(tableEGAPalette) / 3);
+
+			if (_game.id == GID_MONKEY_VGA) {
+				for (int i = 0; i < _shadowPaletteSize; i++)
+					_shadowPalette[i] = i;
+			}
 		}
+
 		setDirtyColors(0, 255);
 	}
+
+	if (isBootUp && _game.heversion == 0)
+		updatePalette();
 }
 
 void ScummEngine::setPaletteFromTable(const byte *ptr, int numcolor, int index) {
@@ -1741,7 +1753,7 @@ void ScummEngine::updatePalette() {
 
 		const byte levels[] = { 0, 27, 49, 71, 87, 103, 119, 130, 146, 157, 174, 190, 206, 228, 255 };
 
-		// For reasons unknown, the orignal interpreter rendered
+		// For reasons unknown, the original interpreter rendered
 		// everything in shadow mode. We could easily emulate the other
 		// two modes as well:
 		//

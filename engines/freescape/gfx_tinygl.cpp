@@ -40,14 +40,12 @@ Renderer *CreateGfxTinyGL(int screenW, int screenH, Common::RenderMode renderMod
 TinyGLRenderer::TinyGLRenderer(int screenW, int screenH, Common::RenderMode renderMode) : Renderer(screenW, screenH, renderMode, true) {
 	_verts = (Vertex *)malloc(sizeof(Vertex) * kVertexArraySize);
 	_texCoord = (Coord *)malloc(sizeof(Coord) * kVertexArraySize);
+	// TODO: Select this based on the screen format
 	_texturePixelFormat = getRGBAPixelFormat();
 	_variableStippleArray = nullptr;
 }
 
 TinyGLRenderer::~TinyGLRenderer() {
-	for (auto &it : _stippleTextureCache) {
-		delete (TinyGL3DTexture *)it._value;
-	}
 	TinyGL::destroyContext();
 	free(_verts);
 	free(_texCoord);
@@ -80,16 +78,15 @@ void TinyGLRenderer::init() {
 
 	tglDisable(TGL_LIGHTING);
 	tglDisable(TGL_TEXTURE_2D);
-	tglEnable(TGL_DEPTH_TEST);
+	tglEnable(TGL_CULL_FACE);
+	tglFrontFace(TGL_CW);
 	_stippleEnabled = false;
-	_lastColorSet0 = 0;
-	_lastColorSet1 = 0;
-	_stippleTexture = nullptr;
 }
 
 void TinyGLRenderer::setViewport(const Common::Rect &rect) {
 	_viewport = rect;
 	tglViewport(rect.left, g_system->getHeight() - rect.bottom, rect.width(), rect.height());
+	tglScissor(rect.left, g_system->getHeight() - rect.bottom, rect.width(), rect.height());
 }
 
 void TinyGLRenderer::drawTexturedRect2D(const Common::Rect &screenRect, const Common::Rect &textureRect, Texture *texture) {
@@ -109,7 +106,7 @@ void TinyGLRenderer::drawTexturedRect2D(const Common::Rect &screenRect, const Co
 
 void TinyGLRenderer::drawSkybox(Texture *texture, Math::Vector3d camera) {
 	TinyGL3DTexture *glTexture = static_cast<TinyGL3DTexture *>(texture);
-	tglDisable(TGL_DEPTH_TEST);
+	tglDisable(TGL_CULL_FACE);
 	tglEnable(TGL_TEXTURE_2D);
 	tglTexParameteri(TGL_TEXTURE_2D, TGL_TEXTURE_WRAP_S, TGL_REPEAT);
 
@@ -119,6 +116,8 @@ void TinyGLRenderer::drawSkybox(Texture *texture, Math::Vector3d camera) {
 	tglNormalPointer(TGL_FLOAT, 0, _skyNormals);
 	if (texture->_width == 1008)
 		tglTexCoordPointer(2, TGL_FLOAT, 0, _skyUvs1008);
+	else if (texture->_width == 672)
+		tglTexCoordPointer(2, TGL_FLOAT, 0, _skyUvs672);
 	else if (texture->_width == 128)
 		tglTexCoordPointer(2, TGL_FLOAT, 0, _skyUvs128);
 	else
@@ -143,9 +142,52 @@ void TinyGLRenderer::drawSkybox(Texture *texture, Math::Vector3d camera) {
 
 	tglBindTexture(TGL_TEXTURE_2D, 0);
 	tglDisable(TGL_TEXTURE_2D);
-	tglEnable(TGL_DEPTH_TEST);
+	tglEnable(TGL_CULL_FACE);
 	tglFlush();
 }
+
+void TinyGLRenderer::drawThunder(Texture *texture, Math::Vector3d position, float size) {
+	TinyGL3DTexture *glTexture = static_cast<TinyGL3DTexture *>(texture);
+	tglPushMatrix();
+	{
+		tglTranslatef(position.x(), position.y(), position.z());
+
+		TGLfloat m[16];
+		tglGetFloatv(TGL_MODELVIEW_MATRIX, m);
+		for (int i = 0; i < 3; i++)
+			for (int j = 0; j < 3; j++)
+				m[i * 4 + j] = (i == j) ? 1.0f : 0.0f;
+		tglLoadMatrixf(m);
+
+		tglRotatef(-90, 0.0f, 0.0f, 1.0f);
+
+		// === Texturing setup ===
+		tglEnable(TGL_TEXTURE_2D);
+		tglBindTexture(TGL_TEXTURE_2D, glTexture->_id);
+		//tglTexParameteri(TGL_TEXTURE_2D, TGL_TEXTURE_WRAP_S, TGL_CLAMP_TO_BORDER);
+		//tglTexParameteri(TGL_TEXTURE_2D, TGL_TEXTURE_WRAP_T, TGL_CLAMP_TO_BORDER);
+
+		// === Blending (thunder should glow) ===
+		tglEnable(TGL_BLEND);
+		tglBlendFunc(TGL_ONE, TGL_ONE);
+
+		// === Draw the billboarded quad ===
+		float half = size * 0.5f;
+		tglBegin(TGL_QUADS);
+			tglTexCoord2f(0.0f, 0.0f); tglVertex3f(-half, -half, 0.0f);
+			tglTexCoord2f(0.0f, 0.72f); tglVertex3f( half, -half, 0.0f);
+			tglTexCoord2f(1.0f, 0.72f); tglVertex3f( half,  half, 0.0f);
+			tglTexCoord2f(1.0f, 0.0f); tglVertex3f(-half,  half, 0.0f);
+		tglEnd();
+
+		// === Cleanup ===
+		tglDisable(TGL_BLEND);
+		tglBindTexture(TGL_TEXTURE_2D, 0);
+		tglDisable(TGL_TEXTURE_2D);
+	}
+	tglPopMatrix();
+}
+
 
 void TinyGLRenderer::updateProjectionMatrix(float fov, float aspectRatio, float nearClipPlane, float farClipPlane) {
 	tglMatrixMode(TGL_PROJECTION);
@@ -169,12 +211,22 @@ void TinyGLRenderer::positionCamera(const Math::Vector3d &pos, const Math::Vecto
 	tglMultMatrixf(lookMatrix.getData());
 	tglRotatef(rollAngle, 0.0f, 0.0f, 1.0f);
 	tglTranslatef(-pos.x(), -pos.y(), -pos.z());
+
+	// Apply a 2D shake effect on the projection matrix,
+	// matching the OpenGL fixed-function implementation.
+	tglMatrixMode(TGL_PROJECTION);
+	TGLfloat projMatrix[16];
+	tglGetFloatv(TGL_PROJECTION_MATRIX, projMatrix);
+	tglLoadIdentity();
+	tglTranslatef(_shakeOffset.x * 0.025f, _shakeOffset.y * 0.025f, 0.0f);
+	tglMultMatrixf(projMatrix);
+	tglMatrixMode(TGL_MODELVIEW);
 }
 
 void TinyGLRenderer::renderSensorShoot(byte color, const Math::Vector3d sensor, const Math::Vector3d player, const Common::Rect &viewArea) {
 	tglEnable(TGL_BLEND);
 	tglBlendFunc(TGL_ONE_MINUS_DST_COLOR, TGL_ZERO);
-	tglColor3ub(255, 255, 255);
+	tglColor4ub(255, 255, 255, 255);
 	polygonOffset(true);
 	tglEnableClientState(TGL_VERTEX_ARRAY);
 	copyToVertexArray(0, player);
@@ -197,29 +249,44 @@ void TinyGLRenderer::renderPlayerShootBall(byte color, const Common::Point &posi
 	if (_renderMode == Common::kRenderCGA || _renderMode == Common::kRenderZX) {
 		r = g = b = 255;
 	} else {
-		r = g = b = 255;
+		if (_renderMode == Common::kRenderHercG) {
+			// Hercules Green
+			r = b = 0;
+			g = 255;
+		} else if (_renderMode == Common::kRenderHercA) {
+			// Hercules Amber
+			r = 255;
+			g = 191;
+			b = 0;
+		} else
+			r = g = b = 255;
+
 		tglEnable(TGL_BLEND);
 		tglBlendFunc(TGL_ONE_MINUS_DST_COLOR, TGL_ZERO);
 	}
 
-	tglDisable(TGL_DEPTH_TEST);
+
 	tglDepthMask(TGL_FALSE);
 
-	tglColor3ub(r, g, b);
+	tglColor4ub(r, g, b, 255);
 	int triangleAmount = 20;
 	float twicePi = (float)(2.0 * M_PI);
-	float coef = (9 - frame) / 9.0;
-	float radius = (1 - coef) * 4.0;
 
-	Common::Point initial_position(viewArea.left + viewArea.width() / 2 + 2, viewArea.height() + viewArea.top);
-	Common::Point ball_position = coef * position + (1 - coef) * initial_position;
+	// Exponential ease-out trajectory inspired by the original ZX animation.
+	float coef = 1.0f - powf(0.5f, (8 - frame + 1) / 2.0f);
+	float radius = 1.0f + frame * 0.5f;
+
+	float startX = viewArea.left + viewArea.width() / 2.0f + 2;
+	float startY = viewArea.height() + viewArea.top;
+	float ballX = coef * position.x + (1.0f - coef) * startX;
+	float ballY = coef * position.y + (1.0f - coef) * startY;
 
 	tglEnableClientState(TGL_VERTEX_ARRAY);
-	copyToVertexArray(0, Math::Vector3d(ball_position.x, ball_position.y, 0));
+	copyToVertexArray(0, Math::Vector3d(ballX, ballY, 0));
 
-	for(int i = 0; i <= triangleAmount; i++) {
-		float x = ball_position.x + (radius * cos(i *  twicePi / triangleAmount));
-		float y = ball_position.y + (radius * sin(i * twicePi / triangleAmount));
+	for (int i = 0; i <= triangleAmount; i++) {
+		float x = ballX + (radius * cos(i * twicePi / triangleAmount));
+		float y = ballY + (radius * sin(i * twicePi / triangleAmount));
 		copyToVertexArray(i + 1, Math::Vector3d(x, y, 0));
 	}
 
@@ -228,7 +295,6 @@ void TinyGLRenderer::renderPlayerShootBall(byte color, const Common::Point &posi
 	tglDisableClientState(TGL_VERTEX_ARRAY);
 
 	tglDisable(TGL_BLEND);
-	tglEnable(TGL_DEPTH_TEST);
 	tglDepthMask(TGL_TRUE);
 }
 
@@ -246,15 +312,24 @@ void TinyGLRenderer::renderPlayerShootRay(byte color, const Common::Point &posit
 	if (_renderMode == Common::kRenderCGA || _renderMode == Common::kRenderZX) {
 		r = g = b = 255;
 	} else {
-		r = g = b = 255;
+		if (_renderMode == Common::kRenderHercG) {
+			// Hercules Green
+			r = b = 0;
+			g = 255;
+		} else if (_renderMode == Common::kRenderHercA) {
+			// Hercules Amber
+			r = 255;
+			g = 191;
+			b = 0;
+		} else
+			r = g = b = 255;
 		tglEnable(TGL_BLEND);
 		tglBlendFunc(TGL_ONE_MINUS_DST_COLOR, TGL_ZERO);
 	}
 
-	tglDisable(TGL_DEPTH_TEST);
 	tglDepthMask(TGL_FALSE);
 
-	tglColor3ub(r, g, b);
+	tglColor4ub(r, g, b, 255);
 
 	int viewPort[4];
 	tglGetIntegerv(TGL_VIEWPORT, viewPort);
@@ -275,7 +350,6 @@ void TinyGLRenderer::renderPlayerShootRay(byte color, const Common::Point &posit
 	tglDisableClientState(TGL_VERTEX_ARRAY);
 
 	tglDisable(TGL_BLEND);
-	tglEnable(TGL_DEPTH_TEST);
 	tglDepthMask(TGL_TRUE);
 }
 
@@ -288,7 +362,6 @@ void TinyGLRenderer::renderCrossair(const Common::Point &crossairPosition) {
 	tglEnable(TGL_BLEND);
 	tglBlendFunc(TGL_ONE_MINUS_DST_COLOR, TGL_ZERO);
 
-	tglDisable(TGL_DEPTH_TEST);
 	tglDepthMask(TGL_FALSE);
 
 	useColor(255, 255, 255);
@@ -311,22 +384,14 @@ void TinyGLRenderer::renderCrossair(const Common::Point &crossairPosition) {
 	tglDisableClientState(TGL_VERTEX_ARRAY);
 
 	tglDisable(TGL_BLEND);
-	tglEnable(TGL_DEPTH_TEST);
 	tglDepthMask(TGL_TRUE);
 }
 
 void TinyGLRenderer::setStippleData(byte *data) {
 	if (!data) {
-		_stippleTexture = nullptr;
-		assert(_stippleEnabled == false);
 		_variableStippleArray = nullptr;
 		return;
 	}
-	if (_stippleTextureCache.contains(uint64(data))) {
-
-	}
-	assert(_stippleTextureCache.size() <= 16);
-
 	_variableStippleArray = data;
 }
 
@@ -334,13 +399,22 @@ void TinyGLRenderer::useStipple(bool enabled) {
 	_stippleEnabled = enabled;
 
 	if (enabled) {
-		assert(_variableStippleArray);
+		if (!_variableStippleArray)
+			_variableStippleArray = _defaultStippleArray;
+		tglEnable(TGL_POLYGON_STIPPLE);
+		tglEnable(TGL_TWO_COLOR_STIPPLE);
+		tglPolygonStipple(_variableStippleArray);
 	} else {
-		_stippleTexture = nullptr;
+		tglDisable(TGL_POLYGON_STIPPLE);
+		tglDisable(TGL_TWO_COLOR_STIPPLE);
+		_variableStippleArray = nullptr;
 	}
 }
 
 void TinyGLRenderer::renderFace(const Common::Array<Math::Vector3d> &vertices) {
+	if (_variableStippleArray && !_stippleEnabled)
+		return;
+
 	assert(vertices.size() >= 2);
 	const Math::Vector3d &v0 = vertices[0];
 
@@ -358,16 +432,6 @@ void TinyGLRenderer::renderFace(const Common::Array<Math::Vector3d> &vertices) {
 		return;
 	}
 
-	if (_stippleEnabled) {
-		if (_stippleTextureCache.contains(uint64(_variableStippleArray))) {
-			_stippleTexture = _stippleTextureCache[uint64(_variableStippleArray)];
-		} else {
-			_stippleTexture = new TinyGL3DTexture(_variableStippleArray, _lastColorSet0, _lastColorSet1);
-			_stippleTextureCache[uint64(_variableStippleArray)] = _stippleTexture;
-		}
-	} else if (_variableStippleArray)
-		return; // We are in the middle of a stipple rendering operation, so we should skip this face
-
 	tglEnableClientState(TGL_VERTEX_ARRAY);
 	uint vi = 0;
 	for (uint i = 1; i < vertices.size() - 1; i++) { // no underflow since vertices.size() > 2
@@ -380,64 +444,8 @@ void TinyGLRenderer::renderFace(const Common::Array<Math::Vector3d> &vertices) {
 	}
 	tglVertexPointer(3, TGL_FLOAT, 0, _verts);
 
-	if (_stippleEnabled) {
-		tglClear(TGL_STENCIL_BUFFER_BIT);
-		tglEnable(TGL_STENCIL_TEST);
-		tglStencilFunc(TGL_ALWAYS, 1, 0xFF);        // Always pass stencil test
-		tglStencilOp(TGL_KEEP, TGL_KEEP, TGL_REPLACE); // Replace stencil buffer where drawn
-		tglEnable(TGL_DEPTH_TEST);
-		tglDepthMask(TGL_TRUE);
-		tglColorMask(TGL_FALSE, TGL_FALSE, TGL_FALSE, TGL_FALSE);
-	}
-
 	tglDrawArrays(TGL_TRIANGLES, 0, vi + 3);
 	tglDisableClientState(TGL_VERTEX_ARRAY);
-
-	if (_stippleEnabled) {
-		tglColorMask(TGL_TRUE, TGL_TRUE, TGL_TRUE, TGL_TRUE);
-		tglStencilFunc(TGL_EQUAL, 1, 0xFF); // Only render where stencil value is 1
-		tglStencilOp(TGL_KEEP, TGL_KEEP, TGL_KEEP); // Don't change stencil buffer
-
-		tglMatrixMode(TGL_PROJECTION);
-		tglPushMatrix();
-
-		tglLoadIdentity();
-		tglOrtho(0.0, 1.0, 0.0, 1.0, -1.0, 1.0); // Orthographic projection
-
-		tglScalef(1, 1, 1);
-		tglMatrixMode(TGL_MODELVIEW);
-		tglPushMatrix();
-		tglLoadIdentity();
-
-		tglEnable(TGL_TEXTURE_2D);
-		tglBindTexture(TGL_TEXTURE_2D, _stippleTexture->_id);
-		tglColor4f(1.f, 1.f, 1.f, 1.f);
-		tglDepthMask(TGL_FALSE);
-
-		tglBegin(TGL_QUADS);
-		tglTexCoord2f(0.0f, 0.0f);
-		tglVertex2f(0.0f, 0.0f);
-		tglTexCoord2f(1.0, 0.0f);
-		tglVertex2f(1.0, 0.0f);
-		tglTexCoord2f(1.0, 1.0);
-		tglVertex2f(1.0, 1.0);
-		tglTexCoord2f(0.0f, 1.0);
-		tglVertex2f(0.0f, 1.0);
-		tglEnd();
-
-		tglDepthMask(TGL_TRUE);
-		tglDisable(TGL_STENCIL_TEST);
-		tglDisable(TGL_TEXTURE_2D);
-		tglDisable(TGL_TEXTURE);
-		tglFlush();
-		tglBindTexture(TGL_TEXTURE_2D, 0);
-
-		tglMatrixMode(TGL_PROJECTION);
-		tglPopMatrix();
-
-		tglMatrixMode(TGL_MODELVIEW);
-		tglPopMatrix();
-	}
 }
 
 void TinyGLRenderer::drawCelestialBody(Math::Vector3d position, float radius, byte color) {
@@ -449,7 +457,7 @@ void TinyGLRenderer::drawCelestialBody(Math::Vector3d position, float radius, by
 	float twicePi = (float)(2.0 * M_PI);
 
 	// Quick billboard effect inspired from this code:
-	// http://www.lighthouse3d.com/opengl/billboarding/index.php?billCheat
+	// https://www.lighthouse3d.com/opengl/billboarding/index.php?billCheat
 	tglMatrixMode(TGL_MODELVIEW);
 	tglPushMatrix();
 	TGLfloat m[16];
@@ -465,11 +473,14 @@ void TinyGLRenderer::drawCelestialBody(Math::Vector3d position, float radius, by
 		}
 
 	tglLoadMatrixf(m);
-	tglDisable(TGL_DEPTH_TEST);
 	tglDepthMask(TGL_FALSE);
 
 	setStippleData(stipple);
 	useColor(r1, g1, b1);
+	if (r1 != r2 || g1 != g2 || b1 != b2) {
+		useStipple(true);
+		tglStippleColor(r2, g2, b2);
+	}
 
 	tglEnableClientState(TGL_VERTEX_ARRAY);
 	copyToVertexArray(0, position);
@@ -486,38 +497,17 @@ void TinyGLRenderer::drawCelestialBody(Math::Vector3d position, float radius, by
 	tglDrawArrays(TGL_TRIANGLE_FAN, 0, triangleAmount + 2);
 	tglDisableClientState(TGL_VERTEX_ARRAY);
 
-	if (r1 != r2 || g1 != g2 || b1 != b2) {
-		useStipple(true);
-		useColor(r2, g2, b2);
+	useStipple(false);
 
-		tglEnableClientState(TGL_VERTEX_ARRAY);
-		copyToVertexArray(0, position);
-
-		for (int i = 0; i <= triangleAmount; i++) {
-			copyToVertexArray(i + 1,
-			                  Math::Vector3d(position.x(), position.y() + (radius * cos(i *  twicePi / triangleAmount)),
-			                                 position.z() + (adj * radius * sin(i * twicePi / triangleAmount)))
-			                 );
-		}
-
-		tglVertexPointer(3, TGL_FLOAT, 0, _verts);
-		tglDrawArrays(TGL_TRIANGLE_FAN, 0, triangleAmount + 2);
-		tglDisableClientState(TGL_VERTEX_ARRAY);
-
-		useStipple(false);
-	}
-
-	tglEnable(TGL_DEPTH_TEST);
 	tglDepthMask(TGL_TRUE);
 	tglPopMatrix();
 }
 
-void TinyGLRenderer::depthTesting(bool enabled) {
+void TinyGLRenderer::enableCulling(bool enabled) {
 	if (enabled) {
-		tglClear(TGL_DEPTH_BUFFER_BIT);
-		tglEnable(TGL_DEPTH_TEST);
+		tglEnable(TGL_CULL_FACE);
 	} else {
-		tglDisable(TGL_DEPTH_TEST);
+		tglDisable(TGL_CULL_FACE);
 	}
 }
 
@@ -532,59 +522,27 @@ void TinyGLRenderer::polygonOffset(bool enabled) {
 }
 
 void TinyGLRenderer::useColor(uint8 r, uint8 g, uint8 b) {
-	_lastColorSet1 = _lastColorSet0;
-	_lastColorSet0 = _texturePixelFormat.RGBToColor(r, g, b);
-	tglColor3ub(r, g, b);
+	if (_stippleEnabled) {
+		tglStippleColor(r, g, b);
+	} else {
+		tglColor4ub(r, g, b, 255);
+	}
 }
 
 void TinyGLRenderer::clear(uint8 r, uint8 g, uint8 b, bool ignoreViewport) {
-	tglClear(TGL_DEPTH_BUFFER_BIT | TGL_STENCIL_BITS);
-	if (ignoreViewport) {
-		tglClearColor(r / 255., g / 255., b / 255., 1.0);
-		tglClear(TGL_COLOR_BUFFER_BIT);
-	} else {
-		// Create a viewport sized quad and color it
-		useColor(r, g, b);
-
-		tglMatrixMode(TGL_PROJECTION);
-		tglPushMatrix();
-		tglLoadIdentity();
-
-		tglOrtho(0, _viewport.width(), _viewport.height(), 0, 0, 1);
-		tglMatrixMode(TGL_MODELVIEW);
-		tglPushMatrix();
-		tglLoadIdentity();
-
-		tglDisable(TGL_DEPTH_TEST);
-		tglDepthMask(TGL_FALSE);
-
-		tglEnableClientState(TGL_VERTEX_ARRAY);
-		copyToVertexArray(0, Math::Vector3d(0, 0, 0));
-		copyToVertexArray(1, Math::Vector3d(0, _viewport.height(), 0));
-		copyToVertexArray(2, Math::Vector3d(_viewport.width(), _viewport.height(), 0));
-
-		copyToVertexArray(3, Math::Vector3d(0, 0, 0));
-		copyToVertexArray(4, Math::Vector3d(_viewport.width(), 0, 0));
-		copyToVertexArray(5, Math::Vector3d(_viewport.width(), _viewport.height(), 0));
-
-		tglVertexPointer(3, TGL_FLOAT, 0, _verts);
-		tglDrawArrays(TGL_TRIANGLES, 0, 6);
-		tglDisableClientState(TGL_VERTEX_ARRAY);
-
-		tglEnable(TGL_DEPTH_TEST);
-		tglDepthMask(TGL_TRUE);
-
-		tglPopMatrix();
-		tglMatrixMode(TGL_PROJECTION);
-		tglPopMatrix();
-	}
+	if (ignoreViewport)
+		tglDisable(TGL_SCISSOR_TEST);
+	tglClearColor(r / 255., g / 255., b / 255., 1.0);
+	tglClear(TGL_COLOR_BUFFER_BIT | TGL_DEPTH_BUFFER_BIT | TGL_STENCIL_BUFFER_BIT);
+	if (ignoreViewport)
+		tglEnable(TGL_SCISSOR_TEST);
 }
 
 void TinyGLRenderer::drawFloor(uint8 color) {
 	uint8 r1, g1, b1, r2, g2, b2;
 	byte *stipple = nullptr;
 	assert(getRGBAt(color, 0, r1, g1, b1, r2, g2, b2, stipple)); // TODO: move check inside this function
-	tglColor3ub(r1, g1, b1);
+	tglColor4ub(r1, g1, b1, 255);
 
 	tglEnableClientState(TGL_VERTEX_ARRAY);
 	copyToVertexArray(0, Math::Vector3d(-100000.0, 0.0, -100000.0));
@@ -617,7 +575,7 @@ Graphics::Surface *TinyGLRenderer::getScreenshot() {
 
 	Graphics::Surface *s = new Graphics::Surface();
 	s->create(_screenW, _screenH, getRGBAPixelFormat());
-	s->copyFrom(glBuffer);
+	s->convertFrom(glBuffer, getRGBAPixelFormat());
 
 	return s;
 }

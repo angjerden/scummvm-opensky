@@ -21,7 +21,7 @@
 
 //
 // This file is heavily based on the arj code available under the GPL
-// from http://arj.sourceforge.net/ , version 3.10.22 .
+// from <https://arj.sourceforge.net>, version 3.10.22.
 
 #include "common/scummsys.h"
 #include "common/archive.h"
@@ -834,6 +834,7 @@ Common::SharedArchiveContents ArjArchive::readContentsForPath(const Common::Path
 		if (hdr->method == 0) { // store
 			int32 len = archiveFile.read(uncompressedData + uncompressedPtr, hdr->origSize);
 			assert(len == hdr->origSize);
+			(void)len;
 		} else {
 			ArjDecoder *decoder = new ArjDecoder(hdr);
 

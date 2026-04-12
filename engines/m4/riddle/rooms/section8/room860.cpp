@@ -19,11 +19,12 @@
  *
  */
 
-#include "m4/m4.h"
 #include "m4/riddle/rooms/section8/room860.h"
+#include "m4/adv_r/adv_control.h"
 #include "m4/graphics/gr_series.h"
 #include "m4/gui/gui_vmng_screen.h"
 #include "m4/riddle/vars.h"
+#include "m4/m4.h"
 
 namespace M4 {
 namespace Riddle {
@@ -72,20 +73,20 @@ void Room860::daemon() {
 		series_load("860SHLD", -1, nullptr);
 		series_place_sprite("860SHLD", 0, 0, 0, 100, 512);
 		sendWSMessage_10000(1, _860RipMach, _860RipWalkSeries, 1, 100, 2,
-			_860RipWalkSeries, 1, 1, 0);
+			_860RipTalkSeries, 1, 1, 0);
 		sendWSMessage_190000(_860RipMach, 3);
 		g_engine->set_camera_delta_pan(-290, 0);
 		series_unload(_860RipCrossSeries);
 		break;
 
 	case 2:
+		series_unload(_860RipWalkSeries);
 		sendWSMessage_10000(1, _860McMach, _860MeiTalkSeries, 1, 1, -1,
 			_860MeiTalkSeries, 1, 11, 4);
 		digi_play("860m01", 2, 255, 3, 860);
 		break;
 
 	case 3:
-		series_unload(_860RipWalkSeries);
 		sendWSMessage_10000(1, _860McMach, _860MeiTalkSeries, 11, 11, -1,
 			_860MeiTalkSeries, 11, 11, 0);
 		sendWSMessage_10000(1, _860RipMach, _860RipTalkSeries, 1, 2, -1,
@@ -145,7 +146,7 @@ void Room860::daemon() {
 
 		digi_play_loop("950_s45", 3, 80, -1, 950);
 
-		_G(game).new_room = 811;
+		_G(game).setRoom(811);
 		break;
 
 	case 1000:

@@ -21,6 +21,7 @@
 
 #include "common/textconsole.h"
 #include "common/translation.h"
+#include "common/text-to-speech.h"
 
 #include "engines/savestate.h"
 #include "graphics/thumbnail.h"
@@ -28,6 +29,8 @@
 #include "gui/saveload.h"
 
 #include "drascula/drascula.h"
+
+#include "backends/keymapper/keymapper.h"
 
 namespace Drascula {
 
@@ -343,8 +346,11 @@ bool DrasculaEngine::loadGame(int slot) {
 Common::String DrasculaEngine::enterName(Common::String &selectedName) {
 	Common::KeyCode key;
 	Common::String inputLine = selectedName;
+	Common::Keymapper *keymapper = g_system->getEventManager()->getKeymapper();
 
 	flushKeyBuffer();
+	flushActionBuffer();
+	keymapper->getKeymap("game-shortcuts")->setEnabled(false);
 	_system->setFeatureState(OSystem::kFeatureVirtualKeyboard, true);
 
 	while (!shouldQuit()) {
@@ -370,6 +376,7 @@ Common::String DrasculaEngine::enterName(Common::String &selectedName) {
 		}
 	}
 
+	keymapper->getKeymap("game-shortcuts")->setEnabled(true);
 	_system->setFeatureState(OSystem::kFeatureVirtualKeyboard, false);
 	return inputLine;
 }
@@ -380,7 +387,7 @@ bool DrasculaEngine::scummVMSaveLoadDialog(bool isSave) {
 	int slot;
 
 	if (isSave) {
-		dialog = new GUI::SaveLoadChooser(_("Save game:"), _("Save"), true);
+		dialog = new GUI::SaveLoadChooser(true);
 
 		slot = dialog->runModalWithCurrentTarget();
 		desc = dialog->getResultString();
@@ -393,7 +400,7 @@ bool DrasculaEngine::scummVMSaveLoadDialog(bool isSave) {
 		if (desc.size() > 28)
 			desc = Common::String(desc.c_str(), 28);
 	} else {
-		dialog = new GUI::SaveLoadChooser(_("Restore game:"), _("Restore"), false);
+		dialog = new GUI::SaveLoadChooser(false);
 		slot = dialog->runModalWithCurrentTarget();
 	}
 
@@ -427,6 +434,10 @@ bool DrasculaEngine::saveLoadScreen() {
 		}
 		print_abc(selectedName.c_str(), 117, 15);
 
+		if (selectedName.size() > 0) {
+			sayText(selectedName.c_str(), Common::TextToSpeechManager::INTERRUPT);
+		}
+
 		updateScreen();
 		updateEvents();
 
@@ -456,6 +467,8 @@ bool DrasculaEngine::saveLoadScreen() {
 			if (_mouseX > 208 && _mouseY > 123 && _mouseX < 282 && _mouseY < 149) {
 				// "Save" button
 				if (selectedName.empty()) {
+					sayText("Please select a slot", Common::TextToSpeechManager::INTERRUPT);
+
 					print_abc("Please select a slot", 117, 15);
 					updateScreen();
 					delay(200);
@@ -472,6 +485,8 @@ bool DrasculaEngine::saveLoadScreen() {
 			} else if (_mouseX > 125 && _mouseY > 123 && _mouseX < 199 && _mouseY < 149) {
 				// "Load" button
 				if (selectedName.empty()) {
+					sayText("Please select a slot", Common::TextToSpeechManager::INTERRUPT);
+
 					print_abc("Please select a slot", 117, 15);
 					updateScreen();
 					delay(200);
