@@ -570,7 +570,8 @@ void ScummEngine_v8::processKeyboard(Common::KeyState lastKeyHit) {
 void ScummEngine_v7::processKeyboard(Common::KeyState lastKeyHit) {
 	if (isUsingOriginalGUI()) {
 		if (lastKeyHit.keycode == Common::KEYCODE_b &&
-			((lastKeyHit.hasFlags(Common::KBD_CTRL) && _game.id != GID_DIG) || lastKeyHit.hasFlags(Common::KBD_SHIFT))) {
+			((lastKeyHit.hasFlags(Common::KBD_CTRL)  && _game.id != GID_DIG) ||
+			 (lastKeyHit.hasFlags(Common::KBD_SHIFT) && _game.id == GID_DIG))) {
 			int curBufferCount = _imuseDigital->roundRobinSetBufferCount();
 			// "iMuse buffer count changed to %d"
 			showBannerAndPause(0, 90, getGUIString(gsIMuseBuffer), curBufferCount);
@@ -603,7 +604,7 @@ void ScummEngine_v7::processKeyboard(Common::KeyState lastKeyHit) {
 			// rest of the game.
 			// This fix produces the intended behaviour from the original interpreter.
 			if (_game.id == GID_FT && _currentRoom == 6
-				&& (vm.slot[_currentScript].number == 65 || vm.slot[_currentScript].number == 64)) {
+				&& (currentScriptSlotIs(65) || currentScriptSlotIs(64))) {
 				_skipVideo = false;
 			} else {
 				_skipVideo = true;
@@ -644,6 +645,10 @@ void ScummEngine::waitForBannerInput(int32 waitTime, Common::KeyState &ks, bool 
 					   ks.keycode != Common::KEYCODE_RALT    &&
 					   !(ks.keycode == Common::KEYCODE_s && ks.hasFlags(Common::KBD_ALT));
 
+#ifdef USE_TTS
+			sayButtonText();
+#endif
+
 			if (validKey || leftBtnClicked || rightBtnClicked || (handleMouseWheel && _mouseWheelFlag))
 				return;
 
@@ -670,6 +675,10 @@ void ScummEngine::waitForBannerInput(int32 waitTime, Common::KeyState &ks, bool 
 			ks = _keyPressed;
 			leftBtnClicked = (_leftBtnPressed & msClicked) != 0;
 			rightBtnClicked = (_rightBtnPressed & msClicked) != 0;
+
+#ifdef USE_TTS
+			sayButtonText();
+#endif
 
 			if (shouldQuit())
 				return;
@@ -705,7 +714,7 @@ void ScummEngine_v6::processKeyboard(Common::KeyState lastKeyHit) {
 
 		if (_game.version != 8 || (_game.version == 8 && (_game.features & GF_DEMO))) {
 			// "Music Volume  Low  =========  High"
-			if (lastKeyHit.hasFlags(Common::KBD_SHIFT) &&
+			if (_game.heversion == 0 && lastKeyHit.hasFlags(Common::KBD_SHIFT) &&
 				(lastKeyHit.keycode == Common::KEYCODE_o || lastKeyHit.keycode == Common::KEYCODE_p)) {
 				Common::KeyState ks = lastKeyHit;
 
@@ -743,7 +752,7 @@ void ScummEngine_v6::processKeyboard(Common::KeyState lastKeyHit) {
 			}
 
 			// "Voice Volume  Low  =========  High"
-			if (lastKeyHit.hasFlags(Common::KBD_SHIFT) &&
+			if (_game.heversion == 0 && lastKeyHit.hasFlags(Common::KBD_SHIFT) &&
 				(lastKeyHit.keycode == Common::KEYCODE_k || lastKeyHit.keycode == Common::KEYCODE_l)) {
 				Common::KeyState ks = lastKeyHit;
 
@@ -781,7 +790,7 @@ void ScummEngine_v6::processKeyboard(Common::KeyState lastKeyHit) {
 			}
 
 			// "Sfx Volume  Low  =========  High"
-			if (lastKeyHit.hasFlags(Common::KBD_SHIFT) &&
+			if (_game.heversion == 0 && lastKeyHit.hasFlags(Common::KBD_SHIFT) &&
 				(lastKeyHit.keycode == Common::KEYCODE_n || lastKeyHit.keycode == Common::KEYCODE_m)) {
 				Common::KeyState ks = lastKeyHit;
 
@@ -960,6 +969,32 @@ void ScummEngine::processKeyboard(Common::KeyState lastKeyHit) {
 	bool isNES = _game.platform == Common::kPlatformNES;
 	bool inSaveRoom = false;
 	bool canToggleSmoothing = _macScreen && _game.version > 3 && _game.heversion == 0;
+	const bool canOpenPlaybackPrompt =
+		_game.platform == Common::kPlatformDOS &&
+		(_game.id == GID_MONKEY || _game.id == GID_MONKEY2 || _game.id == GID_INDY4);
+
+	if (canOpenPlaybackPrompt && lastKeyHit.keycode == Common::KEYCODE_F10 && lastKeyHit.hasFlags(Common::KBD_SHIFT)) {
+		if (_playback._active) {
+			const Common::String playbackName = _playback._name;
+			_playback.reset();
+			clearClickedStatus();
+			showBannerAndPause(1, -1, "Done with record/playback of '%s'", playbackName.c_str());
+			return;
+		}
+
+		Common::String playbackFile;
+
+		if (showBannerAndPauseForTextInput(1, "Enter playback file name: ", playbackFile, 63)) {
+			_playback.reset();
+			if (_playback.tryLoadPlayback(this, Common::Path(playbackFile, Common::Path::kNoSeparator))) {
+				_playback.startPlayback(this);
+			} else {
+				clearClickedStatus();
+				showBannerAndPause(1, -1, "Can't open playback file '%s'", playbackFile.c_str());
+			}
+		}
+		return;
+	}
 
 	// The following check is used by v3 games which have writable savegame names
 	// and also support some key combinations which in our case are mapped to SHIFT-<letter>
@@ -994,7 +1029,7 @@ void ScummEngine::processKeyboard(Common::KeyState lastKeyHit) {
 		if ((VAR_PAUSE_KEY != 0xFF && lastKeyHit.ascii == VAR(VAR_PAUSE_KEY)) ||
 			(lastKeyHit.keycode == Common::KEYCODE_SPACE && _game.features & GF_DEMO)) {
 			if (isSegaCD) {
-				if (VAR(VAR_MAINMENU_KEY) != 0)
+				if (VAR(VAR_MAINMENU_KEY) != 0 && _game.heversion == 0)
 					showMainMenu();
 				return;
 			} else {
@@ -1002,6 +1037,9 @@ void ScummEngine::processKeyboard(Common::KeyState lastKeyHit) {
 				int8 oldCursorState = _cursor.state;
 				_cursor.state = (_game.id == GID_MONKEY && _game.platform == Common::kPlatformMacintosh) ? 1 : 0;
 				CursorMan.showMouse(_cursor.state > 0);
+#ifdef USE_TTS
+				stopTextToSpeech();
+#endif
 				// "Game Paused.  Press SPACE to Continue."
 				if (_game.version > 4)
 					showBannerAndPause(0, -1, getGUIString(gsPause));
@@ -1188,7 +1226,7 @@ void ScummEngine::processKeyboard(Common::KeyState lastKeyHit) {
 		}
 
 		if (VAR_MAINMENU_KEY != 0xFF && (lastKeyHit.ascii == VAR(VAR_MAINMENU_KEY) && lastKeyHit.hasFlags(0))
-			&& _game.version > 3) {
+			&& _game.version > 3 && _game.heversion == 0) {
 			if (isSegaCD) {
 				// We map the GMM to F5, while SPACE (which acts as our pause button) calls the original menu...
 				openMainMenuDialog();
@@ -1262,8 +1300,8 @@ void ScummEngine::processKeyboard(Common::KeyState lastKeyHit) {
 				return;
 			}
 
-			if (_game.version == 6 && lastKeyHit.keycode == Common::KEYCODE_n && lastKeyHit.hasFlags(Common::KBD_CTRL)) {
-				showBannerAndPause(0, 90, getGUIString(gsMouseMode));
+			if (_game.version == 6 && _game.heversion == 0 && lastKeyHit.keycode == Common::KEYCODE_n && lastKeyHit.hasFlags(Common::KBD_CTRL)) {
+ 				showBannerAndPause(0, 90, getGUIString(gsMouseMode));
 				return;
 			}
 

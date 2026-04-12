@@ -284,7 +284,7 @@ static const AGOSGameDescription gameDescriptions[] = {
 			Common::EN_ANY,
 			Common::kPlatformDOS,
 			ADGF_DEMO,
-			GUIO2(GUIO_NOSPEECH, GAMEOPTION_OPL3_MODE)
+			GUIO3(GUIO_NOSPEECH, GAMEOPTION_OPL3_MODE, GAMEOPTION_MIDI_MODE)
 		},
 
 		GType_ELVIRA1,
@@ -307,7 +307,7 @@ static const AGOSGameDescription gameDescriptions[] = {
 			Common::EN_ANY,
 			Common::kPlatformDOS,
 			ADGF_NO_FLAGS,
-			GUIO2(GUIO_NOSPEECH, GAMEOPTION_OPL3_MODE)
+			GUIO3(GUIO_NOSPEECH, GAMEOPTION_OPL3_MODE, GAMEOPTION_MIDI_MODE)
 		},
 
 		GType_ELVIRA1,
@@ -330,7 +330,7 @@ static const AGOSGameDescription gameDescriptions[] = {
 			Common::CS_CZE,
 			Common::kPlatformDOS,
 			ADGF_NO_FLAGS,
-			GUIO2(GUIO_NOSPEECH, GAMEOPTION_OPL3_MODE)
+			GUIO3(GUIO_NOSPEECH, GAMEOPTION_OPL3_MODE, GAMEOPTION_MIDI_MODE)
 		},
 
 		GType_ELVIRA1,
@@ -353,7 +353,7 @@ static const AGOSGameDescription gameDescriptions[] = {
 			Common::ES_ESP,
 			Common::kPlatformDOS,
 			ADGF_NO_FLAGS,
-			GUIO2(GUIO_NOSPEECH, GAMEOPTION_OPL3_MODE)
+			GUIO3(GUIO_NOSPEECH, GAMEOPTION_OPL3_MODE, GAMEOPTION_MIDI_MODE)
 		},
 
 		GType_ELVIRA1,
@@ -376,7 +376,7 @@ static const AGOSGameDescription gameDescriptions[] = {
 			Common::FR_FRA,
 			Common::kPlatformDOS,
 			ADGF_NO_FLAGS,
-			GUIO2(GUIO_NOSPEECH, GAMEOPTION_OPL3_MODE)
+			GUIO3(GUIO_NOSPEECH, GAMEOPTION_OPL3_MODE, GAMEOPTION_MIDI_MODE)
 		},
 
 		GType_ELVIRA1,
@@ -399,7 +399,7 @@ static const AGOSGameDescription gameDescriptions[] = {
 			Common::DE_DEU,
 			Common::kPlatformDOS,
 			ADGF_NO_FLAGS,
-			GUIO2(GUIO_NOSPEECH, GAMEOPTION_OPL3_MODE)
+			GUIO3(GUIO_NOSPEECH, GAMEOPTION_OPL3_MODE, GAMEOPTION_MIDI_MODE)
 		},
 
 		GType_ELVIRA1,
@@ -1083,7 +1083,7 @@ static const AGOSGameDescription gameDescriptions[] = {
 			Common::EN_ANY,
 			Common::kPlatformAcorn,
 			ADGF_DEMO,
-			GUIO3(GUIO_NOSPEECH, GUIO_NOMIDI, GAMEOPTION_DISABLE_FADE_EFFECTS)
+			GUIO4(GUIO_NOSPEECH, GUIO_NOMIDI, GAMEOPTION_DISABLE_FADE_EFFECTS, GAMEOPTION_USE_SYSTEM_CURSOR)
 		},
 
 		GType_SIMON1,
@@ -1107,7 +1107,7 @@ static const AGOSGameDescription gameDescriptions[] = {
 			Common::EN_ANY,
 			Common::kPlatformAcorn,
 			ADGF_NO_FLAGS,
-			GUIO4(GUIO_NOSPEECH, GUIO_NOMIDI, GAMEOPTION_DISABLE_FADE_EFFECTS, GAMEOPTION_COPY_PROTECTION)
+			GUIO5(GUIO_NOSPEECH, GUIO_NOMIDI, GAMEOPTION_DISABLE_FADE_EFFECTS, GAMEOPTION_COPY_PROTECTION, GAMEOPTION_USE_SYSTEM_CURSOR)
 		},
 
 		GType_SIMON1,
@@ -1132,7 +1132,7 @@ static const AGOSGameDescription gameDescriptions[] = {
 			Common::EN_ANY,
 			Common::kPlatformAcorn,
 			ADGF_DEMO,
-			GUIO3(GUIO_NOSUBTITLES, GAMEOPTION_WINDOWS_TEMPOS, GAMEOPTION_DISABLE_FADE_EFFECTS)
+			GUIO4(GUIO_NOSUBTITLES, GAMEOPTION_DOS_TEMPOS, GAMEOPTION_DISABLE_FADE_EFFECTS, GAMEOPTION_USE_SYSTEM_CURSOR)
 		},
 
 		GType_SIMON1,
@@ -1157,7 +1157,7 @@ static const AGOSGameDescription gameDescriptions[] = {
 			Common::EN_ANY,
 			Common::kPlatformAcorn,
 			ADGF_CD,
-			GUIO3(GUIO_NOSUBTITLES, GAMEOPTION_WINDOWS_TEMPOS, GAMEOPTION_DISABLE_FADE_EFFECTS)
+			GUIO4(GUIO_NOSUBTITLES, GAMEOPTION_DOS_TEMPOS, GAMEOPTION_DISABLE_FADE_EFFECTS, GAMEOPTION_USE_SYSTEM_CURSOR)
 		},
 
 		GType_SIMON1,
@@ -2015,7 +2015,7 @@ static const AGOSGameDescription gameDescriptions[] = {
 			Common::EN_ANY,
 			Common::kPlatformWindows,
 			ADGF_CD,
-			GUIO3(GUIO_NOSUBTITLES, GAMEOPTION_WINDOWS_TEMPOS, GAMEOPTION_DISABLE_FADE_EFFECTS)
+			GUIO3(GUIO_NOSUBTITLES, GAMEOPTION_DOS_TEMPOS, GAMEOPTION_DISABLE_FADE_EFFECTS)
 		},
 
 		GType_SIMON1,
@@ -2040,7 +2040,7 @@ static const AGOSGameDescription gameDescriptions[] = {
 			Common::DE_DEU,
 			Common::kPlatformWindows,
 			ADGF_CD,
-			GUIO3(GUIO_NOSUBTITLES, GAMEOPTION_WINDOWS_TEMPOS, GAMEOPTION_DISABLE_FADE_EFFECTS)
+			GUIO3(GUIO_NOSUBTITLES, GAMEOPTION_DOS_TEMPOS, GAMEOPTION_DISABLE_FADE_EFFECTS)
 		},
 
 		GType_SIMON1,
@@ -2065,7 +2065,7 @@ static const AGOSGameDescription gameDescriptions[] = {
 			Common::EN_ANY,
 			Common::kPlatformWindows,
 			ADGF_CD,
-			GUIO3(GUIO_NOSUBTITLES, GAMEOPTION_WINDOWS_TEMPOS, GAMEOPTION_DISABLE_FADE_EFFECTS)
+			GUIO3(GUIO_NOSUBTITLES, GAMEOPTION_DOS_TEMPOS, GAMEOPTION_DISABLE_FADE_EFFECTS)
 		},
 
 		GType_SIMON1,
@@ -2975,6 +2975,58 @@ static const AGOSGameDescription gameDescriptions[] = {
 		GType_SIMON2,
 		GID_SIMON2,
 		GF_TALKIE | GF_MT32_XMIDI | GF_MT32_TRACK10_FIX
+	},
+
+	// Simon the Sorcerer 2 - Amiga CD (Initial Release)
+	{
+		{
+			"simon2",
+			"Amiga CD - Original Release",
+
+			{
+				{ "gsptr30",		GAME_BASEFILE,	"608e277904d87dd28725fa08eacc2c0d", 58652},
+				{ "icon.dat",		GAME_ICONFILE,	"72096a62d36e6034ea9fecc13b2dbdab", 18089},
+				{ "simon2.gme",		GAME_GMEFILE,	"e749c4c103d7e7d51b34620ed76c5a04", 20046789},
+				{ "stripped.txt",	GAME_STRFILE,	"e229f84d46fa83f99b4a7115679f3fb6", 171},
+				{ "tbllist",		GAME_TBLFILE,	"2082f8d02075e590300478853a91ffd9", 513},
+				{ "simon2.german",	GAME_LANGFILE,	"c8c76cac47aced88ac1fe79f4f499914", 216945},
+				AD_LISTEND
+			},
+			Common::EN_ANY,
+			Common::kPlatformAmiga,
+			ADGF_CD,
+			GUIO1(GAMEOPTION_DISABLE_FADE_EFFECTS)
+		},
+
+		GType_SIMON2,
+		GID_SIMON2,
+		GF_TALKIE
+	},
+
+	// Simon the Sorcerer 2 - Amiga CD (Update 5)
+	{
+		{
+			"simon2",
+			"Amiga CD - Update 5",
+
+			{
+				{ "gsptr30",		GAME_BASEFILE,	"608e277904d87dd28725fa08eacc2c0d", 58652},
+				{ "icon.dat",		GAME_ICONFILE,	"72096a62d36e6034ea9fecc13b2dbdab", 18089},
+				{ "simon2.gme",		GAME_GMEFILE,	"e749c4c103d7e7d51b34620ed76c5a04", 20046789},
+				{ "stripped.txt",	GAME_STRFILE,	"e229f84d46fa83f99b4a7115679f3fb6", 171},
+				{ "tbllist",		GAME_TBLFILE,	"2082f8d02075e590300478853a91ffd9", 513},
+				{ "simon2.german",	GAME_LANGFILE,	"011bb9cb526bf30a11f3b1fd3b6682fe", 213383},
+				AD_LISTEND
+			},
+			Common::EN_ANY,
+			Common::kPlatformAmiga,
+			ADGF_CD,
+			GUIO1(GAMEOPTION_DISABLE_FADE_EFFECTS)
+		},
+
+		GType_SIMON2,
+		GID_SIMON2,
+		GF_TALKIE
 	},
 
 	// The Feeble Files - English DOS Demo

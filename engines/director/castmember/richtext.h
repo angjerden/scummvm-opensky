@@ -22,6 +22,8 @@
 #ifndef DIRECTOR_CASTMEMBER_RICHTEXT_H
 #define DIRECTOR_CASTMEMBER_RICHTEXT_H
 
+#include "graphics/pixelformat.h"
+
 #include "director/types.h"
 #include "director/castmember/castmember.h"
 
@@ -33,21 +35,36 @@ public:
 	RichTextCastMember(Cast *cast, uint16 castId, RichTextCastMember &source);
 	~RichTextCastMember();
 
+	CastMember *duplicate(Cast *cast, uint16 castId) override { return (CastMember *)(new RichTextCastMember(cast, castId, *this)); }
+
 	void load() override;
 
 	Graphics::MacWidget *createWidget(Common::Rect &bbox, Channel *channel, SpriteType spriteType) override;
 
 	bool hasField(int field) override;
 	Datum getField(int field) override;
-	bool setField(int field, const Datum &value) override;
+	void setField(int field, const Datum &value) override;
+
+	Common::String getText() { return Common::String(_plainText); }
+	uint32 getCastDataSize() override;
+	void writeCastData(Common::SeekableWriteStream *writeStream) override;
 
 	Common::String formatInfo() override;
 
-private:
 	Common::U32String _plainText;
+	Graphics::PixelFormat _pf32;
+	Picture *_picture;
+	Picture *_pictureWithBg;
+
+	// _initialRect
+	// _boundingRect
+	byte _antialiasFlag;
+	byte _cropFlags;
+	uint16 _scrollPos;
+	uint16 _antialiasFontSize;  // Seems to be always 12
+	uint16 _displayHeight;
 	uint32 _foreColor;
 	uint32 _bgColor;
-	Picture *_picture;
 };
 
 } // End of namespace Director

@@ -32,20 +32,28 @@
 #include "engines/nancy/action/secondaryvideo.h"
 #include "engines/nancy/action/secondarymovie.h"
 
+#include "engines/nancy/action/puzzle/angletosspuzzle.h"
+#include "engines/nancy/action/puzzle/arcadepuzzle.h"
 #include "engines/nancy/action/puzzle/assemblypuzzle.h"
 #include "engines/nancy/action/puzzle/bballpuzzle.h"
 #include "engines/nancy/action/puzzle/bulpuzzle.h"
 #include "engines/nancy/action/puzzle/bombpuzzle.h"
 #include "engines/nancy/action/puzzle/collisionpuzzle.h"
 #include "engines/nancy/action/puzzle/cubepuzzle.h"
+#include "engines/nancy/action/puzzle/cuttingpuzzle.h"
+#include "engines/nancy/action/puzzle/matchpuzzle.h"
 #include "engines/nancy/action/puzzle/hamradiopuzzle.h"
 #include "engines/nancy/action/puzzle/leverpuzzle.h"
 #include "engines/nancy/action/puzzle/mazechasepuzzle.h"
+#include "engines/nancy/action/puzzle/memorypuzzle.h"
 #include "engines/nancy/action/puzzle/mouselightpuzzle.h"
+#include "engines/nancy/action/puzzle/multibuildpuzzle.h"
+#include "engines/nancy/action/puzzle/onebuildpuzzle.h"
 #include "engines/nancy/action/puzzle/orderingpuzzle.h"
 #include "engines/nancy/action/puzzle/overridelockpuzzle.h"
 #include "engines/nancy/action/puzzle/passwordpuzzle.h"
 #include "engines/nancy/action/puzzle/peepholepuzzle.h"
+#include "engines/nancy/action/puzzle/quizpuzzle.h"
 #include "engines/nancy/action/puzzle/raycastpuzzle.h"
 #include "engines/nancy/action/puzzle/riddlepuzzle.h"
 #include "engines/nancy/action/puzzle/rippedletterpuzzle.h"
@@ -54,12 +62,14 @@
 #include "engines/nancy/action/puzzle/setplayerclock.h"
 #include "engines/nancy/action/puzzle/sliderpuzzle.h"
 #include "engines/nancy/action/puzzle/soundequalizerpuzzle.h"
+#include "engines/nancy/action/puzzle/soundmatchpuzzle.h"
 #include "engines/nancy/action/puzzle/spigotpuzzle.h"
 #include "engines/nancy/action/puzzle/tangrampuzzle.h"
 #include "engines/nancy/action/puzzle/telephone.h"
 #include "engines/nancy/action/puzzle/towerpuzzle.h"
 #include "engines/nancy/action/puzzle/turningpuzzle.h"
 #include "engines/nancy/action/puzzle/twodialpuzzle.h"
+#include "engines/nancy/action/puzzle/whalesurvivorpuzzle.h"
 
 #include "engines/nancy/state/scene.h"
 
@@ -71,11 +81,25 @@ namespace Action {
 ActionRecord *ActionManager::createActionRecord(uint16 type, Common::SeekableReadStream *recordStream) {
 	switch (type) {
 	case 10:
-		return new Hot1FrSceneChange(CursorManager::kHotspot);
+		if (g_nancy->getGameType() <= kGameTypeNancy9) {
+			return new Hot1FrSceneChange(CursorManager::kHotspot);
+		} else {
+			return new SceneChange();
+		}
 	case 11:
-		return new HotMultiframeSceneChange(CursorManager::kHotspot);
+		if (g_nancy->getGameType() <= kGameTypeNancy9) {
+			return new HotMultiframeSceneChange(CursorManager::kHotspot);
+		} else {
+			return new HotSingleFrameSceneChange(true);
+		}
 	case 12:
-		return new SceneChange();
+		if (g_nancy->getGameType() <= kGameTypeNancy9) {
+			return new SceneChange();
+		} else {
+			// Nancy11+
+			// TODO: Handle this correctly
+			return nullptr;
+		}
 	case 13:
 		return new HotMultiframeMultisceneChange();
 	case 14:
@@ -99,13 +123,23 @@ ActionRecord *ActionManager::createActionRecord(uint16 type, Common::SeekableRea
 	case 21:
 		if (g_nancy->getGameType() == kGameTypeVampire) {
 			return new PaletteNextScene();
-		} else {
+		} else if (g_nancy->getGameType() <= kGameTypeNancy9) {
 			return new HotMultiframeSceneChange(CursorManager::kMoveDown);
+		} else {
+			return new HotSingleFrameSceneChange();
 		}
 	case 22:
-		return new Hot1FrSceneChange(CursorManager::kMoveLeft);
+		if (g_nancy->getGameType() <= kGameTypeNancy9) {
+			return new Hot1FrSceneChange(CursorManager::kMoveLeft);
+		} else {
+			return new HotMultiframeSceneChange(CursorManager::kMoveLeft);
+		}
 	case 23:
-		return new Hot1FrSceneChange(CursorManager::kMoveRight);
+		if (g_nancy->getGameType() <= kGameTypeNancy9) {
+			return new Hot1FrSceneChange(CursorManager::kMoveRight);
+		} else {
+			return new HotMultiframeSceneChange(CursorManager::kMoveRight);
+		}
 	case 24:
 		return new HotMultiframeMultisceneCursorTypeSceneChange();
 	case 25: {
@@ -122,6 +156,10 @@ ActionRecord *ActionManager::createActionRecord(uint16 type, Common::SeekableRea
 	}
 	case 26:
 		return new InteractiveVideo();
+	case 29:
+		// Nancy 10+
+		warning("ControlUIItems - not implemented yet");
+		return nullptr;
 	case 40:
 		if (g_nancy->getGameType() < kGameTypeNancy2) {
 			// Only used in TVD
@@ -200,6 +238,10 @@ ActionRecord *ActionManager::createActionRecord(uint16 type, Common::SeekableRea
 		return new ModifyListEntry(ModifyListEntry::kDelete);
 	case 73:
 		return new ModifyListEntry(ModifyListEntry::kMark);
+	case 74:	// Nancy 10
+	case 81:	// Nancy 11+
+		warning("FrameTextBox - not implemented yet");
+		return nullptr;
 	case 75:
 		return new TextBoxWrite();
 	case 76:
@@ -278,8 +320,26 @@ ActionRecord *ActionManager::createActionRecord(uint16 type, Common::SeekableRea
 		return new PopInvViewPriorScene();
 	case 126:
 		return new GoInvViewScene();
+	case 130:
+		// Nancy 10+
+		warning("ChangeCellPhoneInfo - not implemented yet");
+		return nullptr;
+	case 131:
+		// Nancy 10+
+		warning("AddSearchLink - not implemented yet");
+		return nullptr;
 	case 140:
 		return new SetVolume();
+	case 148:
+		// MakeScreenFile - seems to save a cropped image of the screen in a bitmap file?
+		// TODO: Used in Nancy 9, sand castle puzzle
+		return nullptr;
+	case 149:
+		if (g_nancy->getGameType() >= kGameTypeNancy9) {
+			// This got moved in nancy9
+			return new SetVolume();
+		}
+		return nullptr;
 	case 150:
 		return new PlaySound();
 	case 151:
@@ -360,9 +420,32 @@ ActionRecord *ActionManager::createActionRecord(uint16 type, Common::SeekableRea
 		return new OrderingPuzzle(OrderingPuzzle::kKeypadTerse);
 	case 225:
 		return new SpigotPuzzle();
+	// -- Nancy 8 and up --
+	case 226:
+		return new CuttingPuzzle();
+	case 228:
+		return new MatchPuzzle();
+	case 229:
+		return new ArcadePuzzle();
 	case 230:
 		return new Telephone(true);
+	case 231:
+		return new QuizPuzzle();
+	case 232:
+		return new AngleTossPuzzle();
+	// -- Nancy 9 and up --
+	case 233:
+		return new SoundMatchPuzzle();
+	case 234:
+		return new OneBuildPuzzle();
+	case 235:
+		return new MultiBuildPuzzle();
+	case 237:
+		return new WhaleSurvivorPuzzle();
+	case 238:
+		return new MemoryPuzzle();
 	default:
+		warning("Unknown action record type %d", type);
 		return nullptr;
 	}
 }

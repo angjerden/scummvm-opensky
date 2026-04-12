@@ -21,6 +21,7 @@
 
 #include "engines/wintermute/base/gfx/base_renderer3d.h"
 #include "engines/wintermute/base/base_game.h"
+#include "engines/wintermute/base/gfx/3dutils.h"
 
 #include "common/config-manager.h"
 
@@ -30,19 +31,12 @@ BaseRenderer3D::BaseRenderer3D(Wintermute::BaseGame *inGame) : BaseRenderer(inGa
 	_camera = nullptr;
 
 	_state = RSTATE_NONE;
-	_fov = (float)M_PI / 4;
+	_fov = (float)DX_PI / 4;
 
 	_nearClipPlane = DEFAULT_NEAR_PLANE;
 	_farClipPlane = DEFAULT_FAR_PLANE;
 
 	_lastTexture = nullptr;
-
-	_blendMode = Graphics::BLEND_UNKNOWN;
-
-	_spriteBatchMode = false;
-	_batchBlendMode = Graphics::BLEND_UNKNOWN;
-	_batchAlphaDisable = false;
-	_batchTexture = nullptr;
 
 	_ambientLightColor = 0x00000000;
 	_ambientLightOverride = false;
@@ -61,27 +55,27 @@ void BaseRenderer3D::initLoop() {
 	setup2D();
 }
 
-bool BaseRenderer3D::drawSprite(BaseSurface *texture, const Wintermute::Rect32 &rect,
-							float zoomX, float zoomY, const Wintermute::Vector2 &pos,
-							uint32 color, bool alphaDisable, Graphics::TSpriteBlendMode blendMode,
-							bool mirrorX, bool mirrorY) {
-	Vector2 scale(zoomX / 100.0f, zoomY / 100.0f);
-	return drawSpriteEx(texture, rect, pos, Vector2(0.0f, 0.0f), scale, 0.0f, color, alphaDisable, blendMode, mirrorX, mirrorY);
+bool BaseRenderer3D::drawSprite(BaseSurface *texture, const Common::Rect32 &rect,
+	                        float zoomX, float zoomY, const DXVector2 &pos,
+	                        uint32 color, bool alphaDisable, Graphics::TSpriteBlendMode blendMode,
+	                        bool mirrorX, bool mirrorY) {
+	DXVector2 scale(zoomX / 100.0f, zoomY / 100.0f);
+	return drawSpriteEx(texture, rect, pos, DXVector2(0.0f, 0.0f), scale, 0.0f, color, alphaDisable, blendMode, mirrorX, mirrorY);
 }
 
 bool BaseRenderer3D::getProjectionParams(float *resWidth, float *resHeight, float *layerWidth, float *layerHeight,
-										 float *modWidth, float *modHeight, bool *customViewport) {
+	                                 float *modWidth, float *modHeight, bool *customViewport) {
 	*resWidth = _width;
 	*resHeight = _height;
 
-	if (_gameRef->_editorResolutionWidth > 0)
-		*resWidth = _gameRef->_editorResolutionWidth;
-	if (_gameRef->_editorResolutionHeight > 0)
-		*resHeight = _gameRef->_editorResolutionHeight;
+	if (_game->_editorResolutionWidth > 0)
+		*resWidth = _game->_editorResolutionWidth;
+	if (_game->_editorResolutionHeight > 0)
+		*resHeight = _game->_editorResolutionHeight;
 
 	int lWidth, lHeight;
-	Rect32 sceneViewport;
-	_gameRef->getLayerSize(&lWidth, &lHeight, &sceneViewport, customViewport);
+	Common::Rect32 sceneViewport;
+	_game->getLayerSize(&lWidth, &lHeight, &sceneViewport, customViewport);
 	*layerWidth = (float)lWidth;
 	*layerHeight = (float)lHeight;
 
@@ -103,8 +97,8 @@ bool BaseRenderer3D::getProjectionParams(float *resWidth, float *resHeight, floa
 	return true;
 }
 
-void BaseRenderer3D::fade(uint16 alpha) {
-	fadeToColor(0, 0, 0, (byte)(255 - alpha));
+bool BaseRenderer3D::fade(uint16 alpha) {
+	return fadeToColor(0, 0, 0, (byte)(255 - alpha));
 }
 
 bool BaseRenderer3D::setAmbientLightColor(uint32 color) {
@@ -123,23 +117,23 @@ bool BaseRenderer3D::setDefaultAmbientLightColor() {
 	return true;
 }
 
+bool BaseRenderer3D::setup3DCustom(DXMatrix &viewMat, DXMatrix &projMat) {
+	setup3D();
+	_state = RSTATE_3D;
+	if (viewMat)
+		setViewTransform(viewMat);
+	if (projMat)
+		setProjectionTransform(projMat);
+
+	return true;
+}
+
 DXViewport BaseRenderer3D::getViewPort() {
 	return _viewport;
 }
 
 Graphics::PixelFormat BaseRenderer3D::getPixelFormat() const {
-	return g_system->getScreenFormat();
-}
-
-void BaseRenderer3D::flipVertical(Graphics::Surface *s) {
-	for (int y = 0; y < s->h / 2; ++y) {
-		// Flip the lines
-		byte *line1P = (byte *)s->getBasePtr(0, y);
-		byte *line2P = (byte *)s->getBasePtr(0, s->h - y - 1);
-
-		for (int x = 0; x < s->pitch; ++x)
-			SWAP(line1P[x], line2P[x]);
-	}
+	return Graphics::PixelFormat::createFormatRGBA32();
 }
 
 bool BaseRenderer3D::flip() {
@@ -148,7 +142,7 @@ bool BaseRenderer3D::flip() {
 	return true;
 }
 
-bool BaseRenderer3D::indicatorFlip() {
+bool BaseRenderer3D::indicatorFlip(int32 x, int32 y, int32 width, int32 height) {
 	flip();
 	return true;
 }
@@ -172,6 +166,10 @@ void BaseRenderer3D::setWindowed(bool windowed) {
 	g_system->beginGFXTransaction();
 	g_system->setFeatureState(OSystem::kFeatureFullscreenMode, !windowed);
 	g_system->endGFXTransaction();
+}
+
+void BaseRenderer3D::endSaveLoad() {
+	BaseRenderer::endSaveLoad();
 }
 
 } // namespace Wintermute

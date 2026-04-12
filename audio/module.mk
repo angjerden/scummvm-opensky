@@ -2,6 +2,8 @@ MODULE := audio
 
 MODULE_OBJS := \
 	adlib.o \
+	adlib_ctmidi.o \
+	adlib_hmisos.o \
 	adlib_ms.o \
 	audiostream.o \
 	casio.o \
@@ -11,6 +13,7 @@ MODULE_OBJS := \
 	mac_plugin.o \
 	mididrv.o \
 	mididrv_ms.o \
+	midiparser_hmp.o \
 	midiparser_qt.o \
 	midiparser_smf.o \
 	midiparser_xmidi.o \
@@ -24,6 +27,8 @@ MODULE_OBJS := \
 	musicplugin.o \
 	null.o \
 	rate.o \
+	sid.o \
+	ym2149.o \
 	timestamp.o \
 	decoders/3do.o \
 	decoders/aac.o \
@@ -56,6 +61,7 @@ MODULE_OBJS := \
 	mods/rjp1.o \
 	mods/soundfx.o \
 	mods/tfmx.o \
+	mods/desktoptracker.o \
 	softsynth/cms.o \
 	softsynth/opl/dbopl.o \
 	softsynth/opl/dosbox.o \
@@ -63,7 +69,9 @@ MODULE_OBJS := \
 	softsynth/appleiigs.o \
 	softsynth/fluidsynth.o \
 	softsynth/eas.o \
-	softsynth/pcspk.o
+	softsynth/pcspk.o \
+	softsynth/ay8912.o \
+	softsynth/ym2149.o
 
 ifndef DISABLE_NUKED_OPL
 MODULE_OBJS += \

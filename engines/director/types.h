@@ -36,6 +36,7 @@ enum {
 };
 
 #define kQuirksCacheArchive "quirks"
+#define kSavedFilesArchive "saved"
 
 enum MovieFlag {
 	kMovieFlagRemapPalettesWhenNeeded =  (1 << 6),
@@ -57,7 +58,8 @@ enum CastType {
 	kCastDigitalVideo = 10,
 	kCastLingoScript = 11,
 	kCastRichText = 12,
-	kCastTransition = 14,
+	kCastTransition = 14,		// D5
+	kCastXtra = 15,
 };
 
 enum ScriptType {
@@ -233,7 +235,13 @@ enum LEvent {
 
 	kEventStartUp, // 32
 
-	kEventMenuCallback // 33
+	kEventMenuCallback, // 33
+
+	kEventGetBehaviorDescription,
+	kEventGetPropertyDescriptionList,
+	kEventRunPropertyDialog,
+
+	kEventCuePassed,
 };
 
 enum TransitionType {
@@ -306,6 +314,8 @@ enum PaletteType {
 	kClutVivid = -5,
 	kClutNTSC = -6,
 	kClutMetallic = -7,
+	kClutWeb216 = -8,		// D7
+	kClutVGA = -9,			// D7
 	kClutSystemWin = -101,
 	kClutSystemWinD5 = -102
 };
@@ -375,6 +385,7 @@ enum DatumType {
 	GLOBALREF,
 	INT,
 	LOCALREF,
+	MEDIA,
 	MENUREF,
 	OBJECT,
 	PARRAY,
@@ -464,6 +475,10 @@ const char *spriteType2str(SpriteType type);
 const char *inkType2str(InkType type);
 const char *symbolType2str(SymbolType type);
 Common::String objectType2str(int fl);
+Common::String paletteType2str(PaletteType value);
+Common::String textAlignType2str(TextAlignType value);
+Common::String shapeType2str(ShapeType value);
+Common::String textType2str(TextType value);
 
 enum CollisionTest {
 	kCollisionNo = 0,
@@ -481,6 +496,14 @@ struct Hash<Director::CastMemberID> {
 		return id.hash();
 	}
 };
+
+template<>
+struct Hash<Director::LEvent> {
+	uint operator()(const Director::LEvent &event) const {
+		return event;
+	}
+};
+
 
 } // End of namespace Common
 

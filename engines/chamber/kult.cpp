@@ -40,6 +40,8 @@
 #include "chamber/dialog.h"
 #include "chamber/menu.h"
 #include "chamber/ifgm.h"
+#include "graphics/surface.h"
+#include "graphics/paletteman.h"
 
 namespace Chamber {
 
@@ -61,11 +63,39 @@ void saveToFile(char *filename, void *data, uint16 size) {
 #endif
 }
 
-int16 loadSplash(const char *filename) {
+Graphics::Surface *loadSplash(const char *filename) {
 	if (!loadFile(filename, scratch_mem1))
-		return 0;
-	decompress(scratch_mem1 + 8, backbuffer);   /* skip compressed/decompressed size fields */
-	return 1;
+		return nullptr;
+
+	Graphics::Surface *surface = new Graphics::Surface();
+	int width = (g_vm->_videoMode == Common::kRenderHercG) ? 640 : 320;
+	int height = 200;
+	surface->create(width, height, Graphics::PixelFormat::createFormatCLUT8());
+
+	decompress(scratch_mem1 + 8, backbuffer);
+
+	for (int y = 0; y < CGA_HEIGHT; ++y) {
+		byte *dst = (byte *)surface->getBasePtr(0, y);
+		for (int x = 0; x < CGA_WIDTH; x += 4) {
+			int cga_offset = (y % 2) * 8192 + (y / 2) * 80 + (x / 4);
+			byte cga_byte = backbuffer[cga_offset];
+
+			if (g_vm->_videoMode == Common::RenderMode::kRenderHercG) {
+				byte colors = cga_byte;
+				for (int i = 0; i < 8; i++) {
+					byte bit = (colors & 0x80) >> 7;
+					colors <<= 1;
+					dst[x * 2 + i] = bit;
+				}
+			} else{
+				for (int i = 0; i < 4; i++) {
+					byte color = (cga_byte >> (6 - i * 2)) & 0x03;
+					dst[x + i] = color;
+				}
+			}
+		}
+	}
+	return surface;
 }
 
 uint16 benchmarkCpu(void) {
@@ -202,30 +232,26 @@ Common::Error ChamberEngine::init() {
 	byte c;
 
 	// Initialize graphics using following:
-	if (_videoMode == Common::RenderMode::kRenderCGA) {
-		// 320x200x2
-		_screenW = 320;
-		_screenH = 200;
-		_screenBits = 2;
-		_screenPPB = 8 / _screenBits;
-		_screenBPL = _screenW / _screenPPB;
-		_line_offset = 0x2000;
-		_fontHeight = 6;
-		_fontWidth = 4;
-		initGraphics(_screenW, _screenH);
-	} else if (_videoMode == Common::RenderMode::kRenderHercG) {
-		// 720x348x1
-		_screenW = 720;
-		_screenH = 348;
-		_screenBits = 1;
-		_screenPPB = 8 / _screenBits;
-		_screenBPL = _screenW / _screenPPB;
-		_line_offset = 0x2000;
-		_line_offset2 = 0x2000;
-		_fontHeight = 6;
-		_fontWidth = 4;
+	bool isCustomHerc = false;
+	if (_videoMode == Common::RenderMode::kRenderHercG) {
+		isCustomHerc = true;
+		_videoMode = Common::RenderMode::kRenderCGA;
+	}
+	_screenW = 320;
+	_screenH = 200;
+	_screenBits = 2;
+	_screenPPB = 8 / _screenBits;
+	_screenBPL = _screenW / _screenPPB;
+	_line_offset = 0x2000;
+	_line_offset2 = 0x2000;
+	_fontHeight = 6;
+	_fontWidth = 4;
+	if (isCustomHerc) {
+		initGraphics(720, 348); 
+	} else {
 		initGraphics(_screenW, _screenH);
 	}
+	
 	initSound();
 
 	/*TODO: DetectCPU*/
@@ -236,10 +262,13 @@ Common::Error ChamberEngine::init() {
 
 	/* Install timer callback */
 	initTimer();
+	
+	Graphics::Surface *splash = nullptr;
 
 	if (g_vm->getLanguage() == Common::EN_USA) {
 		/* Load title screen */
-		if (!loadSplash("PRESCGA.BIN"))
+		splash = loadSplash("PRESCGA.BIN");
+		if (!splash)
 			exitGame();
 
 		if (ifgm_loaded) {
@@ -247,25 +276,29 @@ Common::Error ChamberEngine::init() {
 		}
 	} else {
 		/* Load title screen */
-		if (!loadSplash("PRES.BIN"))
+		splash = loadSplash("PRES.BIN");
+		if (!splash)
 			exitGame();
 	}
 
-	if (_videoMode == Common::RenderMode::kRenderCGA) {
+	if (!isCustomHerc) {
 		/* Select intense cyan-mageta palette */
 		cga_ColorSelect(0x30);
 		cga_BackBufferToRealFull();
-	} else if (_videoMode == Common::RenderMode::kRenderHercG) {
-		/* Select intense cyan-mageta palette */
-		cga_ColorSelect(0x30);
+	} else {
+		/* Set authentic Hercules Green phosphor palette */
+		g_system->getPaletteManager()->setPalette(Graphics::HGC_G_PALETTE, 0, 2);
 		cga_BackBufferToRealFull();
 	}
 
+    splash->free();
+    delete splash;
+   
 	/* Wait for a keypress */
 	clearKeyboard();
 	readKeyboardChar();
 
-
+	
 	if (g_vm->getLanguage() == Common::EN_USA) {
 		if (ifgm_loaded) {
 			/*TODO*/

@@ -26,44 +26,48 @@
 #include "graphics/managed_surface.h"
 
 #include "mediastation/datafile.h"
-#include "mediastation/assetheader.h"
+#include "mediastation/actor.h"
 
 namespace MediaStation {
 
 enum BitmapCompressionType {
-	kUncompressedBitmap1 = 0,
-	kRleCompressedBitmap = 1,
-	kUnk1CompressedBitmap = 6,
-	kUncompressedBitmap2 = 7,
+	kUncompressedBitmap = 0,
+	kRle8BitmapCompression = 1,
+	kCccBitmapCompression = 5,
+	kCccTransparentBitmapCompression = 6,
+	kUncompressedTransparentBitmap = 7,
 };
 
-class BitmapHeader {
+class ImageInfo {
 public:
-	BitmapHeader(Chunk &chunk);
-	virtual ~BitmapHeader();
+	ImageInfo() = default;
+	ImageInfo(Chunk &chunk);
 
-	bool isCompressed();
-
-	Common::Point *_dimensions = nullptr;
-	BitmapCompressionType _compressionType;
-	uint unk2;
+	Common::Point _dimensions;
+	BitmapCompressionType _compressionType = kUncompressedBitmap;
+	int16 _stride = 0;
+	uint _imageDataStartOffset = 0;
 };
 
-class Bitmap {
+class PixMapImage {
 public:
-	BitmapHeader *_bitmapHeader = nullptr;
+	PixMapImage(Chunk &chunk, const ImageInfo &imageInfo);
+	PixMapImage(const ImageInfo &imageInfo);
+	virtual ~PixMapImage();
 
-	Bitmap(Chunk &chunk, BitmapHeader *bitmapHeader);
-	virtual ~Bitmap();
+	bool isCompressed() const;
+	BitmapCompressionType getCompressionType() const { return _imageInfo._compressionType; }
+	int16 width() const { return _imageInfo._dimensions.x; }
+	int16 height() const { return _imageInfo._dimensions.y; }
+	int16 stride() const { return _imageInfo._stride; }
 
-	uint16 width();
-	uint16 height();
-	Graphics::ManagedSurface _surface;
+	Common::SeekableReadStream *_compressedStream = nullptr;
+	Graphics::ManagedSurface _image;
 
 private:
-	void decompress(Chunk &chunk);
+	ImageInfo _imageInfo;
 };
 
-}
+} // End of namespace MediaStation
 
 #endif

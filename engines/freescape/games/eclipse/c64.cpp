@@ -22,6 +22,8 @@
 #include "common/file.h"
 
 #include "freescape/freescape.h"
+#include "freescape/games/eclipse/c64.music.h"
+#include "freescape/games/eclipse/c64.sfx.h"
 #include "freescape/games/eclipse/eclipse.h"
 #include "freescape/language/8bitDetokeniser.h"
 
@@ -29,23 +31,56 @@ namespace Freescape {
 
 void EclipseEngine::initC64() {
 	_viewArea = Common::Rect(32, 32, 288, 136);
+
+	_maxEnergy = 35;
+
+	// SFX indices mapped from totec1.prg disassembly (JSR $CB4B call sites)
+	_soundIndexShoot = 1;            // $5F27: opcode $16 destroy handler
+	_soundIndexCollide = 12;         // $4E80/$4F50: deferred via $1549
+	_soundIndexStepDown = 12;        // same as collide (matches CPC pattern)
+	_soundIndexStepUp = 12;          // same as collide (matches CPC pattern)
+	_soundIndexStart = 7;            // $4118: game start after title screen
+	_soundIndexAreaChange = 7;       // $66CF: FCL opcode $12 area change
+	_soundIndexStartFalling = 6;     // $790B: deferred via $1549
+	_soundIndexEndFalling = 8;       // $792D: deferred via $1549
+	_soundIndexFall = 5;             // $7C20/$7C45: death/fall animation
+	_soundIndexNoShield = 5;         // game-over conditions reuse fall sound
+	_soundIndexNoEnergy = -1;
+	_soundIndexFallen = 5;
+	_soundIndexTimeout = 5;
+	_soundIndexForceEndGame = 5;
+	_soundIndexCrushed = 5;
+	_soundIndexMissionComplete = -1;
 }
 
 extern byte kC64Palette[16][3];
 
 void EclipseEngine::loadAssetsC64FullGame() {
 	Common::File file;
-	file.open("totaleclipse.c64.data");
-	loadMessagesFixedSize(&file, 0x1d82, 16, 30);
-	loadFonts(&file, 0xc3e);
-	load8bitBinary(&file, 0x9a3e, 16);
+	file.open(isEclipse2() ? "totaleclipse2.c64.data" : "totaleclipse.c64.data");
 
-	for (auto &it : _areaMap) {
-		it._value->addStructure(_areaMap[255]);
+	if (_variant & GF_C64_TAPE) {
+		int size = file.size();
 
-		for (int16 id = 183; id < 207; id++)
-			it._value->addObjectFromArea(id, _areaMap[255]);
-	}
+		byte *buffer = (byte *)malloc(size * sizeof(byte));
+		file.read(buffer, file.size());
+
+		_extraBuffer = decompressC64RLE(buffer, &size, isEclipse2() ? 0xd2 : 0xe1);
+		// size should be the size of the decompressed data
+		Common::MemoryReadStream dfile(_extraBuffer, size, DisposeAfterUse::NO);
+
+		loadMessagesFixedSize(&dfile, 0x1d84, 16, isEclipse2() ? 34 : 30);
+		loadFonts(&dfile, 0xc3e);
+		load8bitBinary(&dfile, 0x9a3e, 16);
+	} else if (_variant & GF_C64_DISC) {
+		loadMessagesFixedSize(&file, isEclipse2() ? 0x1538 : 0x1534, 16, isEclipse2() ? 34 : 30);
+		loadFonts(&file, 0x3f2);
+		if (isEclipse2())
+			load8bitBinary(&file, 0x7ac4, 16);
+		else
+			load8bitBinary(&file, 0x7ab4, 16);
+	} else
+		error("Unknown C64 variant %x", _variant);
 
 	Graphics::Surface *surf = loadBundledImage("eclipse_border");
 	surf->convertToInPlace(_gfx->_texturePixelFormat);
@@ -55,14 +90,90 @@ void EclipseEngine::loadAssetsC64FullGame() {
 	delete surf;
 
 	file.close();
-	file.open("totaleclipse.c64.title.bitmap");
+	file.open(isEclipse2() ? "totaleclipse2.c64.title.bitmap" : "totaleclipse.c64.title.bitmap");
 
 	Common::File colorFile1;
-	colorFile1.open("totaleclipse.c64.title.colors1");
+	colorFile1.open(isEclipse2() ? "totaleclipse2.c64.title.colors1" : "totaleclipse.c64.title.colors1");
 	Common::File colorFile2;
-	colorFile2.open("totaleclipse.c64.title.colors2");
+	colorFile2.open(isEclipse2() ? "totaleclipse2.c64.title.colors2" : "totaleclipse.c64.title.colors2");
 
 	_title = loadAndConvertDoodleImage(&file, &colorFile1, &colorFile2, (byte *)&kC64Palette);
+
+	_indicators.push_back(loadBundledImage("eclipse_ankh_indicator"));
+
+	for (auto &it : _indicators)
+		it->convertToInPlace(_gfx->_texturePixelFormat);
+
+	if (isEclipse2()) {
+		// Eclipse 2 has music embedded in the game data file.
+		// Both disc and tape versions contain the same music engine and data.
+		if (_variant & GF_C64_DISC) {
+			// Disc data file starts at load address 0x0410, same as totec1.prg
+			file.close();
+			file.open("totaleclipse2.c64.data");
+			if (file.isOpen()) {
+				uint16 loadAddress = file.readUint16LE();
+				if (loadAddress == 0x0410) {
+					_c64MusicData.resize(file.size() - 2);
+					file.read(_c64MusicData.data(), _c64MusicData.size());
+					delete _playerC64Music;
+					_playerC64Music = new EclipseC64MusicPlayer(_c64MusicData);
+				}
+			}
+		} else if ((_variant & GF_C64_TAPE) && _extraBuffer) {
+			// Tape decompressed data has music at a 0x0C3F offset from disc addresses.
+			// The music player expects data indexed from load address 0x0410.
+			// Remap: musicData[i] = decompressed[i + 0x084E]
+			static const int kTapeMusicShift = 0x084E;
+			static const int kMusicRegionSize = 0x1100; // covers 0x0410..0x14FF
+			_c64MusicData.resize(kMusicRegionSize);
+			memcpy(_c64MusicData.data(), _extraBuffer + kTapeMusicShift, kMusicRegionSize);
+			delete _playerC64Music;
+			_playerC64Music = new EclipseC64MusicPlayer(_c64MusicData);
+		}
+	} else {
+		Common::File musicFile;
+		musicFile.open("totec1.prg");
+		if (musicFile.isOpen()) {
+			uint16 loadAddress = musicFile.readUint16LE();
+			if (loadAddress == 0x0410) {
+				_c64MusicData.resize(musicFile.size() - 2);
+				musicFile.read(_c64MusicData.data(), _c64MusicData.size());
+				delete _playerC64Music;
+				_playerC64Music = new EclipseC64MusicPlayer(_c64MusicData);
+			}
+		}
+	}
+
+	// Only one SID instance can be active at a time; music is the default.
+	// Create the inactive player first so its SID is destroyed before
+	// the active player's SID is created.
+	_playerC64Sfx = new EclipseC64SFXPlayer();
+	_playerC64Sfx->destroySID();
+}
+
+void EclipseEngine::playSoundC64(int index) {
+	debugC(1, kFreescapeDebugMedia, "Playing Eclipse C64 SFX %d", index);
+	if (_playerC64Sfx && _c64UseSFX)
+		_playerC64Sfx->playSfx(index);
+}
+
+void EclipseEngine::toggleC64Sound() {
+	if (_c64UseSFX) {
+		if (_playerC64Sfx)
+			_playerC64Sfx->destroySID();
+		if (_playerC64Music) {
+			_playerC64Music->initSID();
+			_playerC64Music->startMusic();
+		}
+		_c64UseSFX = false;
+	} else {
+		if (_playerC64Music)
+			_playerC64Music->destroySID();
+		if (_playerC64Sfx)
+			_playerC64Sfx->initSID();
+		_c64UseSFX = true;
+	}
 }
 
 
@@ -114,16 +225,15 @@ void EclipseEngine::drawC64UI(Graphics::Surface *surface) {
 	} else if (!_currentAreaMessages.empty())
 		drawStringInSurface(_currentArea->_name, 104, 138, back, yellow, surface);
 
-	Common::String encodedScoreStr = getScoreString(score);
-	drawStringInSurface(encodedScoreStr, 128, 7, black, white, surface);
+	drawScoreString(score, 128, 7, black, white, surface);
 
 	Common::String shieldStr = Common::String::format("%d", shield);
 
-	int x = 171;
+	int x = 174;
 	if (shield < 10)
-		x = 179;
+		x = 182;
 	else if (shield < 100)
-		x = 175;
+		x = 179;
 
 	if (energy < 0)
 		energy = 0;
@@ -136,20 +246,25 @@ void EclipseEngine::drawC64UI(Graphics::Surface *surface) {
 	Common::Rect jarWater(112, 196 - energy, 144, 196);
 	surface->fillRect(jarWater, blue);
 
-	/*drawStringInSurface(shiftStr("0", 'Z' - '$' + 1 - _angleRotationIndex), 79, 141, back, yellow, surface);
-	drawStringInSurface(shiftStr("3", 'Z' - '$' + 1 - _playerStepIndex), 63, 141, back, yellow, surface);
-	drawStringInSurface(shiftStr("7", 'Z' - '$' + 1 - _playerHeightNumber), 240, 141, back, yellow, surface);
+	// TODO
+	/*drawStringInSurface(shiftStr("0", 'Z' - '$' + 1 - _angleRotationIndex), 79, 138, back, yellow, surface);
+	drawStringInSurface(shiftStr("3", 'Z' - '$' + 1 - _playerStepIndex), 63, 138, back, yellow, surface);
+	drawStringInSurface(shiftStr("7", 'Z' - '$' + 1 - _playerHeightNumber), 240, 138, back, yellow, surface);
 
 	if (_shootingFrames > 0) {
-		drawStringInSurface(shiftStr("4", 'Z' - '$' + 1), 232, 141, back, yellow, surface);
-		drawStringInSurface(shiftStr("<", 'Z' - '$' + 1) , 240, 141, back, yellow, surface);
-	}
-	drawAnalogClock(surface, 89, 172, back, back, gray);
+		drawStringInSurface(shiftStr("4", 'Z' - '$' + 1), 232, 138, back, yellow, surface);
+		drawStringInSurface(shiftStr("<", 'Z' - '$' + 1) , 240, 138, back, yellow, surface);
+	}*/
 
-	surface->fillRect(Common::Rect(227, 168, 235, 187), gray);
-	drawCompass(surface, 231, 177, _yaw, 10, back);*/
+	drawAnalogClockHand(surface, 72, 172, 38 * 6 - 90, 11, white);
+	drawAnalogClockHand(surface, 72, 172, 37 * 6 - 90, 11, white);
+	drawAnalogClockHand(surface, 72, 172, 36 * 6 - 90, 11, white);
+	drawAnalogClock(surface, 72, 172, back, red, white);
 
-	//drawIndicator(surface, 65, 7, 8);
+	surface->fillRect(Common::Rect(236, 170, 258, 187), white);
+	drawCompass(surface, 247, 177, _yaw, 13, back);
+
+	drawIndicator(surface, 56, 4, 8);
 	drawEclipseIndicator(surface, 224, 0, front, green);
 }
 

@@ -19,8 +19,6 @@
  *
  */
 
-#ifdef ENABLE_MADSV2
-
 #ifndef MADS_GAME_PHANTOM_H
 #define MADS_GAME_PHANTOM_H
 
@@ -29,7 +27,6 @@
 #include "mads/phantom/globals_phantom.h"
 
 namespace MADS {
-
 namespace Phantom {
 
 enum Difficulty {
@@ -82,10 +79,10 @@ enum MazeEvent {
 };
 
 struct Catacombs {
-	int _sceneNum;
-	int _exit[4];
-	int _fromDirection[4];
-	int _flags;
+	uint16 _sceneNum;
+	int8 _exit[4];
+	int8 _fromDirection[4];
+	uint16 _flags;
 };
 
 class GamePhantom : public Game {
@@ -96,7 +93,7 @@ private:
 	void stopWalker();
 	void stopWalkerBasic();
 
-	Catacombs *_catacombs;
+	const Catacombs *_catacombs;
 	int _catacombSize;
 
 protected:
@@ -147,10 +144,7 @@ typedef Section1Handler Section3Handler;
 typedef Section1Handler Section4Handler;
 typedef Section1Handler Section5Handler;
 
-} // End of namespace Nebular
-
+} // End of namespace Phantom
 } // End of namespace MADS
-
-#endif /* MADS_GAME_PHANTOM_H */
 
 #endif

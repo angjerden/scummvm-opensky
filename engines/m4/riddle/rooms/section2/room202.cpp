@@ -20,8 +20,9 @@
  */
 
 #include "m4/riddle/rooms/section2/room202.h"
-#include "m4/graphics/gr_series.h"
 #include "m4/riddle/vars.h"
+#include "m4/adv_r/adv_control.h"
+#include "m4/graphics/gr_series.h"
 
 namespace M4 {
 namespace Riddle {
@@ -99,9 +100,9 @@ void Room202::pre_parser() {
 }
 
 void Room202::parser() {
-	bool lookFlag = player_said_any("look", "look at");
-	bool takeFlag = player_said("take");
-	bool useFlag = player_said_any("push", "pull", "gear", "open", "close");
+	const bool lookFlag = player_said_any("look", "look at");
+	const bool takeFlag = player_said("take");
+	const bool useFlag = player_said_any("push", "pull", "gear", "open", "close");
 
 	if (lookFlag && player_said("TRADER'S STALL") && _G(flags)[V065] == 1) {
 		digi_play("202r01", 1);
@@ -137,7 +138,7 @@ void Room202::parser() {
 		_G(game).setRoom(203);
 	} else if (lookFlag && _G(walker).ripley_said(SAID)) {
 		// No implementation
-	} else if (player_said("journal") && !takeFlag && !lookFlag) {
+	} else if (player_said("journal") && !lookFlag) {
 		digi_play("202r16", 1);
 	} else {
 		return;

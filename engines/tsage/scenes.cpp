@@ -20,7 +20,6 @@
  */
 
 #include "common/config-manager.h"
-#include "common/translation.h"
 #include "gui/saveload.h"
 #include "tsage/dialogs.h"
 #include "tsage/scenes.h"
@@ -265,6 +264,9 @@ void SceneManager::listenerSynchronize(Serializer &s) {
 	g_globals->_sceneManager._scrollerRect.synchronize(s);
 	SYNC_POINTER(g_globals->_scrollFollower);
 	s.syncAsSint16LE(_loadMode);
+	if (s.isLoading()) {
+		_loadMode = 1;
+	}
 }
 
 /*--------------------------------------------------------------------------*/
@@ -274,6 +276,7 @@ Scene::Scene() : _sceneBounds(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT),
 	_sceneMode = 0;
 	_activeScreenNumber = 0;
 	_oldSceneBounds = Rect(4000, 4000, 4100, 4100);
+	g_globals->_sceneManager._scrollerRect = Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 	Common::fill(&_zoomPercents[0], &_zoomPercents[256], 0);
 
 	_screenNumber = 0;
@@ -631,11 +634,7 @@ void Game::quitGame() {
 }
 
 void Game::handleSaveLoad(bool saveFlag, int &saveSlot, Common::String &saveName) {
-	GUI::SaveLoadChooser *dialog;
-	if (saveFlag)
-		dialog = new GUI::SaveLoadChooser(_("Save game:"), _("Save"), saveFlag);
-	else
-		dialog = new GUI::SaveLoadChooser(_("Load game:"), _("Load"), saveFlag);
+	GUI::SaveLoadChooser *dialog = new GUI::SaveLoadChooser(saveFlag);
 
 	saveSlot = dialog->runModalWithCurrentTarget();
 	saveName = dialog->getResultString();

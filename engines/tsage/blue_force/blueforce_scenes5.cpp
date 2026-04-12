@@ -896,7 +896,7 @@ void Scene551::dispatch() {
 }
 
 /*--------------------------------------------------------------------------
- * Scene 550 - Study
+ * Scene 560 - Study
  *
  *--------------------------------------------------------------------------*/
 
@@ -953,7 +953,7 @@ void Scene560::Action2::signal() {
 		break;
 	case 2:
 		scene->_field380 = false;
-		scene->_deskChair.setPosition(Common::Point(81, 149));
+		scene->_deskChair.setPosition(Common::Point(81, 149), 44);
 		scene->_deskChair.setVisage(561);
 		scene->_deskChair.setStrip(3);
 		scene->_deskChair.setFrame(1);
@@ -1137,6 +1137,8 @@ void Scene560::SafeInset::postInit(SceneObjectList *OwnerList) {
 
 void Scene560::SafeInset::remove() {
 	Scene560 *scene = (Scene560 *)BF_GLOBALS._sceneManager._scene;
+
+	scene->_sceneMode = 0;
 
 	_item1.remove();
 	_item2.remove();
@@ -1413,7 +1415,7 @@ void Scene560::postInit(SceneObjectList *OwnerList) {
 	_deskChair.postInit();
 	_deskChair.setVisage(561);
 	_deskChair.setStrip(3);
-	_deskChair.setPosition(Common::Point(81, 149));
+	_deskChair.setPosition(Common::Point(81, 149), 44);
 	_deskChair.fixPriority(151);
 	_deskChair.changeZoom(81);
 
@@ -1643,6 +1645,20 @@ void Scene570::PasswordEntry::process(Event &event) {
 	}
 	case EVENT_BUTTON_DOWN:
 		event.handled = true;
+		break;
+	case EVENT_CUSTOM_ACTIONSTART:
+		// Custom action to submit a password text.
+		// The code handling this custom action is identical
+		// to the code for handling event type EVENT_KEYPRESS
+		// when event.kdb.keycode == Common::KEYCODE_RETURN.
+		if (event.customType == kActionReturn)  {
+			// Finished entering password
+			_passwordText.remove();
+			_entryText.remove();
+
+			checkPassword();
+			remove();
+		}
 		break;
 	default:
 		break;
@@ -2539,7 +2555,7 @@ void Scene590::postInit(SceneObjectList *OwnerList) {
 }
 
 void Scene590::signal() {
-	static uint32 black = 0;
+	static byte black[3] = { 0, 0, 0 };
 
 	switch (_sceneMode) {
 	case 1:
@@ -2561,7 +2577,7 @@ void Scene590::signal() {
 		ADD_MOVER_NULL(_laura, 0, 170);
 
 		_sceneMode = 1;
-		addFader((byte *)&black, 2, this);
+		addFader(black, 2, this);
 		break;
 	default:
 		BF_GLOBALS._player.enableControl();

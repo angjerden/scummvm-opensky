@@ -22,23 +22,20 @@
 #include "m4/riddle/rooms/section2/room203.h"
 #include "m4/riddle/rooms/section2/section2.h"
 #include "m4/riddle/vars.h"
+#include "m4/riddle/riddle.h"
+#include "m4/adv_r/adv_control.h"
 #include "m4/adv_r/other.h"
 #include "m4/graphics/gr_series.h"
 #include "m4/gui/gui_vmng_screen.h"
-#include "m4/riddle/riddle.h"
 
 namespace M4 {
 namespace Riddle {
 namespace Rooms {
 
 const int16 OFFICIAL_NORMAL_DIRS[] = { 200, 201, 202, -1 };
-const char *OFFICIAL_NORMAL_NAMES[] = {
-	"official walk pos11", "official walk pos9", "official walk pos7"
-};
+const char *OFFICIAL_NORMAL_NAMES[] = { "official walk pos11", "official walk pos9", "official walk pos7" };
 const int16 OFFICIAL_SHADOW_DIRS[] = { 210, 211, 212, -1 };
-const char *OFFICIAL_SHADOW_NAMES[] = {
-	"203of09s", "203of04s", "203of12s"
-};
+const char *OFFICIAL_SHADOW_NAMES[] = { "203of09s", "203of04s", "203of12s" };
 
 const int16 SNORMAL1_DIRS[] = { 200, -1 };
 const char *SNORMAL1_NAMES[] = { "203s01" };
@@ -580,6 +577,8 @@ void Room203::daemon() {
 		_oldLadyMode = 5666;
 		_oldLadyShould = 5100;
 		kernel_timing_trigger(1, 130);
+		ws_unhide_walker(_G(my_walker));
+		player_set_commands_allowed(true);
 		break;
 
 	case 60:
@@ -605,7 +604,7 @@ void Room203::daemon() {
 		break;
 
 	case 66:
-		midi_play("HELMET", 255, 1, -1, 949);
+		midi_play("HELMET", 255, true, -1, 949);
 		break;
 
 	case 67:
@@ -669,7 +668,7 @@ void Room203::daemon() {
 	case 76:
 		digi_preload("203r21");
 		_stream1 = series_stream("old lady gives helmet", 5, 1, 79);
-		series_stream_break_on_frame(_stream1, 77, 62);
+		series_stream_break_on_frame(_stream1, 62, 77);
 		break;
 
 	case 77:
@@ -915,7 +914,7 @@ void Room203::daemon() {
 				} else {
 					player_update_info();
 
-					if (_G(player_info).x >= 450 && _G(player_info).x <= 8000) {
+					if (_G(player_info).x >= 450 && _G(player_info).x <= 800) {
 						kernel_trigger_dispatchx(kernel_trigger_create(121));
 					} else {
 						player_set_commands_allowed(false);
@@ -966,7 +965,7 @@ void Room203::daemon() {
 				} else {
 					player_update_info();
 
-					if (_G(player_info).x >= 450 && _G(player_info).x <= 1040) {
+					if (_G(player_info).x >= 800 && _G(player_info).x <= 1040) {
 						kernel_trigger_dispatchx(kernel_trigger_create(121));
 					} else {
 						player_set_commands_allowed(false);
@@ -1145,7 +1144,7 @@ void Room203::daemon() {
 
 			case 4117:
 				_peasantSquatTo9 = series_load("peasant squat to 9");
-				_peasantFromSquat3 = series_load("shadow peskey from squat to pos3");
+				_peasantFromSquat3 = series_load("shadow pesky from squat to pos3");
 				_peasantSquat3 = series_load("peasant 3 to squat");
 				_peasantSquat9 = series_load("shadow pesky from 9 to squat");
 
@@ -1155,6 +1154,7 @@ void Room203::daemon() {
 					triggerMachineByHashCallback, "pesky peasant");
 				_peasantShadow = TriggerMachineByHash(1, 1, 0, 0, 0, 0, 745, 325, 75, 0x800, false,
 					triggerMachineByHashCallback, "pesky peasant shadow");
+				peasantAnim1();
 				_peasantShould = 4118;
 				break;
 
@@ -1557,7 +1557,7 @@ void Room203::daemon() {
 	case 126:
 		switch (_gkMode) {
 		case 3000:
-			if (_gkShould == 3000 && _gkMode == 3000 && _trigger1 != -1) {
+			if (_gkShould == 3000 && _trigger1 != -1) {
 				kernel_trigger_dispatchx(_trigger1);
 				_trigger1 = -1;
 			}
@@ -1608,7 +1608,7 @@ void Room203::daemon() {
 
 	case 130:
 		switch (_oldLadyMode) {
-		case 30:
+		case 40:
 			break;
 
 		case 5666:

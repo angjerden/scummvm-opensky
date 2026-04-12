@@ -1,6 +1,42 @@
 #line 1 "engines/hypno/lexer_arc.cpp"
+/* ScummVM - Graphic Adventure Engine
+ *
+ * ScummVM is the legal property of its developers, whose names
+ * are too numerous to list here. Please refer to the COPYRIGHT
+ * file distributed with this source distribution.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ */
 
-#line 3 "engines/hypno/lexer_arc.cpp"
+#define YY_NO_UNISTD_H
+#define FORBIDDEN_SYMBOL_EXCEPTION_FILE
+#define FORBIDDEN_SYMBOL_EXCEPTION_fprintf
+#define FORBIDDEN_SYMBOL_EXCEPTION_fwrite
+#define FORBIDDEN_SYMBOL_EXCEPTION_fread
+#define FORBIDDEN_SYMBOL_EXCEPTION_stdin
+#define FORBIDDEN_SYMBOL_EXCEPTION_stdout
+#define FORBIDDEN_SYMBOL_EXCEPTION_stderr
+#define FORBIDDEN_SYMBOL_EXCEPTION_exit
+#define FORBIDDEN_SYMBOL_EXCEPTION_getc
+#define YYERROR_VERBOSE
+
+#include "hypno/hypno.h"
+#include "hypno/grammar.h"
+#include "hypno/tokens_arc.h"
+
+#line 39 "engines/hypno/lexer_arc.cpp"
 
 #define  YY_INT_ALIGNED short int
 
@@ -276,6 +312,7 @@
 /* First, we deal with  platform-specific or compiler-specific issues. */
 
 /* begin standard C headers. */
+
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -292,8 +329,8 @@
 
 #if defined (__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
 
-/* C99 says to define __STDC_LIMIT_MACROS before including stdint.h,
- * if you want the limit (max/min) macros for int types. 
+/* C++ systems might need __STDC_LIMIT_MACROS defined before including
+ * <stdint.h>, if you want the limit (max/min) macros for int types.
  */
 #ifndef __STDC_LIMIT_MACROS
 #define __STDC_LIMIT_MACROS 1
@@ -841,45 +878,8 @@ int yy_flex_debug = 0;
 #define YY_RESTORE_YY_MORE_OFFSET
 char *yytext;
 #line 1 "engines/hypno/lexer_arc.l"
-/* ScummVM - Graphic Adventure Engine
- *
- * ScummVM is the legal property of its developers, whose names
- * are too numerous to list here. Please refer to the COPYRIGHT
- * file distributed with this source distribution.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- */
+
 #define YY_NO_INPUT 1
-#line 32 "engines/hypno/lexer_arc.l"
-#define YY_NO_UNISTD_H
-#define FORBIDDEN_SYMBOL_EXCEPTION_FILE
-#define FORBIDDEN_SYMBOL_EXCEPTION_fprintf
-#define FORBIDDEN_SYMBOL_EXCEPTION_fwrite
-#define FORBIDDEN_SYMBOL_EXCEPTION_fread
-#define FORBIDDEN_SYMBOL_EXCEPTION_stdin
-#define FORBIDDEN_SYMBOL_EXCEPTION_stdout
-#define FORBIDDEN_SYMBOL_EXCEPTION_stderr
-#define FORBIDDEN_SYMBOL_EXCEPTION_exit
-#define FORBIDDEN_SYMBOL_EXCEPTION_getc
-#define YYERROR_VERBOSE
-
-#include "hypno/hypno.h"
-#include "hypno/grammar.h"
-#include "hypno/tokens_arc.h"
-
-#line 882 "engines/hypno/lexer_arc.cpp"
 #line 883 "engines/hypno/lexer_arc.cpp"
 
 #define INITIAL 0
@@ -2443,6 +2443,8 @@ void yyfree (void * ptr )
 
 namespace Hypno {
 
+extern Shoot *shoot;
+
 int parse_arc(const char *code) {
 	YY_BUFFER_STATE bp;
 	yy_delete_buffer(YY_CURRENT_BUFFER);
@@ -2450,6 +2452,8 @@ int parse_arc(const char *code) {
 	yy_switch_to_buffer(bp);
 	HYPNO_ARC_parse();
 	yy_delete_buffer(bp);
+	delete shoot;
+	shoot = nullptr;
 	return 0;
 }
 

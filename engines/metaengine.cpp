@@ -38,6 +38,23 @@
 
 const char MetaEngineDetection::GAME_NOT_IMPLEMENTED[] = _s("Game not implemented");
 
+// Add backslash before double quotes (") and backslashes themselves (\)
+Common::String MetaEngineDetection::escapeString(const char *string) {
+	if (string == nullptr)
+		return "";
+
+	Common::String res = "";
+
+	for (int i = 0; string[i] != '\0'; i++) {
+		if (string[i] == '"' || string[i] == '\\')
+			res += "\\";
+
+		res += string[i];
+	}
+
+	return res;
+}
+
 Common::String MetaEngine::getSavegameFile(int saveGameIdx, const char *target) const {
 	if (!target)
 		target = getName();
@@ -55,22 +72,25 @@ Common::String MetaEngine::getSavegameFile(int saveGameIdx, const char *target) 
 Common::KeymapArray MetaEngine::initKeymaps(const char *target) const {
 	using namespace Common;
 
-	Keymap *engineKeyMap = new Keymap(Keymap::kKeymapTypeGame, "engine-default", _("Default game keymap"));
+	Keymap *engineKeyMap = new Keymap(Keymap::kKeymapTypeGame, "engine-default", _("Default game keymappings"));
+
+	// Default keymap for engines should not match partial as it may hide intended input handling.
+	engineKeyMap->setPartialMatchAllowed(false);
 
 	Action *act;
 
-	act = new Action(kStandardActionLeftClick, _("Left Click"));
+	act = new Action(kStandardActionLeftClick, _("Left click"));
 	act->setLeftClickEvent();
 	act->addDefaultInputMapping("MOUSE_LEFT");
 	act->addDefaultInputMapping("JOY_A");
 	engineKeyMap->addAction(act);
 
-	act = new Action(kStandardActionMiddleClick, _("Middle Click"));
+	act = new Action(kStandardActionMiddleClick, _("Middle click"));
 	act->addDefaultInputMapping("MOUSE_MIDDLE");
 	act->setMiddleClickEvent();
 	engineKeyMap->addAction(act);
 
-	act = new Action(kStandardActionRightClick, _("Right Click"));
+	act = new Action(kStandardActionRightClick, _("Right click"));
 	act->setRightClickEvent();
 	act->addDefaultInputMapping("MOUSE_RIGHT");
 	act->addDefaultInputMapping("JOY_B");
@@ -463,7 +483,7 @@ SaveStateDescriptor MetaEngine::querySaveMetaInfos(const char *target, int slot)
 		}
 
 		// Create the return descriptor
-		SaveStateDescriptor desc(this, slot, Common::U32String());
+		SaveStateDescriptor desc(this, slot);
 		parseSavegameHeader(&header, &desc);
 		desc.setThumbnail(header.thumbnail);
 		desc.setAutosave(header.isAutosave);

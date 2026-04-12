@@ -92,8 +92,7 @@ Common::Error VCruiseEngine::run() {
 	if (_gameDescription->desc.flags & VCRUISE_GF_WANT_OGG_VORBIS) {
 		GUI::MessageDialog dialog(
 			_("Music for this game requires Ogg Vorbis support, which was not compiled in.\n"
-			  "The game will still play, but will not have any music."),
-			_("OK"));
+			  "The game will still play, but will not have any music."));
 		dialog.runModal();
 	}
 #endif
@@ -102,8 +101,7 @@ Common::Error VCruiseEngine::run() {
 	if (_gameDescription->desc.flags & VCRUISE_GF_WANT_MP3) {
 		GUI::MessageDialog dialog(
 			_("Music for this game requires MP3 support, which was not compiled in.\n"
-			  "The game will still play, but will not have any music."),
-			_("OK"));
+			  "The game will still play, but will not have any music."));
 		dialog.runModal();
 	}
 #endif
@@ -130,6 +128,19 @@ Common::Error VCruiseEngine::run() {
 			error("Couldn't load installer package '%s'", _gameDescription->desc.filesDescriptions[0].fileName);
 
 		SearchMan.add("VCruiseInstallerPackage", installerPackageArchive);
+	}
+
+	if (_gameDescription->desc.flags & VCRUISE_GF_USE_SETUP_EXE) {
+		Common::File *f = new Common::File();
+
+		if (!f->open(_gameDescription->desc.filesDescriptions[1].fileName))
+			error("Couldn't open installer package '%s'", _gameDescription->desc.filesDescriptions[1].fileName);
+
+		Common::Archive *setupPackageArchive = Common::createGenteeInstallerArchive(f, "#setuppath#/", true, true);
+		if (!setupPackageArchive)
+			error("Couldn't load installer package '%s'", _gameDescription->desc.filesDescriptions[1].fileName);
+
+		SearchMan.add("VCruiseSetupPackage", setupPackageArchive);
 	}
 
 	syncSoundSettings();

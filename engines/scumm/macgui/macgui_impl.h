@@ -243,7 +243,9 @@ protected:
 	void drawFakePathList(MacDialogWindow *window, Common::Rect r, const char *text);
 	void drawFakeDriveLabel(MacDialogWindow *window, Common::Rect r, const char *text);
 
-	Graphics::Surface *createRemappedSurface(const Graphics::Surface *surface, const byte *palette, int colorCount);
+	Graphics::Surface *createRemappedSurface(const Graphics::Surface *surface, const byte *palette, uint colorCount);
+
+	bool setupResourceCursor(int id, int &width, int &height, int &hotspotX, int &hotspotY, int &animate);
 
 public:
 	class MacGuiObject {
@@ -297,6 +299,7 @@ public:
 
 		virtual void getFocus() { setRedraw(); }
 		virtual void loseFocus() { setRedraw(); }
+		virtual bool keepFocus(int x, int y) { return false; }
 
 		virtual void setRedraw(bool fullRedraw = false);
 
@@ -628,6 +631,10 @@ public:
 		int _selected;
 		Graphics::Surface _popUpBackground;
 		Common::Rect _popUpBounds;
+		bool _floating;
+		bool _enhUIUX;
+
+		void close();
 
 	public:
 		MacPopUpMenu(MacGuiImpl::MacDialogWindow *window, Common::Rect bounds, Common::String text, int textWidth, Common::StringArray texts, bool enabled);
@@ -639,6 +646,9 @@ public:
 		void handleMouseDown(Common::Event &event) override;
 		bool handleMouseUp(Common::Event &event) override;
 		void handleMouseMove(Common::Event &event) override;
+
+		void loseFocus() override;
+		bool keepFocus(int x, int y) override;
 	};
 
 	enum MacDialogEventType {
@@ -690,7 +700,6 @@ public:
 		MacWidget *_defaultWidget = nullptr;
 
 		MacWidget *_focusedWidget = nullptr;
-		Common::Point _focusClick;
 		Common::Point _oldMousePos;
 		Common::Point _mousePos;
 		Common::Point _realMousePos;
@@ -733,7 +742,6 @@ public:
 		void setFocusedWidget(int x, int y);
 		void clearFocusedWidget();
 		MacWidget *getFocusedWidget() const { return _focusedWidget; }
-		Common::Point getFocusClick() const { return _focusClick; }
 		Common::Point getMousePos() const { return _mousePos; }
 
 		int findWidget(int x, int y) const;
@@ -744,7 +752,6 @@ public:
 		MacGuiImpl::MacEditText *addEditText(Common::Rect bounds, Common::String text, bool enabled);
 		MacGuiImpl::MacImage *addIcon(int x, int y, int id, bool enabled);
 		MacGuiImpl::MacImage *addPicture(Common::Rect bounds, int id, bool enabled);
-		MacGuiImpl::
 		MacGuiImpl::MacSlider *addSlider(int x, int y, int h, int minValue, int maxValue, int pageSize, bool enabled);
 		MacGuiImpl::MacImageSlider *addImageSlider(int backgroundId, int handleId, bool enabled, int minX, int maxX, int minValue, int maxValue, int leftMargin = 0, int rightMargin = 0);
 		MacGuiImpl::MacImageSlider *addImageSlider(Common::Rect bounds, MacImage *handle, bool enabled, int minX, int maxX, int minValue, int maxValue);
@@ -801,7 +808,7 @@ public:
 
 	static void menuCallback(int id, Common::String &name, void *data);
 	virtual bool initialize();
-	void updateWindowManager();
+	virtual void updateWindowManager();
 	virtual void updateMenus();
 
 	const Graphics::Font *getFont(FontId fontId);

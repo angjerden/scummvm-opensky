@@ -105,8 +105,6 @@ public:
 	/** Draw the video at the default position. */
 	void setXY();
 
-	void setDouble(bool isDouble); // double the size of the video, to accommodate higher resolutions
-
 	/** Override the video's frame rate. */
 	void setFrameRate(Common::Rational frameRate);
 	/** Get the video's frame rate. */
@@ -122,6 +120,7 @@ public:
 
 	bool hasPalette() const;
 	virtual bool hasVideo() const;
+	virtual bool hasVideoData() const;
 
 	bool hasSound()       const;
 	bool isSoundEnabled() const;
@@ -151,11 +150,14 @@ public:
 	/** Is the video paletted or true color? */
 	virtual bool isPaletted() const;
 
+	virtual uint32 getVideoBufferSize() const = 0;
+
 	/**
 	 * Get the current frame
 	 * @see VideoDecoder::getCurFrame()
 	 */
 	int getCurFrame() const;
+	int getNbFramesPastEnd() const;
 
 	/**
 	 * Decode the next frame
@@ -186,6 +188,7 @@ public:
 	uint16 getWidth()  const;
 	uint16 getHeight() const;
 	virtual uint32 getFlags() const = 0;
+	virtual uint16 getSoundFlags() const = 0;
 	virtual Graphics::PixelFormat getPixelFormat() const = 0;
 
 	uint32 getFrameCount() const;
@@ -233,14 +236,13 @@ protected:
 	uint32 _features;
 
 	 int32 _curFrame;
+	 int32 _nbFramesPastEnd;
 	uint32 _frameCount;
 
 	uint32 _startTime;
 
 	Graphics::Palette _palette;
 	bool _paletteDirty;
-
-	bool _isDouble;
 
 	bool    _ownSurface;
 	Graphics::Surface _surface;
@@ -270,11 +272,9 @@ protected:
 
 	// Block rendering
 	void renderBlockWhole       (Graphics::Surface &dstSurf, const byte *src, Common::Rect &rect);
-	void renderBlockWholeDouble (Graphics::Surface &dstSurf, const byte *src, Common::Rect &rect);
 	void renderBlockWhole4X     (Graphics::Surface &dstSurf, const byte *src, Common::Rect &rect);
 	void renderBlockWhole2Y     (Graphics::Surface &dstSurf, const byte *src, Common::Rect &rect);
 	void renderBlockSparse      (Graphics::Surface &dstSurf, const byte *src, Common::Rect &rect);
-	void renderBlockSparseDouble(Graphics::Surface &dstSurf, const byte *src, Common::Rect &rect);
 	void renderBlockSparse2Y    (Graphics::Surface &dstSurf, const byte *src, Common::Rect &rect);
 	void renderBlockRLE         (Graphics::Surface &dstSurf, const byte *src, Common::Rect &rect);
 
@@ -304,6 +304,8 @@ public:
 	const Graphics::Surface *decodeNextFrame();
 
 	uint32 getFlags() const;
+	uint16 getSoundFlags() const;
+	uint32 getVideoBufferSize() const;
 
 	Graphics::PixelFormat getPixelFormat() const;
 
@@ -338,6 +340,8 @@ public:
 	const Graphics::Surface *decodeNextFrame();
 
 	uint32 getFlags() const;
+	uint16 getSoundFlags() const;
+	uint32 getVideoBufferSize() const;
 
 	Graphics::PixelFormat getPixelFormat() const;
 
@@ -435,6 +439,7 @@ public:
 	int32 getSubtitleIndex() const;
 
 	bool hasVideo() const;
+	bool hasVideoData() const;
 	bool isPaletted() const;
 
 	bool loadStream(Common::SeekableReadStream *stream);
@@ -445,6 +450,8 @@ public:
 	const Graphics::Surface *decodeNextFrame();
 
 	uint32 getFlags() const;
+	uint16 getSoundFlags() const;
+	uint32 getVideoBufferSize() const;
 
 	Graphics::PixelFormat getPixelFormat() const;
 
@@ -513,7 +520,7 @@ private:
 
 	// Sound properties
 	uint16 _soundFlags;
-	int16  _soundFreq;
+	uint16  _soundFreq;
 	int16  _soundSliceSize;
 	int16  _soundSlicesCount;
 	byte   _soundBytesPerSample;
@@ -537,6 +544,7 @@ private:
 
 	// Video properties
 	bool   _hasVideo;
+	bool   _hasVideoData; ///< True if at least a frame contains a "video" part (even with dimensions 0x0)
 	uint32 _videoCodec;
 	byte   _blitMode;
 	byte   _bytesPerPixel;

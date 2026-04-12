@@ -38,6 +38,15 @@ private:
 	byte *_backupPalette;
 
 	int _screenSaveLevel = 0;
+	bool _skipScene = false;
+
+#if ENABLE_SCUMM_7_8
+	// V7 games don't honor the music_mute and sfx_mute settings, so we
+	// have to set the volume directly.
+
+	int _oldMusicVolume = -1;
+	int _oldSfxVolume = -1;
+#endif
 
 public:
 	MacV6Gui(ScummEngine *vm, const Common::Path &resourceFile);
@@ -53,7 +62,7 @@ public:
 	uint32 getBlack() const override { return 255; }
 	uint32 getWhite() const override { return 254; }
 
-	bool handleEvent(Common::Event event) override;
+	void updateWindowManager() override;
 
 	const Graphics::Font *getFontByScummId(int32 id) override;
 

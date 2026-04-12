@@ -261,7 +261,7 @@ public class BackupManager {
 				ZipEntry entry = new ZipEntry(folderName + component);
 
 				zos.putNextEntry(entry);
-				copyStream(zos, new FileInputStream(pfd.getFileDescriptor()));
+				copyStream(zos, new ParcelFileDescriptor.AutoCloseInputStream(pfd));
 				zos.closeEntry();
 			} catch(FileNotFoundException ignored) {
 				return false;
@@ -443,7 +443,7 @@ public class BackupManager {
 		// This version check is only to make Android Studio linter happy
 		if (pr == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
 			// This is a standard filesystem path
-			if (!folder.mkdirs()) {
+			if (!folder.isDirectory() && !folder.mkdirs()) {
 				return false;
 			}
 

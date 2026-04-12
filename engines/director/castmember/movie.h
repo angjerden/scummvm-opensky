@@ -31,12 +31,14 @@ public:
 	MovieCastMember(Cast *cast, uint16 castId, Common::SeekableReadStreamEndian &stream, uint16 version);
 	MovieCastMember(Cast *cast, uint16 castId, MovieCastMember &source);
 
-	Common::Array<Channel> *getSubChannels(Common::Rect &bbox, Channel *channel) override;
+	CastMember *duplicate(Cast *cast, uint16 castId) override { return (CastMember *)(new MovieCastMember(cast, castId, *this)); }
+
+	Common::Array<Channel> *getSubChannels(Common::Rect &bbox, uint frame) override;
 	void load() override;
 
 	bool hasField(int field) override;
 	Datum getField(int field) override;
-	bool setField(int field, const Datum &value) override;
+	void setField(int field, const Datum &value) override;
 
 	Common::String formatInfo() override;
 

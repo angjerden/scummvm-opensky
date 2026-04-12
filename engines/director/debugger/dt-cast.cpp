@@ -27,9 +27,12 @@
 #include "director/cast.h"
 #include "director/castmember/bitmap.h"
 #include "director/castmember/text.h"
+#include "director/castmember/shape.h"
+#include "director/castmember/richtext.h"
 #include "director/castmember/script.h"
 #include "director/movie.h"
 #include "director/types.h"
+#include "director/window.h"
 
 namespace Director {
 namespace DT {
@@ -111,9 +114,11 @@ void showCast() {
 		return;
 
 	ImGui::SetNextWindowPos(ImVec2(20, 160), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(520, 240), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(480, 480), ImGuiCond_FirstUseEver);
 
 	if (ImGui::Begin("Cast", &_state->_w.cast)) {
+		Window *selectedWindow = windowListCombo(&_state->_castWindow);
+
 		// display a toolbar with: grid/list/filters buttons + name filter
 		ImGuiEx::toggleButton(ICON_MS_LIST, &_state->_cast._listView);
 		ImGui::SetItemTooltip("List");
@@ -144,7 +149,7 @@ void showCast() {
 		// display a list or a grid
 		const float sliderHeight = _state->_cast._listView ? 0.f : 38.f;
 		const ImVec2 childsize = ImGui::GetContentRegionAvail();
-		Movie *movie = g_director->getCurrentMovie();
+		Movie *movie = selectedWindow->getCurrentMovie();
 		ImGui::BeginChild("##cast", ImVec2(childsize.x, childsize.y - sliderHeight));
 		if (_state->_cast._listView) {
 			if (ImGui::BeginTable("Resources", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_Resizable | ImGuiTableFlags_RowBg)) {
@@ -152,7 +157,7 @@ void showCast() {
 				ImGui::TableSetupColumn("#", 0, 20.f);
 				ImGui::TableSetupColumn("Script", 0, 80.f);
 				ImGui::TableSetupColumn("Type", 0, 80.f);
-				ImGui::TableSetupColumn("Preview", 0, 32.f);
+				ImGui::TableSetupColumn("Preview", ImGuiTableColumnFlags_WidthStretch, 50.f);
 				ImGui::TableHeadersRow();
 
 				for (auto it : *movie->getCasts()) {
@@ -171,7 +176,20 @@ void showCast() {
 							continue;
 
 						ImGui::TableNextRow();
-						ImGui::TableNextColumn();
+
+						// Make the entire row selectable/clickable
+						ImGui::TableSetColumnIndex(0);
+						if (ImGui::Selectable(
+							Common::String::format("##row%d", castMember._key).c_str(),
+							false,
+							ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap,
+							ImVec2(0, 32.f) // match row height
+						)) {
+							_state->_castDetails._castMember = castMember._value;
+							_state->_w.castDetails = true;
+						}
+						ImGui::SameLine();
+
 						ImGui::Text("%s %s", toIcon(castMember._value->_type), name.c_str());
 
 						ImGui::TableNextColumn();
@@ -186,13 +204,49 @@ void showCast() {
 						ImGui::Text("%s", toString(castMember._value->_type));
 
 						ImGui::TableNextColumn();
-						ImGuiImage imgID = getImageID(castMember._value);
-						if (imgID.id) {
-							showImage(imgID, name.c_str(), 32.f);
+						float columnWidth = ImGui::GetColumnWidth();
+
+						ImGuiImage imgID = {};
+						switch (castMember._value->_type) {
+						case kCastBitmap:
+							{
+								imgID = getImageID(castMember._value);
+								if (imgID.id) {
+									float offsetX = (columnWidth - 32.f) * 0.5f;
+									ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offsetX);
+									showImage(imgID, name.c_str(), 32.f);
+								}
+							}
+							break;
+
+						case kCastText:
+						case kCastRichText:
+						case kCastButton:
+							{
+								imgID = getTextID(castMember._value);
+								if (imgID.id) {
+									float offsetX = (columnWidth - 32.f) * 0.5f;
+									ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offsetX);
+									showImage(imgID, name.c_str(), 32.f);
+								}
+							}
+							break;
+
+						case kCastShape:
+							{
+								imgID = getShapeID(castMember._value);
+								if (imgID.id) {
+									float offsetX = (columnWidth - 32.f) * 0.5f;
+									ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offsetX);
+									showImage(imgID, name.c_str(), 32.f);
+								}
+							}
+							break;
+						default:
+							break;
 						}
 					}
 				}
-
 				ImGui::EndTable();
 			}
 		} else {
@@ -227,10 +281,41 @@ void showCast() {
 							textHeight *= (textSize.x / textWidth);
 						}
 
-						ImGuiImage imgID = getImageID(castMember._value);
-						if (imgID.id) {
-							showImage(imgID, name.c_str(), thumbnailSize);
-						} else {
+						ImGuiImage imgID = {};
+						switch (castMember._value->_type) {
+						case kCastBitmap:
+							{
+								imgID = getImageID(castMember._value);
+								if (imgID.id) {
+									showImage(imgID, name.c_str(), thumbnailSize);
+								}
+							}
+							break;
+
+						case kCastText:
+						case kCastRichText:
+						case kCastButton:
+							{
+								imgID = getTextID(castMember._value);
+								if (imgID.id) {
+									showImage(imgID, name.c_str(), thumbnailSize);
+								}
+							}
+							break;
+
+						case kCastShape:
+							{
+								imgID = getShapeID(castMember._value);
+								if (imgID.id) {
+									showImage(imgID, name.c_str(), thumbnailSize);
+								}
+							}
+							break;
+						default:
+							break;
+						}
+
+						if (!imgID.id) {
 							ImGui::PushID(castMember._key);
 							ImGui::InvisibleButton("##canvas", ImVec2(thumbnailSize, thumbnailSize));
 							ImGui::PopID();
@@ -238,13 +323,19 @@ void showCast() {
 							const ImVec2 p1 = ImGui::GetItemRectMax();
 							ImGui::PushClipRect(p0, p1, true);
 							ImDrawList *draw_list = ImGui::GetWindowDrawList();
-							draw_list->AddRect(p0, p1, IM_COL32_WHITE);
+							draw_list->AddRect(p0, p1, _state->theme->borderColor);
 							const ImVec2 pos = p0 + ImVec2((thumbnailSize - textWidth) * 0.5f, (thumbnailSize - textHeight) * 0.5f);
-							draw_list->AddText(nullptr, 0.f, pos, IM_COL32_WHITE, name.c_str(), 0, thumbnailSize);
-							draw_list->AddText(nullptr, 0.f, p1 - ImVec2(16, 16), IM_COL32_WHITE, toIcon(castMember._value->_type));
+							draw_list->AddText(nullptr, 0.f, pos, _state->theme->gridTextColor, name.c_str(), 0, thumbnailSize);
+							draw_list->AddText(nullptr, 0.f, p1 - ImVec2(16, 16), _state->theme->gridTextColor, toIcon(castMember._value->_type));
 							ImGui::PopClipRect();
 						}
 						ImGui::EndGroup();
+
+						if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(0)) {
+							// Cast Member Clicked
+							_state->_castDetails._castMember = castMember._value; // Must set _castMember before making the caseDetails window visible to prevent null castMember
+							_state->_w.castDetails = true;
+						}
 					}
 				}
 				ImGui::EndTable();

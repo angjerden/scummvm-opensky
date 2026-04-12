@@ -377,7 +377,7 @@ void Sound::processSfxQueues() {
 
 		if (_vm->_imuseDigital) {
 			finished = !isSoundRunning(kTalkSoundID);
-			if (_vm->_game.id == GID_CMI) {
+			if (_vm->_game.id == GID_CMI) { // No mutex lock here, COMI doesn't use the speech timer thread
 #if defined(ENABLE_SCUMM_7_8)
 				_curSoundPos = _vm->_imuseDigital->getSoundElapsedTimeInMs(kTalkSoundID) * 60 / 1000;
 #endif
@@ -392,6 +392,8 @@ void Sound::processSfxQueues() {
 			((uint)act < 0x80 && ((_vm->_game.version == 8) || (_vm->_game.version <= 7 && !_vm->_string[0].no_talk_anim)))) {
 			a = _vm->derefActor(act, "processSfxQueues");
 			if (a->isInCurrentRoom()) {
+				_speechTimerMutex.lock();
+
 				if (finished || (isMouthSyncOff(_curSoundPos) && _mouthSyncMode)) {
 					a->runActorTalkScript(a->_talkStopFrame);
 					_mouthSyncMode = 0;
@@ -399,6 +401,8 @@ void Sound::processSfxQueues() {
 					a->runActorTalkScript(a->_talkStartFrame);
 					_mouthSyncMode = 1;
 				}
+
+				_speechTimerMutex.unlock();
 			}
 #if defined(ENABLE_SCUMM_7_8)
 			if (_vm->_imuseDigital && !_vm->_imuseDigital->isFTSoundEngine()) {
@@ -422,7 +426,12 @@ void Sound::processSfxQueues() {
 #endif
 		}
 
+#ifdef USE_TTS
+		Common::TextToSpeechManager *ttsMan = g_system->getTextToSpeechManager();
+		if (finished && (!ConfMan.getBool("subtitles") || _vm->_talkDelay == 0) && (!ttsMan || !ttsMan->isSpeaking())) {
+#else
 		if (finished && (!ConfMan.getBool("subtitles") || _vm->_talkDelay == 0)) {
+#endif
 			if (!(_vm->_game.version == 8 && _vm->VAR(_vm->VAR_HAVE_MSG) == 0))
 				_vm->stopTalk();
 		}
@@ -1205,11 +1214,14 @@ bool Sound::isSfxFinished() const {
 }
 
 void Sound::incrementSpeechTimer() {
+	Common::StackLock lock(_speechTimerMutex);
+
 	if (!_soundsPaused)
 		_curSoundPos++;
 }
 
 void Sound::resetSpeechTimer() {
+	Common::StackLock lock(_speechTimerMutex);
 	_curSoundPos = 0;
 }
 
@@ -1489,7 +1501,7 @@ int ScummEngine::readSoundResource(ResId idx) {
 	}
 
 	if (total_size)
-		warning("Unrecognized base tag '%c%c%c%c' in sound %d", (basetag >> 24) & 0xFF, (basetag >> 16) & 0xFF, (basetag >> 8) & 0xFF, basetag & 0xFF, idx);
+		warning("Unrecognized base tag '%s' in sound %d", tag2str(basetag), idx);
 	_res->_types[rtSound][idx]._roomoffs = RES_INVALID_OFFSET;
 	return 0;
 }

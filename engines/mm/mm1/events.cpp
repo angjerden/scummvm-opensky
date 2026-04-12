@@ -42,11 +42,13 @@ Events::~Events() {
 }
 
 void Events::runGame() {
-	UIElement *allViews = _enhancedMode ?
-		(UIElement *)new ViewsEnh::Dialogs() :
-		(UIElement *)new Views::Dialogs();
+	ViewsBase *allViews = _enhancedMode ?
+		(ViewsBase *)new ViewsEnh::Dialogs() :
+		(ViewsBase *)new Views::Dialogs();
 	uint currTime, nextFrameTime = 0;
 	_screen = new Graphics::Screen();
+
+	MetaEngine::setKeybindingMode(KeybindingMode::KBMODE_MENUS);
 
 	// Run the game
 	int saveSlot = ConfMan.getInt("save_slot");

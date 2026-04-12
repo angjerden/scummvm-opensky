@@ -62,7 +62,7 @@ public:
 	/** @name Graphics */
 	//@{
 
-	GraphicsManager *getGraphicsManager();
+	GraphicsManager *getGraphicsManager() { return _graphicsManager; }
 	const GraphicsMode *getSupportedGraphicsModes() const override;
 	int getDefaultGraphicsMode() const override;
 	bool setGraphicsMode(int mode, uint flags = kGfxModeNoFlags) override;
@@ -77,6 +77,7 @@ public:
 	int getDefaultStretchMode() const override final;
 	bool setStretchMode(int mode) override final;
 	int getStretchMode() const override final;
+	bool setRotationMode(Common::RotationMode rotation) override final;
 	uint getDefaultScaler() const override final;
 	uint getDefaultScaleFactor() const override final;
 	using BaseBackend::setScaler;
@@ -103,6 +104,7 @@ public:
 	void fillScreen(uint32 col) override final;
 	void fillScreen(const Common::Rect &r, uint32 col) override final;
 	void updateScreen() override final;
+	void presentBuffer() override final;
 	void setShakePos(int shakeXOffset, int shakeYOffset) override final;
 	void setFocusRectangle(const Common::Rect& rect) override final;
 	void clearFocusRectangle() override final;
@@ -114,8 +116,9 @@ public:
 	void clearOverlay() override final;
 	void grabOverlay(Graphics::Surface &surface) override final;
 	void copyRectToOverlay(const void *buf, int pitch, int x, int y, int w, int h) override final;
-	int16 getOverlayHeight() override final;
-	int16 getOverlayWidth() override final;
+	int16 getOverlayHeight() const override final;
+	int16 getOverlayWidth() const override final;
+	Common::Rect getSafeOverlayArea(int16 *width, int16 *height) const override final;
 
 	float getHiDPIScreenFactor() const override final;
 

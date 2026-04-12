@@ -52,6 +52,7 @@ public:
 	inline Common::Point getPosition() { return _sprite->getPosition(); };
 	// Return the area of screen to be used for drawing content.
 	inline Common::Rect getBbox(bool unstretched = false) { return _sprite->getBbox(unstretched); };
+	Common::Rect getRollOverBbox();
 
 	bool isStretched();
 	bool isDirty(Sprite *nextSprite = nullptr);
@@ -94,6 +95,10 @@ public:
 	// used for film loops
 	bool hasSubChannels();
 	Common::Array<Channel> *getSubChannels();
+	CastMemberID getSubChannelSound1();
+	CastMemberID getSubChannelSound2();
+
+	Common::String formatInfo();
 
 public:
 	Sprite *_sprite;
@@ -102,6 +107,7 @@ public:
 
 	bool _dirty;
 	bool _visible;
+	bool _hideFromStage; // Used in DT for hiding the channel from rendering
 	uint _constraint;
 	Graphics::ManagedSurface *_mask;
 
@@ -115,6 +121,12 @@ public:
 
 	// Used in film loops
 	uint _filmLoopFrame;
+
+	Common::Rect _rollOverBbox;
+
+	int _startFrame;
+	int _endFrame;
+	Common::Array<Datum> _scriptInstanceList;
 
 private:
 	Graphics::ManagedSurface *getSurface();

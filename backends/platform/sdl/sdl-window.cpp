@@ -22,6 +22,7 @@
 #define FORBIDDEN_SYMBOL_ALLOW_ALL
 
 #include "backends/platform/sdl/sdl-window.h"
+#include "backends/platform/sdl/sdl.h"
 
 #include "common/textconsole.h"
 #include "common/util.h"
@@ -163,6 +164,12 @@ void SdlWindow::setWindowCaption(const Common::String &caption) {
 }
 
 void SdlWindow::setResizable(bool resizable) {
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	// Don't allow switching state if the window is not meant to be resized
+	if ((_lastFlags & SDL_WINDOW_RESIZABLE) == 0) {
+		return;
+	}
+#endif
 #if SDL_VERSION_ATLEAST(3, 0, 0)
 	if (_window) {
 		SDL_SetWindowResizable(_window, resizable);
@@ -428,19 +435,20 @@ bool SdlWindow::createOrUpdateWindow(int width, int height, uint32 flags) {
 #endif
 
 #if SDL_VERSION_ATLEAST(2, 0, 0)
-	if (_resizable) {
-		flags |= SDL_WINDOW_RESIZABLE;
+	bool allowResize = flags & SDL_WINDOW_RESIZABLE;
+	if (!_resizable) {
+		flags &= ~SDL_WINDOW_RESIZABLE;
 	}
 #endif
 
 #if SDL_VERSION_ATLEAST(3, 0, 0)
-	const uint32 updateableFlagsMask = fullscreenMask | SDL_WINDOW_MOUSE_GRABBED | SDL_WINDOW_RESIZABLE;
+	const uint32 updateableFlagsMask = fullscreenMask | SDL_WINDOW_MOUSE_GRABBED | SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED;
 #elif SDL_VERSION_ATLEAST(2, 0, 5)
 	// SDL_WINDOW_RESIZABLE can be updated without recreating the window starting with SDL 2.0.5
 	// Even though some users may switch the SDL version when it's linked dynamically, 2.0.5 is now getting quite old
-	const uint32 updateableFlagsMask = fullscreenMask | SDL_WINDOW_INPUT_GRABBED | SDL_WINDOW_RESIZABLE;
+	const uint32 updateableFlagsMask = fullscreenMask | SDL_WINDOW_INPUT_GRABBED | SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED;
 #else
-	const uint32 updateableFlagsMask = fullscreenMask | SDL_WINDOW_INPUT_GRABBED;
+	const uint32 updateableFlagsMask = fullscreenMask | SDL_WINDOW_INPUT_GRABBED | SDL_WINDOW_MAXIMIZED;
 #endif
 
 	const uint32 oldNonUpdateableFlags = _lastFlags & ~updateableFlagsMask;
@@ -505,6 +513,10 @@ bool SdlWindow::createOrUpdateWindow(int width, int height, uint32 flags) {
 		_window = SDL_CreateWindow(_windowCaption.c_str(), _lastX,
 								   _lastY, width, height, flags);
 #endif
+		if (!_window) {
+			return false;
+		}
+
 		if (_window) {
 			setupIcon();
 		}
@@ -524,11 +536,16 @@ bool SdlWindow::createOrUpdateWindow(int width, int height, uint32 flags) {
 			fullscreenMode.refresh_rate = 0;
 			SDL_SetWindowDisplayMode(_window, &fullscreenMode);
 #endif
+			SDL_SetWindowFullscreen(_window, fullscreenFlags);
 		} else {
+			SDL_SetWindowFullscreen(_window, fullscreenFlags);
 			SDL_SetWindowSize(_window, width, height);
+			if (flags & SDL_WINDOW_MAXIMIZED) {
+				SDL_MaximizeWindow(_window);
+			} else {
+				SDL_RestoreWindow(_window);
+			}
 		}
-
-		SDL_SetWindowFullscreen(_window, fullscreenFlags);
 	}
 
 #if SDL_VERSION_ATLEAST(3, 0, 0)
@@ -543,29 +560,15 @@ bool SdlWindow::createOrUpdateWindow(int width, int height, uint32 flags) {
 #endif
 
 #if SDL_VERSION_ATLEAST(3, 0, 0)
-	SDL_SetWindowResizable(_window, _resizable);
+	SDL_SetWindowResizable(_window, (flags & SDL_WINDOW_RESIZABLE) != 0);
 #elif SDL_VERSION_ATLEAST(2, 0, 5)
-	SDL_SetWindowResizable(_window, _resizable ? SDL_TRUE : SDL_FALSE);
+	SDL_SetWindowResizable(_window, (flags & SDL_WINDOW_RESIZABLE) ? SDL_TRUE : SDL_FALSE);
 #endif
-
-	if (!_window) {
-		return false;
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	// Restore the flag to allow switching resize state later
+	if (allowResize) {
+		flags |= SDL_WINDOW_RESIZABLE;
 	}
-
-#if defined(MACOSX)
-	// macOS windows with the flag SDL_WINDOW_FULLSCREEN_DESKTOP exiting their fullscreen space
-	// ignore the size set by SDL_SetWindowSize while they were in fullscreen mode.
-	// Instead, they revert back to their previous windowed mode size.
-	// This is a bug in SDL2: https://github.com/libsdl-org/SDL/issues/2518.
-	// TODO: Remove the call to SDL_SetWindowSize below once the SDL bug is fixed.
-
-	// In some cases at this point there may be a pending SDL resize event with the old size.
-	// This happens for example if we destroyed the window, or when switching between windowed
-	// and fullscreen modes. If we changed the window size here, this pending event will have the
-	// old (and incorrect) size. To avoid any issue we call SDL_SetWindowSize() to generate another
-	// resize event (SDL_WINDOWEVENT_SIZE_CHANGED) so that the last resize event we receive has
-	// the correct size. This fixes for exmample bug #9971: SDL2: Fullscreen to RTL launcher resolution
-	SDL_SetWindowSize(_window, width, height);
 #endif
 
 	_lastFlags = flags;
@@ -577,6 +580,15 @@ void SdlWindow::destroyWindow() {
 	if (_window) {
 		if (!(_lastFlags & fullscreenMask)) {
 			SDL_GetWindowPosition(_window, &_lastX, &_lastY);
+		}
+		// Notify the graphics manager that we are about to delete its window
+		OSystem_SDL *system = dynamic_cast<OSystem_SDL *>(g_system);
+		assert(system);
+		GraphicsManager *graphics = system->getGraphicsManager();
+		if (graphics) {
+			SdlGraphicsManager *sdlGraphics = dynamic_cast<SdlGraphicsManager *>(graphics);
+			assert(sdlGraphics);
+			sdlGraphics->destroyingWindow();
 		}
 		SDL_DestroyWindow(_window);
 		_window = nullptr;

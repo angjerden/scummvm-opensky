@@ -45,7 +45,7 @@ void CollisionPuzzle::init() {
 	_image.setTransparentColor(_drawSurface.getTransparentColor());
 
 	if (_puzzleType == kCollision) {
-		_pieces.resize(_pieceSrcs.size(), Piece());
+		_pieces.resize(_pieceSrcs.size());
 		for (uint i = 0; i < _pieceSrcs.size(); ++i) {
 			_pieces[i]._drawSurface.create(_image, _pieceSrcs[i]);
 			Common::Rect pos = getScreenPosition(_startLocations[i]);
@@ -105,9 +105,9 @@ void CollisionPuzzle::init() {
 
 				if (id == 6) {
 					// The solve piece is pushed to the front
-					_pieces.insert_at(0, newPiece);
+					_pieces.emplace(_pieces.begin(), Common::move(newPiece));
 				} else {
-					_pieces.push_back(newPiece);
+					_pieces.push_back(Common::move(newPiece));
 				}
 			}
 		}
@@ -277,6 +277,7 @@ void CollisionPuzzle::execute() {
 		g_nancy->_sound->loadSound(_wallHitSound);
 		g_nancy->_sound->loadSound(_homeSound);
 		NancySceneState.setNoHeldItem();
+		_puzzleStartTime = g_nancy->getTotalPlayTime();
 		_state = kRun;
 		// fall through
 	case kRun :

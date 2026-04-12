@@ -34,7 +34,7 @@
 namespace Graphics {
 
 // Source: Apple IIGS Technical Note #41, "Font Family Numbers"
-// https://www.1000bit.it/support/manuali/apple/technotes/iigs/tn.iigs.041.html
+// https://web.archive.org/web/20221006211144/www.1000bit.it/support/manuali/apple/technotes/iigs/tn.iigs.041.html
 static const struct FontProto {
 	int id;
 	Common::Language lang;
@@ -559,7 +559,7 @@ const Font *MacFontManager::getFont(MacFont *macFont) {
 #ifdef USE_FREETYPE2
 	if (!font && !(_mode & MacGUIConstants::kWMModeForceMacFonts)) {
 
-		if (_uniFontRegistry.contains(macFont->getName())) {
+		if (_uniFontRegistry.contains(macFont->getName()) && _uniFontRegistry[macFont->getName()]) {
 			return _uniFontRegistry[macFont->getName()];
 		}
 
@@ -568,26 +568,29 @@ const Font *MacFontManager::getFont(MacFont *macFont) {
 		int newSlant = macFont->getSlant();
 		int familyId = getFamilyId(newId, newSlant);
 
-		if ((_mode & kWMModeUnicode) &&
+		if (_uniFontRegistry.contains(macFont->getName())) {
+			// It is nullptr, meaning that we did not find this font earlier,
+			// So skip through all of this and go directly to fallback (next code block)
+		} else if ((_mode & kWMModeUnicode) &&
 				(((!_fontInfo.contains(familyId))) || (_mode & kWMModeForceMacFontsInWin95))) {
 			if (macFont->getSize() <= 0) {
 				debugC(1, kDebugLevelMacGUI, "MacFontManager::getFont() - Font size <= 0!");
 			}
-			font = Graphics::loadTTFFontFromArchive("LiberationSans-Regular.ttf", macFont->getSize(), Graphics::kTTFSizeModeCharacter, 0, 0, Graphics::kTTFRenderModeMonochrome);
-			if (font)
-				_uniFontRegistry.setVal(macFont->getName(), font);
+			font = Graphics::loadTTFFontFromArchive("LiberationSans-Regular.ttf", macFont->getSize(), Graphics::kTTFSizeModeCharacter, 0, 0, _ttfRenderMode);
+			_uniFontRegistry.setVal(macFont->getName(), font);
 		} else if (_fontInfo.contains(familyId)) {
-			font = Graphics::loadTTFFontFromArchive(_fontInfo[familyId]->name, macFont->getSize(), Graphics::kTTFSizeModeCharacter, 0, 0, Graphics::kTTFRenderModeMonochrome);
-			if (font)
-				_uniFontRegistry.setVal(macFont->getName(), font);
+			font = Graphics::loadTTFFontFromArchive(_fontInfo[familyId]->name, macFont->getSize(), Graphics::kTTFSizeModeCharacter, 0, 0, _ttfRenderMode);
+
+			// We may get nullptr from here, so storing it to avoid multiple tries
+			_uniFontRegistry.setVal(macFont->getName(), font);
 		} else {
-			font = Graphics::loadTTFFontFromArchive("LiberationSans-Regular.ttf", macFont->getSize(), Graphics::kTTFSizeModeCharacter, 0, 0, Graphics::kTTFRenderModeMonochrome);
-			if (font)
-				_uniFontRegistry.setVal(macFont->getName(), font);
+			font = Graphics::loadTTFFontFromArchive("LiberationSans-Regular.ttf", macFont->getSize(), Graphics::kTTFSizeModeCharacter, 0, 0, _ttfRenderMode);
+			_uniFontRegistry.setVal(macFont->getName(), font);
 		}
 	}
 #endif
 
+	// We found no font, so switching to a safe fallback
 	if (!font) {
 		font = macFont->getFallback();
 
@@ -944,7 +947,7 @@ void MacFontManager::generateTTFFont(MacFont &toFont, Common::SeekableReadStream
 	// TODO: Handle getSlant() flags
 
 	stream->seek(0);
-	Font *font = Graphics::loadTTFFont(stream, DisposeAfterUse::NO, toFont.getSize(), Graphics::kTTFSizeModeCharacter, 0, 0, Graphics::kTTFRenderModeMonochrome);
+	Font *font = Graphics::loadTTFFont(stream, DisposeAfterUse::NO, toFont.getSize(), Graphics::kTTFSizeModeCharacter, 0, 0, _ttfRenderMode);
 
 	if (!font) {
 		warning("Failed to generate font '%s'", toPrintable(getFontName(toFont)).c_str());

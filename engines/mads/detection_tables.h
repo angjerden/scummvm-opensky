@@ -118,6 +118,21 @@ static const MADSGameDescription gameDescriptions[] = {
 	},
 
 	{
+		// Rex Nebular and the Cosmic Gender Bender DOS Russian fanmade
+		{
+			"nebular",
+			"Fanmade",
+			AD_ENTRY1s("section1.hag", "1c09f2cb2c801741769be55c83f89c52", 943426),
+			Common::RU_RUS,
+			Common::kPlatformDOS,
+			ADGF_NO_FLAGS,
+			GUIO6(GUIO_NOSPEECH, GAMEOPTION_EASY_MOUSE, GAMEOPTION_ANIMATED_INVENTORY, GAMEOPTION_ANIMATED_INTERFACE, GAMEOPTION_NAUGHTY_MODE, GAMEOPTION_COPY_PROTECTION)
+		},
+		GType_RexNebular,
+		0
+	},
+
+	{
 		// Rex Nebular and the Cosmic Gender Bender DOS English Demo
 		{
 			"nebular",
@@ -131,13 +146,28 @@ static const MADSGameDescription gameDescriptions[] = {
 		GType_RexNebular,
 		0
 	},
-
+#ifdef ENABLE_MADSV2
 	{
 		// Return of the Phantom DOS English
 		{
 			"phantom",
 			0,
 			AD_ENTRY1s("section1.hag", "76e2d47a7aebafe48edc9884b3d91782", 1130939),
+			Common::EN_ANY,
+			Common::kPlatformDOS,
+			ADGF_UNSTABLE,
+			GUIO1(GAMEOPTION_EASY_MOUSE)
+		},
+		GType_Phantom,
+		0
+	},
+
+	{
+		// Return of the Phantom GOG DOS English
+		{
+			"phantom",
+			0,
+			AD_ENTRY1s("global.idx", "cf17ab33b5ab084763cf83c76a8d9634", 4638),
 			Common::EN_ANY,
 			Common::kPlatformDOS,
 			ADGF_UNSTABLE,
@@ -206,7 +236,7 @@ static const MADSGameDescription gameDescriptions[] = {
 		GType_Forest,
 		0
 	},
-
+#endif
 	{ AD_TABLE_END_MARKER, 0, 0 }
 };
 

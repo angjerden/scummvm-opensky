@@ -338,6 +338,11 @@ MidiDriver::DeviceHandle MidiDriver::detectDevice(int flags) {
 					// Detection flags get removed after final detection attempt to avoid further attempts.
 					flags &= ~(MDT_MIDI | MDT_PREFER_GM | MDT_PREFER_MT32);
 				}
+			} else {
+				if (flags & MDT_PREFER_MT32)
+					flags &= ~MDT_PREFER_MT32;
+				else if (flags & MDT_PREFER_GM)
+					flags &= ~MDT_PREFER_GM;
 			}
 		}
 
@@ -353,6 +358,9 @@ MidiDriver::DeviceHandle MidiDriver::detectDevice(int flags) {
 		} else if (flags & MDT_SEGACD) {
 			tp = MT_SEGACD;
 			flags &= ~MDT_SEGACD;
+		} else if (flags & MDT_MACINTOSH) {
+			tp = MT_MACINTOSH;
+			flags &= ~MDT_MACINTOSH;
 		} else if (flags & MDT_ADLIB) {
 			tp = MT_ADLIB;
 			flags &= ~MDT_ADLIB;
@@ -371,9 +379,6 @@ MidiDriver::DeviceHandle MidiDriver::detectDevice(int flags) {
 		} else if (flags & MDT_APPLEIIGS) {
 			tp = MT_APPLEIIGS;
 			flags &= ~MDT_APPLEIIGS;
-		} else if (flags & MDT_MACINTOSH) {
-			tp = MT_MACINTOSH;
-			flags &= ~MDT_MACINTOSH;
 		} else if (flags & MDT_MIDI) {
 			// If we haven't tried to find a MIDI device yet we do this now.
 			skipMidi = false;

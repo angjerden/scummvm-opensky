@@ -58,6 +58,9 @@ public:
 	virtual ObjectType getType() { return _type; }
 	uint16 getObjectID() { return _objectID; }
 	uint16 getObjectFlags() { return _flags; }
+	bool isGeometric() {
+		return _type != kEntranceType && _type != kGroupType && _type != kSensorType;
+	}
 	void setObjectFlags(uint32 flags_) { _flags = flags_; }
 	Math::Vector3d getOrigin() { return _origin; }
 	virtual void setOrigin(Math::Vector3d origin_) { _origin = origin_; };
@@ -88,6 +91,7 @@ public:
 	uint16 _objectID;
 	Math::Vector3d _origin, _size, _rotation;
 	Math::AABB _boundingBox;
+	Math::AABB _occlusionBox;
 	Object *_partOfGroup = nullptr;
 };
 

@@ -88,8 +88,6 @@ void GfxPaint16::debugSetEGAdrawingVisualize(bool state) {
 }
 
 void GfxPaint16::drawPicture(GuiResourceId pictureId, bool mirroredFlag, bool addToFlag, GuiResourceId paletteId) {
-	GfxPicture *picture = new GfxPicture(_resMan, _coordAdjuster, _ports, _screen, _palette, pictureId, _EGAdrawingVisualize);
-
 	// Set up custom per-picture palette mod
 	doCustomPicPalette(_screen, pictureId);
 
@@ -97,8 +95,9 @@ void GfxPaint16::drawPicture(GuiResourceId pictureId, bool mirroredFlag, bool ad
 	if (!addToFlag)
 		clearScreen(_screen->getColorWhite());
 
-	picture->draw(mirroredFlag, addToFlag, paletteId);
-	delete picture;
+	// Draw the picture
+	GfxPicture picture(_resMan, _coordAdjuster, _ports, _screen, _palette, pictureId, _EGAdrawingVisualize);
+	picture.draw(mirroredFlag, addToFlag, paletteId);
 
 	// We make a call to SciPalette here, for increasing sys timestamp and also loading targetpalette, if palvary active
 	//  (SCI1.1 only)
@@ -204,17 +203,15 @@ void GfxPaint16::invertRect(const Common::Rect &rect) {
 // used in SCI0early exclusively
 void GfxPaint16::invertRectViaXOR(const Common::Rect &rect) {
 	Common::Rect r = rect;
-	int16 x, y;
-	byte curVisual;
 
 	r.clip(_ports->_curPort->rect);
 	if (r.isEmpty()) // nothing to invert
 		return;
 
 	_ports->offsetRect(r);
-	for (y = r.top; y < r.bottom; y++) {
-		for (x = r.left; x < r.right; x++) {
-			curVisual = _screen->getVisual(x, y);
+	for (int16 y = r.top; y < r.bottom; y++) {
+		for (int16 x = r.left; x < r.right; x++) {
+			byte curVisual = _screen->getVisual(x, y);
 			_screen->putPixel(x, y, GFX_SCREEN_MASK_VISUAL, curVisual ^ 0x0f, 0, 0);
 		}
 	}
@@ -332,10 +329,6 @@ void GfxPaint16::bitsShow(const Common::Rect &rect) {
 	_screen->copyRectToScreen(workerRect);
 }
 reg_t GfxPaint16::bitsSave(const Common::Rect &rect, byte screenMask, bool hiresFlag) {
-	reg_t memoryId;
-	byte *memoryPtr;
-	int size;
-
 	Common::Rect workerRect(rect.left, rect.top, rect.right, rect.bottom);
 	if (!hiresFlag) { // KQ6CD Win only does this if not called from the special kGraph 15 case (= kGraphSaveUpscaledHiresBox)
 		workerRect.clip(_ports->_curPort->rect);
@@ -345,20 +338,18 @@ reg_t GfxPaint16::bitsSave(const Common::Rect &rect, byte screenMask, bool hires
 	}
 
 	// now actually ask _screen how much space it will need for saving
-	size = _screen->bitsGetDataSize(workerRect, screenMask);
+	int size = _screen->bitsGetDataSize(workerRect, screenMask);
 
-	memoryId = _segMan->allocateHunkEntry("SaveBits()", size);
-	memoryPtr = _segMan->getHunkPointer(memoryId);
+	reg_t memoryId = _segMan->allocateHunkEntry("SaveBits()", size);
+	byte *memoryPtr = _segMan->getHunkPointer(memoryId);
 	if (memoryPtr)
 		_screen->bitsSave(workerRect, screenMask, memoryPtr);
 	return memoryId;
 }
 
 void GfxPaint16::bitsGetRect(reg_t memoryHandle, Common::Rect *destRect) {
-	byte *memoryPtr = nullptr;
-
 	if (!memoryHandle.isNull()) {
-		memoryPtr = _segMan->getHunkPointer(memoryHandle);
+		byte *memoryPtr = _segMan->getHunkPointer(memoryHandle);
 
 		if (memoryPtr) {
 			_screen->bitsGetRect(memoryPtr, destRect);
@@ -367,10 +358,8 @@ void GfxPaint16::bitsGetRect(reg_t memoryHandle, Common::Rect *destRect) {
 }
 
 void GfxPaint16::bitsRestore(reg_t memoryHandle) {
-	byte *memoryPtr = nullptr;
-
 	if (!memoryHandle.isNull()) {
-		memoryPtr = _segMan->getHunkPointer(memoryHandle);
+		byte *memoryPtr = _segMan->getHunkPointer(memoryHandle);
 
 		if (memoryPtr) {
 			_screen->bitsRestore(memoryPtr);
@@ -600,15 +589,17 @@ reg_t GfxPaint16::kernelDisplay(const char *text, uint16 languageSplitter, int a
 		_ports->penColor(colorPen);
 	}
 
-	// To make sure that the Korean hires font does not get overdrawn we update the display area before printing
-	// the text. The PC-98 versions use a lowres font here, so this fix is only for the Korean fan translation.
-	if (g_sci->getLanguage() == Common::KO_KOR && !_screen->_picNotValid && bRedraw)
+	// To make sure that the hires font used by PQ2 PC-98 and by the Korean fan translations does not get overdrawn we update the
+	// display area before printing the text. The other (non-PQ2) PC-98 versions use a lowres font here, so this fix is only for
+	// PQ2 PC-98 and for the Korean fan translations.
+	bool needCJKFix = (g_sci->getLanguage() == Common::KO_KOR || (g_sci->getPlatform() == Common::kPlatformPC98 && g_sci->getGameId() == GID_PQ2));
+	if (needCJKFix && !_screen->_picNotValid && bRedraw)
 		bitsShow(rect);
 
-	_text16->Box(text, languageSplitter, g_sci->getLanguage() == Common::KO_KOR, rect, alignment, -1);
+	_text16->Box(text, languageSplitter, needCJKFix, rect, alignment, -1);
 
 	// See comment above.
-	if (g_sci->getLanguage() != Common::KO_KOR && _screen->_picNotValid == 0 && bRedraw)
+	if (!needCJKFix && _screen->_picNotValid == 0 && bRedraw)
 		bitsShow(rect);
 
 	// restoring port and cursor pos

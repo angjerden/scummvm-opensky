@@ -69,12 +69,15 @@ class TextToSpeechManager;
 #if defined(USE_SYSDIALOGS)
 class DialogManager;
 #endif
+class PrintingManager;
 class TimerManager;
 class SeekableReadStream;
 class WriteStream;
 class HardwareInputSet;
 class Keymap;
 class KeymapperDefaultBindings;
+
+enum RotationMode : int;
 
 typedef Array<Keymap *> KeymapArray;
 }
@@ -261,6 +264,13 @@ protected:
 	 * @note _fsFactory is deleted by the OSystem destructor.
 	 */
 	FilesystemFactory *_fsFactory;
+
+	/**
+	 * No default value is provided for _printingManager by OSystem.
+	 *
+	 * @note _printingManager is deleted by the OSystem destructor.
+	*/
+	Common::PrintingManager *_printingManager;
 
 	/**
 	 * Used by the DLC Manager implementation
@@ -513,17 +523,6 @@ public:
 		 * tearing is enabled.
 		 */
 		kFeatureVSync,
-
-		/**
-		 * When a backend supports this feature, it guarantees the graphics
-		 * context is not destroyed when switching to and from fullscreen.
-		 *
-		 * For OpenGL, that means the context is kept with all of its content:
-		 * texture, programs, etc.
-		 *
-		 * For TinyGL, that means the backbuffer surface is kept.
-		 */
-		kFeatureFullscreenToggleKeepsContext,
 
 		/**
 		 * The presence of this feature indicates whether the displayLogFile()
@@ -1004,6 +1003,28 @@ public:
 	virtual int getStretchMode() const { return 0; }
 
 	/**
+	 * Switch to the specified rotation
+	 *
+	 * If switching to the new rotation fails, this method returns false.
+	 *
+	 * @param rotation Rotation angle
+	 *
+	 * @return True if the switch was successful, false otherwise.
+	 */
+	virtual bool setRotationMode(Common::RotationMode rotation) { return false; }
+
+	/**
+	 * Switch to the specified rotation with the given int
+	 *
+	 * If switching to the new rotation fails, this method returns false.
+	 *
+	 * @param rotation Rotation angle
+	 *
+	 * @return True if the switch was successful, false otherwise.
+	 */
+	bool setRotationMode(int rotation);
+
+	/**
 	 * Return the ID of the 'default' scaler.
 	 *
 	 * This mode is set by the client code when no user overrides
@@ -1283,6 +1304,11 @@ public:
 	virtual void updateScreen() = 0;
 
 	/**
+	 * When in 3D mode, forces a rendering pass to let the engine read back pixels.
+	 */
+	virtual void presentBuffer() {}
+
+	/**
 	 * Set current shake position, a feature needed for screen effects in some
 	 * engines.
 	 *
@@ -1421,14 +1447,27 @@ public:
 	 *
 	 * @see getHeight
 	 */
-	virtual int16 getOverlayHeight() = 0;
+	virtual int16 getOverlayHeight() const = 0;
 
 	/**
 	 * Return the width of the overlay.
 	 *
 	 * @see getWidth
 	 */
-	virtual int16 getOverlayWidth() = 0;
+	virtual int16 getOverlayWidth() const = 0;
+
+	/**
+	 * Return the safe area for the overlay.
+	 * This area does not interfere with any system UI elements
+	 * such as the notch or home indicator on mobile devices.
+	 * Also returns the full overlay size.
+	 *
+	 * @param width   Returns the width of the overlay, if not nullptr
+	 * @param height  Returns the height of the overlay, if not nullptr
+	 *
+	 * @return The safe area in overlay coordinates.
+	 */
+	virtual Common::Rect getSafeOverlayArea(int16 *width = nullptr, int16 *height = nullptr) const;
 
 	/** @} */
 
@@ -1761,6 +1800,15 @@ public:
 		return _textToSpeechManager;
 	}
 
+	/**
+	 * Return the PrintingManager, used to handle printing.
+	 *
+	 * @return The PrintingManager for the current architecture.
+	 */
+	virtual Common::PrintingManager *getPrintingManager() {
+		return _printingManager;
+	}
+
 #if defined(USE_SYSDIALOGS)
 	/**
 	 * Return the DialogManager, which is used to handle system dialogs.
@@ -1803,7 +1851,7 @@ public:
 	 * @param s         SearchSet to which the system-specific dirs, if any, are added.
 	 * @param priority	Priority with which those dirs are added.
 	 */
-	virtual void addSysArchivesToSearchSet(Common::SearchSet &s, int priority = 0) {}
+	virtual void addSysArchivesToSearchSet(Common::SearchSet &s, int priority);
 
 	/**
 	 * Open the default config file for reading by returning a suitable

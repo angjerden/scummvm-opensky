@@ -68,9 +68,9 @@ static const ADExtraGuiOptionsMap optionsList[] = {
 		GAMEOPTION_GAMMA_CORRECTION,
 		{
 			_s("Enable gamma correction"),
-			_s("Brighten the graphics to simulate a Macintosh monitor."),
+			_s("Brighten the graphics to simulate a Macintosh monitor"),
 			"gamma_correction",
-			false,
+			true,
 			0,
 			0
 		}
@@ -78,8 +78,8 @@ static const ADExtraGuiOptionsMap optionsList[] = {
 	{
 		GAMEOPTION_TRUE_COLOR,
 		{
-			_s("Force true color"),
-			_s("Use true color graphics mode, even if the game is not designed for it."),
+			_s("Force true color (32bpp) mode"),
+			_s("Use true color graphics mode (32 bits per pixel), even if the game is not designed for it"),
 			"true_color",
 			false,
 			0,

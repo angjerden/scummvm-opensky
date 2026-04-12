@@ -289,26 +289,31 @@ void GraphicsManager::blankAllScreen() {
 
 // This function is very useful for scrolling credits, but very little else
 void GraphicsManager::hardScroll(int distance) {
+	// scroll more than backdrop height, screen stay blank
+	if (ABS(distance) >= (int)_sceneHeight) {
+		blankAllScreen();
+		return;
+	}
+
 	// scroll 0 distance, return
 	if (!distance)
 		return;
 
-	// blank screen
-	blankAllScreen();
-
-	// scroll more than backdrop height, screen stay blank
-	if (ABS(distance) >= (int)_sceneHeight) {
-		return;
-	}
+	Graphics::Surface tmp;
+	tmp.copyFrom(_backdropSurface);
 
 	// copy part of the backdrop to it
 	if (distance > 0) {
-		_backdropSurface.copyRectToSurface(_origBackdropSurface, 0, 0,
+		_backdropSurface.copyRectToSurface(tmp, 0, 0,
 				Common::Rect(0, distance, _backdropSurface.w, _backdropSurface.h));
+		_backdropSurface.fillRect(Common::Rect(0, _backdropSurface.h - distance, _backdropSurface.w, _backdropSurface.h), _currentBlankColour);
 	} else {
-		_backdropSurface.copyRectToSurface(_origBackdropSurface, 0, -distance,
+		_backdropSurface.copyRectToSurface(tmp, 0, -distance,
 				Common::Rect(0, 0, _backdropSurface.w, _backdropSurface.h + distance));
+		_backdropSurface.fillRect(Common::Rect(0, 0, _backdropSurface.w, -distance), _currentBlankColour);
 	}
+
+	tmp.free();
 }
 
 void GraphicsManager::drawLine(uint x1, uint y1, uint x2, uint y2) {
@@ -338,7 +343,7 @@ void GraphicsManager::drawBackDrop() {
 	// TODO: apply lightmap shader
 	drawParallax();
 
-	if (!_backdropExists)
+	if (!_backdropExists && !_backdropSurface.getPixels())
 		return;
 	// draw backdrop
 	Graphics::ManagedSurface tmp;
@@ -421,8 +426,10 @@ bool GraphicsManager::loadHSI(int num, Common::SeekableReadStream *stream, int x
 
 	// resize backdrop
 	if (reserve) {
-		if (!resizeBackdrop(realPicWidth, realPicHeight))
+		if (!resizeBackdrop(realPicWidth, realPicHeight)) {
+			tmp.free();
 			return false;
+		}
 	}
 
 	if (x == IN_THE_CENTRE)
@@ -431,6 +438,7 @@ bool GraphicsManager::loadHSI(int num, Common::SeekableReadStream *stream, int x
 		y = (_sceneHeight - realPicHeight) >> 1;
 	if (x < 0 || x + realPicWidth > _sceneWidth || y < 0 || y + realPicHeight > _sceneHeight) {
 		debugC(0, kSludgeDebugGraphics, "Illegal back drop size");
+		tmp.free();
 		return false;
 	}
 
@@ -462,8 +470,10 @@ bool GraphicsManager::mixHSI(int num, Common::SeekableReadStream *stream, int x,
 		x = (_sceneWidth - realPicWidth) >> 1;
 	if (y == IN_THE_CENTRE)
 		y = (_sceneHeight - realPicHeight) >> 1;
-	if (x < 0 || x + realPicWidth > _sceneWidth || y < 0 || y + realPicHeight > _sceneHeight)
+	if (x < 0 || x + realPicWidth > _sceneWidth || y < 0 || y + realPicHeight > _sceneHeight) {
+		mixSurface.free();
 		return false;
+	}
 
 	Graphics::ManagedSurface tmp;
 	tmp.copyFrom(mixSurface);

@@ -39,20 +39,25 @@ typedef Common::HashMap<uint16, Object *> ObjectMap;
 typedef Common::Array<Object *> ObjectArray;
 class Area {
 public:
-	Area(uint16 areaID, uint16 areaFlags, ObjectMap *objectsByID, ObjectMap *entrancesByID);
+	Area(uint16 areaID, uint16 areaFlags, ObjectMap *objectsByID, ObjectMap *entrancesByID, bool isCastle);
 	virtual ~Area();
 
 	Common::String _name;
 	Object *objectWithID(uint16 objectID);
 	Object *entranceWithID(uint16 objectID);
+	Common::List<int> getEntranceIds();
+
 	void changeObjectID(uint16 objectID, uint16 newObjectID);
 	ObjectArray getSensors();
 	uint16 getAreaID();
+	Common::Array<Object *> &getSortedObjects() { return _sortedObjects; }
+	ObjectMap *getObjectsByID() { return _objectsByID; }
+	ObjectMap *getEntrancesByID() { return _entrancesByID; }
 	uint16 getAreaFlags();
 	uint8 getScale();
 	void remapColor(int index, int color);
 	void unremapColor(int index);
-	void draw(Renderer *gfx, uint32 animationTicks, Math::Vector3d camera, Math::Vector3d direction);
+	void draw(Renderer *gfx, uint32 animationTicks, Math::Vector3d camera, Math::Vector3d direction, bool insideWait);
 	void drawGroup(Renderer *gfx, Group *group, bool runAnimation);
 	void show();
 
@@ -84,6 +89,9 @@ public:
 	Common::Point _gasPocketPosition;
 	uint32 _gasPocketRadius;
 
+	// Castle Master specific
+	bool _isCastle;
+
 	uint8 _scale;
 	uint8 _skyColor;
 	uint8 _groundColor;
@@ -92,11 +100,15 @@ public:
 	uint8 _inkColor;
 	uint8 _paperColor;
 	uint8 _extraColor[4];
+	bool _colorCycling; // Amiga/Atari: bit 14 of area header enables COLOR15 cycling
 	ColorReMap _colorRemaps;
 
 	uint32 _lastTick;
 
 private:
+	Math::Vector3d _lastCameraPosition;
+	ObjectArray _sortedObjects;
+
 	uint16 _areaID;
 	uint16 _areaFlags;
 	ObjectMap *_objectsByID;

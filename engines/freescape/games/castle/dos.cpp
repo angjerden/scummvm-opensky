@@ -49,7 +49,6 @@ Common::SeekableReadStream *CastleEngine::decryptFile(const Common::Path &filena
 	return (new Common::MemoryReadStream(encryptedBuffer, size));
 }
 
-extern byte kEGADefaultPalette[16][3];
 extern Common::MemoryReadStream *unpackEXE(Common::File &ms);
 
 byte kEGARiddleFontPalette[16][3] = {
@@ -154,7 +153,7 @@ void CastleEngine::loadAssetsDOSFullGame() {
 		file.open("CME.EXE");
 		stream = unpackEXE(file);
 		if (stream) {
-			loadSpeakerFxDOS(stream, 0x636d + 0x200, 0x63ed + 0x200);
+			loadSpeakerFxDOS(stream, 0x636d + 0x200, 0x63ed + 0x200, 30);
 
 			stream->seek(0x197c0);
 			_endGameBackgroundFrame = loadFrameFromPlanes(stream, 112, 108);
@@ -222,8 +221,16 @@ void CastleEngine::loadAssetsDOSFullGame() {
 			_riddleBottomFrame = loadFrameWithHeaderDOS(stream);
 			_endGameThroneFrame = loadFrameWithHeaderDOS(stream);
 			// No header
-			_thunderFrame = loadFrameFromPlanes(stream, 16, 128);
-			_thunderFrame->convertToInPlace(_gfx->_texturePixelFormat, (byte *)&kEGADefaultPalette, 16);
+			Graphics::ManagedSurface *thunderFrame;
+
+			thunderFrame = loadFrameFromPlanes(stream, 16, 112);
+			thunderFrame->convertToInPlace(_gfx->_texturePixelFormat, (byte *)&kEGADefaultPalette, 16);
+			_thunderFrames.push_back(thunderFrame);
+
+			stream->seek(-0x160,SEEK_CUR);
+			thunderFrame = loadFrameFromPlanes(stream, 16, 112);
+			thunderFrame->convertToInPlace(_gfx->_texturePixelFormat, (byte *)&kEGADefaultPalette, 16);
+			_thunderFrames.push_back(thunderFrame);
 
 			stream->seek(0x29696);
 			Common::Array<Graphics::ManagedSurface *> chars;
@@ -245,9 +252,6 @@ void CastleEngine::loadAssetsDOSFullGame() {
 			_fontRiddle = Font(charsRiddle);
 			_fontRiddle.setCharWidth(9);
 			_fontLoaded = true;
-
-			// No header
-			// Another thunder frame?
 		}
 
 		delete stream;
@@ -272,6 +276,8 @@ void CastleEngine::loadAssetsDOSFullGame() {
 			case Common::ES_ESP:
 				stream = decryptFile("CMLS");
 				loadRiddles(stream, 0xaae - 2 - 22 * 2, 22);
+				// Fixes for incorrect or wrong translations
+				Common::replace(_riddleList[16]._lines[5]._text, "IN", "EN");
 				break;
 			case Common::FR_FRA:
 				stream = decryptFile("CMLF");
@@ -314,7 +320,7 @@ void CastleEngine::loadAssetsDOSDemo() {
 		file.open("CMDE.EXE");
 		stream = unpackEXE(file);
 		if (stream) {
-			loadSpeakerFxDOS(stream, 0x636d + 0x200, 0x63ed + 0x200);
+			loadSpeakerFxDOS(stream, 0x636d + 0x200, 0x63ed + 0x200, 30);
 
 			stream->seek(0x197c0 - 0x2a0);
 			_endGameBackgroundFrame = loadFrameFromPlanes(stream, 112, 108);
@@ -368,8 +374,16 @@ void CastleEngine::loadAssetsDOSDemo() {
 			_riddleBottomFrame = loadFrameWithHeaderDOS(stream);
 			_endGameThroneFrame = loadFrameWithHeaderDOS(stream);
 			// No header
-			_thunderFrame = loadFrameFromPlanes(stream, 16, 128);
-			_thunderFrame->convertToInPlace(_gfx->_texturePixelFormat, (byte *)&kEGADefaultPalette, 16);
+			Graphics::ManagedSurface *thunderFrame;
+
+			thunderFrame = loadFrameFromPlanes(stream, 16, 112);
+			thunderFrame->convertToInPlace(_gfx->_texturePixelFormat, (byte *)&kEGADefaultPalette, 16);
+			_thunderFrames.push_back(thunderFrame);
+
+			stream->seek(-0x160,SEEK_CUR);
+			thunderFrame = loadFrameFromPlanes(stream, 16, 112);
+			thunderFrame->convertToInPlace(_gfx->_texturePixelFormat, (byte *)&kEGADefaultPalette, 16);
+			_thunderFrames.push_back(thunderFrame);
 
 			stream->seek(0x293f6); // TODO: check this
 			Common::Array<Graphics::ManagedSurface *> chars;
@@ -428,6 +442,8 @@ void CastleEngine::drawDOSUI(Graphics::Surface *surface) {
 	uint32 color = 10;
 	uint32 black = _gfx->_texturePixelFormat.ARGBToColor(0xFF, 0x00, 0x00, 0x00);
 	uint8 r, g, b;
+	drawLiftingGate(surface);
+	drawDroppingGate(surface);
 
 	_gfx->readFromPalette(color, r, g, b);
 	uint32 front = _gfx->_texturePixelFormat.ARGBToColor(0xFF, r, g, b);
@@ -448,9 +464,9 @@ void CastleEngine::drawDOSUI(Graphics::Surface *surface) {
 		_temporaryMessages.push_back(message);
 		_temporaryMessageDeadlines.push_back(deadline);
 	} else {
-		if (_gameStateControl == kFreescapeGameStatePlaying) {
+		if (_gameStateControl != kFreescapeGameStateEnd) {
 			if (ghostInArea())
-				drawStringInSurface(_messagesList[116], 97, 182, front, back, surface);
+				drawStringInSurface(_ghostInAreaMessage, 97, 182, front, back, surface);
 			else
 				drawStringInSurface(_currentArea->_name, 97, 182, front, back, surface);
 		}
@@ -460,7 +476,7 @@ void CastleEngine::drawDOSUI(Graphics::Surface *surface) {
 		surface->copyRectToSurfaceWithKey((const Graphics::Surface)*_keysBorderFrames[k], 76 - k * 3, 179, Common::Rect(0, 0, 6, 14), black);
 	}
 
-	drawEnergyMeter(surface, Common::Point(39, 157));
+	drawEnergyMeter(surface, Common::Point(38, 158));
 	int flagFrameIndex = (_ticks / 10) % 4;
 	surface->copyRectToSurface(*_flagFrames[flagFrameIndex], 285, 5, Common::Rect(0, 0, _flagFrames[flagFrameIndex]->w, _flagFrames[flagFrameIndex]->h));
 

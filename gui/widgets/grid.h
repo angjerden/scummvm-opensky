@@ -60,12 +60,13 @@ struct GridItemInfo {
 	Common::String		attribute;
 	Common::Language	language;
 	Common::Platform 	platform;
+	bool                    canLoadGame;
 
 	int32				x, y, w, h;
 
 	GridItemInfo(int id, const Common::String &eid, const Common::String &gid, const Common::String &t,
-		const Common::String &d, const Common::String &e, Common::Language l, Common::Platform p, bool v)
-		: entryID(id), gameid(gid), engineid(eid), title(t), description(d), extra(e), language(l), platform(p), validEntry(v), isHeader(false) {
+		const Common::String &d, const Common::String &e, Common::Language l, Common::Platform p, bool v, bool cl)
+		: entryID(id), gameid(gid), engineid(eid), title(t), description(d), extra(e), language(l), platform(p), validEntry(v), canLoadGame(cl), isHeader(false) {
 		thumbPath = Common::String::format("icons/%s-%s.png", engineid.c_str(), gameid.c_str());
 	}
 
@@ -85,6 +86,7 @@ class GridItemTray: public Dialog, public CommandSender {
 	PicButtonWidget	*_editButton;
 public:
 	GridItemTray(GuiObject *boss, int x, int y, int w, int h, int entryID, GridWidget *grid);
+	void enableLoadButton(bool canLoad) { _loadButton->setEnabled(canLoad); }
 
 	void reflowLayout() override;
 
@@ -98,6 +100,9 @@ public:
 
 /* GridWidget */
 class GridWidget : public ContainerWidget, public CommandSender {
+public:
+	typedef bool (*FilterMatcher)(void *arg, int idx, const Common::U32String &item, const Common::U32String &token);
+
 protected:
 	Common::HashMap<int, const Graphics::ManagedSurface *> _platformIcons;
 	Common::HashMap<int, const Graphics::ManagedSurface *> _languageIcons;
@@ -156,6 +161,11 @@ protected:
 	int				_gridHeaderWidth;
 	int				_trayHeight;
 
+	bool			_multiSelectEnabled;	/// Flag for multi-selection
+
+	FilterMatcher _filterMatcher;
+	void *_filterMatcherArg;
+
 public:
 	int				_gridItemHeight;
 	int				_gridItemWidth;
@@ -210,8 +220,10 @@ public:
 	void scrollToEntry(int id, bool forceToTop);
 	void assignEntriesToItems();
 
-	int getNextPos(int oldSel);
+	int getItemPos(int item);
 	int getNewSel(int index);
+	int getVisualPos(int entryID) const;
+	void selectVisualRange(int startPos, int endPos);
 	int getScrollPos() const { return _scrollPos; }
 	int getSelected() const { return ((_selectedEntry == nullptr) ? -1 : _selectedEntry->entryID); }
 	int getThumbnailHeight() const { return _thumbnailHeight; }
@@ -223,11 +235,24 @@ public:
 
 	bool wantsFocus() override { return true; }
 
+	bool handleKeyDown(Common::KeyState state) override;
+	bool handleKeyUp(Common::KeyState state) override;
 	void openTrayAtSelected();
 	void scrollBarRecalc();
 
 	void setSelected(int id);
 	void setFilter(const Common::U32String &filter);
+	void setFilterMatcher(FilterMatcher matcher, void *arg) { _filterMatcher = matcher; _filterMatcherArg = arg; }
+
+	// Multi-selection methods
+	void setMultiSelectEnabled(bool enabled) { _multiSelectEnabled = enabled; }
+	bool isMultiSelectEnabled() const { return _multiSelectEnabled; }
+	Common::Array<bool> _selectedItems;	/// Multiple selected items (bool array)
+	int _lastSelectedEntryID = -1;		/// Used for Shift+Click range selection
+	bool isItemSelected(int entryID) const;
+	void markSelectedItem(int entryID, bool state);
+	void clearSelection();
+	const Common::Array<bool> &getSelectedItems() const { return _selectedItems; }
 };
 
 /* GridItemWidget */

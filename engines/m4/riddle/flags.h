@@ -116,7 +116,7 @@ enum Flag {
 	V081 =  81, // Room 303 Torso Tomato : first look animation played
 	V082 =  82,
 	V083 =  83,
-	V084 =  84,
+	V084 =  84, // Room 304: 1 if cobra is dead, 2 if cobra has been caught alive
 	V085 =  85,
 	V086 =  86,
 	V087 =  87,
@@ -126,14 +126,14 @@ enum Flag {
 	V091 =  91,
 	V092 =  92,
 	V093 =  93,
-	V094 =  94,
+	kBridgeWheelPosition =  94, // 0 and 4 = horizontal and walkable
 	V095 =  95,
 	V096 =  96,
 	V097 =  97,
 	V098 =  98,
 	V099 =  99,
 
-	V100 = 100,
+	kBridgeLocked = 100,
 	V101 = 101,
 	V102 = 102,
 	V103 = 103,

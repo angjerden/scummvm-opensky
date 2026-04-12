@@ -420,7 +420,7 @@ Common::Error ScummMetaEngine::createInstance(OSystem *syst, Engine **engine,
 
 	// If the GUI options were updated, we catch this here and update them in the users config
 	// file transparently.
-	Common::updateGameGUIOptions(customizeGuiOptions(res), getGameGUIOptionsDescriptionLanguage(res.language));
+	Common::updateGameGUIOptions(customizeGuiOptions(res), getGameGUIOptionsDescriptionLanguage(res.language), getGameGUIOptionsDescriptionPlatform(res.game.platform));
 
 	// If the game was added really long ago, it may be missing its "extra"
 	// field. When adding game-specific options, it may be our only way of
@@ -835,6 +835,15 @@ static const ExtraGuiOption mmDemoModeOption = {
 	0
 };
 
+static const ExtraGuiOption mi2NIDemoModeDisable = {
+	_s("Disable Playback"),
+	_s("Disable the scripted part of the demo (dangerous!). This makes it interactive, but as this was never intended, expect frequent crashes!"),
+	"disable_mi2_ni_demo",
+	false,
+	0,
+	0
+};
+
 static const ExtraGuiOption useRemasteredAudio = {
 	_s("Use remastered audio"),
 	_s("Use the remastered speech and sound effects."),
@@ -853,6 +862,17 @@ static const ExtraGuiOption enableAmbienceSounds = {
 	_s("Enable ambience sounds."),
 	"enable_ambience_sounds",
 	true,
+	0,
+	0
+};
+#endif
+
+#ifdef USE_TTS
+static const ExtraGuiOption enableTTS = {
+	_s("Enable Text to Speech"),
+	_s("Use TTS to read text in the game (if TTS is available)"),
+	"tts_enabled",
+	false,
 	0,
 	0
 };
@@ -894,6 +914,11 @@ const ExtraGuiOptions ScummMetaEngine::getExtraGuiOptions(const Common::String &
 			options.push_back(enableAmbienceSounds);
 #endif
 	}
+#ifdef USE_TTS
+	if (target.empty() || guiOptions.contains(GAMEOPTION_TTS)) {
+		options.push_back(enableTTS);
+	}
+#endif
 	if (target.empty() || gameid == "comi") {
 		options.push_back(comiObjectLabelsOption);
 
@@ -937,6 +962,17 @@ const ExtraGuiOptions ScummMetaEngine::getExtraGuiOptions(const Common::String &
 		options.push_back(macV3LowQualityMusic);
 	}
 
+	// The DOS MI2 Demo runs via a pre-recorded stream of input,
+	// disabling this allows you to navigate the demo manually, 
+	// beware, the demo is stripped of a large number of assets 
+	// and the demo will crash frequently due to missing rooms.
+	if (target.empty() || gameid == "monkey2") {
+		bool isValidTarget = extra.contains("Demo") && platform == Common::kPlatformDOS;
+
+		if (isValidTarget)
+			options.push_back(mi2NIDemoModeDisable);
+	}
+
 	return options;
 }
 
@@ -962,7 +998,7 @@ Common::KeymapArray ScummMetaEngine::initKeymaps(const char *target) const {
 	if (gameId == "ft") {
 		Keymap *insaneKeymap = new Keymap(Keymap::kKeymapTypeGame, insaneKeymapId, "SCUMM - Bike Fights");
 
-		act = new Action("DOWNLEFT", _("Down Left"));
+		act = new Action("DOWNLEFT", _("Down left"));
 		act->setCustomEngineActionEvent(kScummActionInsaneDownLeft);
 		act->addDefaultInputMapping("KP1");
 		act->addDefaultInputMapping("END");
@@ -975,7 +1011,7 @@ Common::KeymapArray ScummMetaEngine::initKeymaps(const char *target) const {
 		act->addDefaultInputMapping("JOY_DOWN");
 		insaneKeymap->addAction(act);
 
-		act = new Action("DOWNRIGHT", _("Down Right"));
+		act = new Action("DOWNRIGHT", _("Down right"));
 		act->setCustomEngineActionEvent(kScummActionInsaneDownRight);
 		act->addDefaultInputMapping("KP3");
 		act->addDefaultInputMapping("PAGEDOWN");
@@ -995,7 +1031,7 @@ Common::KeymapArray ScummMetaEngine::initKeymaps(const char *target) const {
 		act->addDefaultInputMapping("JOY_RIGHT");
 		insaneKeymap->addAction(act);
 
-		act = new Action("UPLEFT", _("Up Left"));
+		act = new Action("UPLEFT", _("Up left"));
 		act->setCustomEngineActionEvent(kScummActionInsaneUpLeft);
 		act->addDefaultInputMapping("KP7");
 		act->addDefaultInputMapping("INSERT");
@@ -1008,7 +1044,7 @@ Common::KeymapArray ScummMetaEngine::initKeymaps(const char *target) const {
 		act->addDefaultInputMapping("JOY_UP");
 		insaneKeymap->addAction(act);
 
-		act = new Action("UPRIGHT", _("Up Right"));
+		act = new Action("UPRIGHT", _("Up right"));
 		act->setCustomEngineActionEvent(kScummActionInsaneUpRight);
 		act->addDefaultInputMapping("KP9");
 		act->addDefaultInputMapping("PAGEUP");

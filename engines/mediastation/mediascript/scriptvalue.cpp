@@ -19,62 +19,64 @@
  *
  */
 
-#include "mediastation/datum.h"
 #include "mediastation/mediascript/scriptvalue.h"
 #include "mediastation/mediascript/function.h"
+#include "mediastation/mediastation.h"
+
+#define VALUETYPEMISMATCH(expectedType) warning("%s: Script value type mismatch: Expected %s, got %s", __func__, scriptValueTypeToStr(expectedType), scriptValueTypeToStr(_type))
 
 namespace MediaStation {
 
-ScriptValue::ScriptValue(Common::SeekableReadStream *stream) {
-	_type = static_cast<ScriptValueType>(Datum(*stream).u.i);
+ScriptValue::ScriptValue(ParameterReadStream *stream) {
+	_type = static_cast<ScriptValueType>(stream->readTypedByte());
 
 	switch (_type) {
 	case kScriptValueTypeEmpty:
 		break;
 
 	case kScriptValueTypeFloat: {
-		double d = Datum(*stream).u.f;
+		double d = stream->readTypedDouble();
 		setToFloat(d);
 		break;
 	}
 
 	case kScriptValueTypeBool: {
-		uint rawValue = Datum(*stream, kDatumTypeUint8).u.i;
+		uint rawValue = stream->readTypedByte();
 		if (rawValue != 0 && rawValue != 1) {
-			error("Got invalid literal bool value %d", rawValue);
+			error("%s: Got invalid literal bool value %d", __func__, rawValue);
 		}
 		setToBool(rawValue);
 		break;
 	}
 
 	case kScriptValueTypeTime: {
-		double d = Datum(*stream).u.f;
+		double d = stream->readTypedTime();
 		setToFloat(d);
 		break;
 	}
 
 	case kScriptValueTypeParamToken: {
-		uint paramToken = Datum(*stream).u.i;
+		uint paramToken = stream->readTypedUint16();
 		setToParamToken(paramToken);
 		break;
 	}
 
-	case kScriptValueTypeAssetId: {
-		uint assetId = Datum(*stream).u.i;
-		setToAssetId(assetId);
+	case kScriptValueTypeActorId: {
+		uint actorId = stream->readTypedUint16();
+		setToActorId(actorId);
 		break;
 	}
 
 	case kScriptValueTypeString: {
-		uint size = Datum(*stream).u.i;
+		uint size = stream->readTypedUint16();
 		Common::String string = stream->readString('\0', size);
 		setToString(string);
 		break;
 	}
 
 	case kScriptValueTypeCollection: {
-		uint totalItems = Datum(*stream).u.i;
-		Common::SharedPtr<Collection> collection(new Collection);
+		uint totalItems = stream->readTypedUint16();
+		Collection *collection = new Collection;
 		for (uint i = 0; i < totalItems; i++) {
 			ScriptValue collectionValue = ScriptValue(stream);
 			collection->push_back(collectionValue);
@@ -84,20 +86,101 @@ ScriptValue::ScriptValue(Common::SeekableReadStream *stream) {
 	}
 
 	case kScriptValueTypeFunctionId: {
-		uint functionId = Datum(*stream).u.i;
+		uint functionId = stream->readTypedUint16();
 		setToFunctionId(functionId);
 		break;
 	}
 
 	case kScriptValueTypeMethodId: {
-		BuiltInMethod methodId = static_cast<BuiltInMethod>(Datum(*stream).u.i);
+		BuiltInMethod methodId = static_cast<BuiltInMethod>(stream->readTypedUint16());
 		setToMethodId(methodId);
 		break;
 	}
 
 	default:
-		error("Got unknown script value type %s", scriptValueTypeToStr(_type));
+		error("%s: Got unknown script value type %s", __func__, scriptValueTypeToStr(_type));
 	}
+}
+
+void ScriptValue::clearCollection() {
+	if (_collection) {
+		delete _collection;
+		_collection = nullptr;
+	}
+}
+
+ScriptValue::~ScriptValue() {
+	clearCollection();
+}
+
+ScriptValue::ScriptValue(const ScriptValue &other) {
+	clearCollection();
+	copyFrom(other);
+}
+
+void ScriptValue::operator=(const ScriptValue &other) {
+	clearCollection();
+	copyFrom(other);
+}
+
+void ScriptValue::copyFrom(const ScriptValue &other) {
+	_type = other._type;
+
+	switch (_type) {
+	case kScriptValueTypeEmpty:
+		// Nothing to copy for empty type.
+		break;
+
+	case kScriptValueTypeFloat:
+		_u.d = other._u.d;
+		break;
+
+	case kScriptValueTypeBool:
+		_u.b = other._u.b;
+		break;
+
+	case kScriptValueTypeTime:
+		_u.d = other._u.d;
+		break;
+
+	case kScriptValueTypeParamToken:
+		_u.paramToken = other._u.paramToken;
+		break;
+
+	case kScriptValueTypeActorId:
+		_u.actorId = other._u.actorId;
+		break;
+
+	case kScriptValueTypeString:
+		_string = other._string;
+		break;
+
+	case kScriptValueTypeCollection:
+		if (other._collection) {
+			// We always need a deep copy.
+			_collection = new Collection(*other._collection);
+		}
+		break;
+
+	case kScriptValueTypeFunctionId:
+		_u.functionId = other._u.functionId;
+		break;
+
+	case kScriptValueTypeMethodId:
+		_u.methodId = other._u.methodId;
+		break;
+
+	default:
+		error("%s: Got unknown script value type %s", __func__, scriptValueTypeToStr(_type));
+	}
+}
+
+void ScriptValue::setToFloat(uint i) {
+	setToFloat(static_cast<double>(i));
+}
+
+void ScriptValue::setToFloat(int i) {
+	setToFloat(static_cast<double>(i));
 }
 
 void ScriptValue::setToFloat(double d) {
@@ -109,7 +192,7 @@ double ScriptValue::asFloat() const {
 	if (_type == kScriptValueTypeFloat) {
 		return _u.d;
 	} else {
-		issueValueMismatchWarning(kScriptValueTypeFloat);
+		VALUETYPEMISMATCH(kScriptValueTypeFloat);
 		return 0.0;
 	}
 }
@@ -123,7 +206,7 @@ bool ScriptValue::asBool() const {
 	if (_type == kScriptValueTypeBool) {
 		return _u.b;
 	} else {
-		issueValueMismatchWarning(kScriptValueTypeBool);
+		VALUETYPEMISMATCH(kScriptValueTypeBool);
 		return false;
 	}
 }
@@ -137,7 +220,7 @@ double ScriptValue::asTime() const {
 	if (_type == kScriptValueTypeTime) {
 		return _u.d;
 	} else {
-		issueValueMismatchWarning(kScriptValueTypeTime);
+		VALUETYPEMISMATCH(kScriptValueTypeTime);
 		return 0.0;
 	}
 }
@@ -151,21 +234,21 @@ uint ScriptValue::asParamToken() const {
 	if (_type == kScriptValueTypeParamToken) {
 		return _u.paramToken;
 	} else {
-		issueValueMismatchWarning(kScriptValueTypeParamToken);
+		VALUETYPEMISMATCH(kScriptValueTypeParamToken);
 		return 0;
 	}
 }
 
-void ScriptValue::setToAssetId(uint assetId) {
-	_type = kScriptValueTypeAssetId;
-	_u.assetId = assetId;
+void ScriptValue::setToActorId(uint actorId) {
+	_type = kScriptValueTypeActorId;
+	_u.actorId = actorId;
 }
 
-uint ScriptValue::asAssetId() const {
-	if (_type == kScriptValueTypeAssetId) {
-		return _u.assetId;
+uint ScriptValue::asActorId() const {
+	if (_type == kScriptValueTypeActorId) {
+		return _u.actorId;
 	} else {
-		issueValueMismatchWarning(kScriptValueTypeAssetId);
+		VALUETYPEMISMATCH(kScriptValueTypeActorId);
 		return 0;
 	}
 }
@@ -183,16 +266,17 @@ Common::String ScriptValue::asString() const {
 	}
 }
 
-void ScriptValue::setToCollection(Common::SharedPtr<Collection> collection) {
+void ScriptValue::setToCollection(Collection *collection) {
 	_type = kScriptValueTypeCollection;
+	clearCollection();
 	_collection = collection;
 }
 
-Common::SharedPtr<Collection> ScriptValue::asCollection() const {
+Collection *ScriptValue::asCollection() const {
 	if (_type == kScriptValueTypeCollection) {
 		return _collection;
 	} else {
-		issueValueMismatchWarning(kScriptValueTypeCollection);
+		VALUETYPEMISMATCH(kScriptValueTypeCollection);
 		return nullptr;
 	}
 }
@@ -206,7 +290,7 @@ uint ScriptValue::asFunctionId() const {
 	if (_type == kScriptValueTypeFunctionId) {
 		return _u.functionId;
 	} else {
-		issueValueMismatchWarning(kScriptValueTypeFunctionId);
+		VALUETYPEMISMATCH(kScriptValueTypeFunctionId);
 		return 0;
 	}
 }
@@ -220,60 +304,92 @@ BuiltInMethod ScriptValue::asMethodId() const {
 	if (_type == kScriptValueTypeMethodId) {
 		return _u.methodId;
 	} else {
-		issueValueMismatchWarning(kScriptValueTypeMethodId);
+		VALUETYPEMISMATCH(kScriptValueTypeMethodId);
 		return kInvalidMethod;
+	}
+}
+
+Common::String ScriptValue::getDebugString() const {
+	switch (getType()) {
+	case kScriptValueTypeEmpty:
+		return "empty";
+
+	case kScriptValueTypeFloat:
+		return Common::String::format("float: %f", asFloat());
+
+	case kScriptValueTypeActorId: {
+		Common::String actorName = g_engine->formatActorName(asActorId(), true);
+		return Common::String::format("actor: %s", actorName.c_str());
+	}
+
+	case kScriptValueTypeTime:
+		return Common::String::format("time: %f", asTime());
+
+	case kScriptValueTypeParamToken: {
+		Common::String tokenName = g_engine->formatParamTokenName(asParamToken());
+		return Common::String::format("token: %s", tokenName.c_str());
+	}
+
+	case kScriptValueTypeString:
+		return Common::String::format("string: \"%s\"", asString().c_str());
+
+	default:
+		return Common::String::format("arg type %s", scriptValueTypeToStr(getType()));
 	}
 }
 
 bool ScriptValue::compare(Opcode op, const ScriptValue &lhs, const ScriptValue &rhs) {
 	if (lhs.getType() != rhs.getType()) {
-		error("Attempt to compare mismatched types %s and %s",
-		      scriptValueTypeToStr(lhs.getType()), scriptValueTypeToStr(rhs.getType()));
+		warning("%s: Attempt to compare mismatched values: %s; %s",
+			__func__, lhs.getDebugString().c_str(), rhs.getDebugString().c_str());
 	}
 
+	bool result = false;
 	switch (lhs.getType()) {
 	case kScriptValueTypeEmpty:
-		return compareEmptyValues(op);
+		result = compareEmptyValues(op);
+		break;
 
 	case kScriptValueTypeFloat:
-		return compare(op, lhs.asFloat(), rhs.asFloat());
+		result = compare(op, lhs.asFloat(), rhs.asFloat());
 		break;
 
 	case kScriptValueTypeBool:
-		return compare(op, lhs.asBool(), rhs.asBool());
+		result = compare(op, lhs.asBool(), rhs.asBool());
 		break;
 
 	case kScriptValueTypeTime:
-		return compare(op, lhs.asTime(), rhs.asTime());
+		result = compare(op, lhs.asTime(), rhs.asTime());
 		break;
 
 	case kScriptValueTypeParamToken:
-		return compare(op, lhs.asParamToken(), rhs.asParamToken());
+		result = compare(op, lhs.asParamToken(), rhs.asParamToken());
 		break;
 
-	case kScriptValueTypeAssetId:
-		return compare(op, lhs.asAssetId(), rhs.asAssetId());
+	case kScriptValueTypeActorId:
+		result = compare(op, lhs.asActorId(), rhs.asActorId());
 		break;
 
 	case kScriptValueTypeString:
-		return compareStrings(op, lhs.asString(), rhs.asString());
+		result = compareStrings(op, lhs.asString(), rhs.asString());
 		break;
 
 	case kScriptValueTypeCollection:
-		return compare(op, lhs.asCollection(), rhs.asCollection());
+		result = compare(op, lhs.asCollection(), rhs.asCollection());
 		break;
 
 	case kScriptValueTypeFunctionId:
-		return compare(op, lhs.asFunctionId(), rhs.asFunctionId());
+		result = compare(op, lhs.asFunctionId(), rhs.asFunctionId());
 		break;
 
 	case kScriptValueTypeMethodId:
-		return compare(op, static_cast<uint>(lhs.asMethodId()), static_cast<uint>(rhs.asMethodId()));
+		result = compare(op, static_cast<uint>(lhs.asMethodId()), static_cast<uint>(rhs.asMethodId()));
 		break;
 
 	default:
-		error("Got unknown script value type %d", lhs.getType());
+		error("%s: Got unknown script value type %d", __func__, lhs.getType());
 	}
+	return result;
 }
 
 bool ScriptValue::compareEmptyValues(Opcode op) {
@@ -286,7 +402,8 @@ bool ScriptValue::compareEmptyValues(Opcode op) {
 		return false;
 
 	default:
-		error("Got invalid empty value operation %s", opcodeToStr(op));
+		warning("%s: Got invalid empty value operation %s", __func__, opcodeToStr(op));
+		return false;
 	}
 }
 
@@ -311,7 +428,7 @@ bool ScriptValue::compareStrings(Opcode op, const Common::String &left, const Co
 		return (left >= right);
 
 	default:
-		error("Got invalid string operation %s", opcodeToStr(op));
+		error("%s: Got invalid string operation %s", __func__, opcodeToStr(op));
 	}
 }
 
@@ -324,7 +441,7 @@ bool ScriptValue::compare(Opcode op, uint left, uint right) {
 		return (left != right);
 
 	default:
-		error("Got invalid param token operation %s", opcodeToStr(op));
+		error("%s: Got invalid param token operation %s", __func__, opcodeToStr(op));
 	}
 }
 
@@ -337,7 +454,7 @@ bool ScriptValue::compare(Opcode op, bool left, bool right) {
 		return (left != right);
 
 	default:
-		error("Got invalid bool operation %s", opcodeToStr(op));
+		error("%s: Got invalid bool operation %s", __func__, opcodeToStr(op));
 	}
 }
 
@@ -362,11 +479,11 @@ bool ScriptValue::compare(Opcode op, double left, double right) {
 		return (left >= right);
 
 	default:
-		error("Got invalid float operation %s", opcodeToStr(op));
+		error("%s: Got invalid float operation %s", __func__, opcodeToStr(op));
 	}
 }
 
-bool ScriptValue::compare(Opcode op, Common::SharedPtr<Collection> left, Common::SharedPtr<Collection> right) {
+bool ScriptValue::compare(Opcode op, Collection *left, Collection *right) {
 	switch (op) {
 	case kOpcodeEquals:
 		return (left == right);
@@ -375,7 +492,7 @@ bool ScriptValue::compare(Opcode op, Common::SharedPtr<Collection> left, Common:
 		return (left != right);
 
 	default:
-		error("Got invalid collection operation %s", opcodeToStr(op));
+		error("%s: Got invalid collection operation %s", __func__, opcodeToStr(op));
 	}
 }
 
@@ -390,7 +507,7 @@ ScriptValue ScriptValue::evalMathOperation(Opcode op, const ScriptValue &left, c
 		} else if (right.getType() == kScriptValueTypeFloat) {
 			result = binaryMathOperation(op, left.asFloat(), right.asFloat());
 		} else {
-			error("Attempted to do math operation on unsupported value type %s", scriptValueTypeToStr(right.getType()));
+			error("%s: Attempted to do math operation on unsupported value type %s", __func__, scriptValueTypeToStr(right.getType()));
 		}
 		returnValue.setToFloat(result);
 		break;
@@ -402,7 +519,7 @@ ScriptValue ScriptValue::evalMathOperation(Opcode op, const ScriptValue &left, c
 		} else if (right.getType() == kScriptValueTypeFloat) {
 			result = binaryMathOperation(op, left.asTime(), right.asFloat());
 		} else {
-			error("Attempted to do math operation on unsupported value type %s", scriptValueTypeToStr(right.getType()));
+			error("%s: Attempted to do math operation on unsupported value type %s", __func__, scriptValueTypeToStr(right.getType()));
 		}
 		returnValue.setToFloat(result);
 		break;
@@ -414,7 +531,7 @@ ScriptValue ScriptValue::evalMathOperation(Opcode op, const ScriptValue &left, c
 	}
 
 	default:
-		error("Attempted to do math operation on unsupported value type %s", scriptValueTypeToStr(right.getType()));
+		error("%s: Attempted to do math operation on unsupported value type %s", __func__, scriptValueTypeToStr(right.getType()));
 	}
 
 	return returnValue;
@@ -435,18 +552,18 @@ double ScriptValue::binaryMathOperation(Opcode op, double left, double right) {
 		if (right != 0.0) {
 			return left / right;
 		} else {
-			error("Division by zero");
+			error("%s: Division by zero", __func__);
 		}
 
 	case kOpcodeModulo:
 		if (right != 0.0) {
 			return fmod(left, right);
 		} else {
-			error("Division by zero");
+			error("%s: Division by zero", __func__);
 		}
 
 	default:
-		error("Got unvalid binary math operation %s", opcodeToStr(op));
+		error("%s: Got unvalid binary math operation %s", __func__, opcodeToStr(op));
 	}
 }
 
@@ -476,7 +593,7 @@ bool ScriptValue::operator>=(const ScriptValue &other) const {
 
 bool ScriptValue::operator||(const ScriptValue &other) const {
 	if (getType() != kScriptValueTypeBool || other.getType() != kScriptValueTypeBool) {
-		error("Expected bools for binary comparison, got %s and %s", scriptValueTypeToStr(getType()), scriptValueTypeToStr(other.getType()));
+		error("%s: Expected bools for binary comparison, got %s and %s", __func__, scriptValueTypeToStr(getType()), scriptValueTypeToStr(other.getType()));
 	}
 
 	return asBool() || other.asBool();
@@ -484,7 +601,7 @@ bool ScriptValue::operator||(const ScriptValue &other) const {
 
 bool ScriptValue::operator^(const ScriptValue &other) const {
 	if (getType() != kScriptValueTypeBool || other.getType() != kScriptValueTypeBool) {
-		error("Expected bools for binary comparison, got %s and %s", scriptValueTypeToStr(getType()), scriptValueTypeToStr(other.getType()));
+		error("%s: Expected bools for binary comparison, got %s and %s", __func__, scriptValueTypeToStr(getType()), scriptValueTypeToStr(other.getType()));
 	}
 
 	return asBool() ^ other.asBool();
@@ -492,7 +609,7 @@ bool ScriptValue::operator^(const ScriptValue &other) const {
 
 bool ScriptValue::operator&&(const ScriptValue &other) const {
 	if (getType() != kScriptValueTypeBool || other.getType() != kScriptValueTypeBool) {
-		error("Expected bools for binary comparison, got %s and %s", scriptValueTypeToStr(getType()), scriptValueTypeToStr(other.getType()));
+		error("%s: Expected bools for binary comparison, got %s and %s", __func__, scriptValueTypeToStr(getType()), scriptValueTypeToStr(other.getType()));
 	}
 
 	return asBool() && other.asBool();
@@ -530,16 +647,9 @@ ScriptValue ScriptValue::operator-() const {
 		break;
 
 	default:
-		error("Attempted to negate type %s", scriptValueTypeToStr(getType()));
+		error("%s: Attempted to negate type %s", __func__, scriptValueTypeToStr(getType()));
 	}
 	return returnValue;
-}
-
-void ScriptValue::issueValueMismatchWarning(ScriptValueType expectedType) const {
-	// The original just blithely returns 0 (or equivalent) when you call a
-	// getter for the wrong type (for instance, calling asFloat() on a bool),
-	// but for debugging purposes we'll issue a warning.
-	warning("Script value type mismatch: Expected %s, got %s", scriptValueTypeToStr(expectedType), scriptValueTypeToStr(_type));
 }
 
 } // End of namespace MediaStation

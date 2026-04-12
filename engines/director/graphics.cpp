@@ -133,9 +133,13 @@ void DirectorEngine::loadDefaultPalettes() {
 	_loaded4Palette = PaletteV4(CastMemberID(kClutGrayscale, -1), grayscale4Palette, 4);
 }
 
-PaletteV4 *DirectorEngine::getPalette(const CastMemberID &id) {
+PaletteV4 *DirectorEngine::getPalette(CastMemberID id) {
 	if (id.isNull())
 		return nullptr;
+
+	// Reference to internal palettes
+	if (id.member < 0)
+		id.castLib = -1; // Ensure we use the default palette set
 
 	if (!_loadedPalettes.contains(id)) {
 		warning("DirectorEngine::getPalette(): Palette %s not found, hash %x", id.asString().c_str(), id.hash());
@@ -145,7 +149,11 @@ PaletteV4 *DirectorEngine::getPalette(const CastMemberID &id) {
 	return &_loadedPalettes[id];
 }
 
-bool DirectorEngine::hasPalette(const CastMemberID &id) {
+bool DirectorEngine::hasPalette(CastMemberID id) {
+	// Reference to internal palettes
+	if (id.member < 0)
+		id.castLib = -1; // Ensure we use the default palette set
+
 	return _loadedPalettes.contains(id);
 }
 
@@ -291,6 +299,7 @@ void InkPrimitives<T>::drawPoint(int x, int y, uint32 src, void *data) {
 	if (!p->destRect.contains(x, y))
 		return;
 
+
 	T *dst;
 	uint32 tmpDst;
 
@@ -347,12 +356,17 @@ void InkPrimitives<T>::drawPoint(int x, int y, uint32 src, void *data) {
 
  	switch (p->ink) {
 	case kInkTypeBackgndTrans:
-		if (p->oneBitImage) {
-			// One-bit images have a slightly different rendering algorithm for BackgndTrans.
-			// Foreground colour is used, and background colour is ignored.
-			*dst = (src == p->colorBlack) ? p->foreColor : *dst;
+		if (p->srfMask) {
+			// If there's a mask, we already dealing with transparency, so just copy the pixel.
+			 *dst = src;
 		} else {
-			*dst = (src == p->backColor) ? *dst : src;
+			if (p->oneBitImage) {
+				// One-bit images have a slightly different rendering algorithm for BackgndTrans.
+				// Foreground colour is used, and background colour is ignored.
+				*dst = (src == p->colorBlack) ? p->foreColor : *dst;
+			} else {
+				*dst = (src == p->backColor) ? *dst : src;
+			}
 		}
 		break;
 	case kInkTypeMatte:
@@ -364,24 +378,7 @@ void InkPrimitives<T>::drawPoint(int x, int y, uint32 src, void *data) {
 		// Otherwise, treat it like a Matte image.
 	case kInkTypeCopy: {
 		if (p->applyColor) {
-			if (sizeof(T) == 1) {
-				*dst = (src == 0xff) ? p->foreColor : ((src == 0x00) ? p->backColor : *dst);
-			} else {
-				// TODO: Improve the efficiency of this composition
-				byte rSrc, gSrc, bSrc;
-				byte rDst, gDst, bDst;
-				byte rFor, gFor, bFor;
-				byte rBak, gBak, bBak;
-
-				wm->decomposeColor<T>(src, rSrc, gSrc, bSrc);
-				wm->decomposeColor<T>(*dst, rDst, gDst, bDst);
-				wm->decomposeColor<T>(p->foreColor, rFor, gFor, bFor);
-				wm->decomposeColor<T>(p->backColor, rBak, gBak, bBak);
-
-				*dst = wm->findBestColor((rSrc | rFor) & (~rSrc | rBak),
-										(gSrc | gFor) & (~gSrc | gBak),
-										(bSrc | bFor) & (~bSrc | bBak));
-			}
+			*dst = (src == p->colorBlack) ? p->foreColor : ((src == p->colorWhite) ? p->backColor : *dst);
 		} else {
 			*dst = src;
 		}
@@ -390,22 +387,11 @@ void InkPrimitives<T>::drawPoint(int x, int y, uint32 src, void *data) {
 	case kInkTypeNotCopy:
 		if (p->applyColor) {
 			if (sizeof(T) == 1) {
-				*dst = (src == 0xff) ? p->backColor : ((src == 0x00) ? p->foreColor : src);
-			} else {
-				// TODO: Improve the efficiency of this composition
-				byte rSrc, gSrc, bSrc;
-				byte rDst, gDst, bDst;
-				byte rFor, gFor, bFor;
-				byte rBak, gBak, bBak;
-
-				wm->decomposeColor<T>(src, rSrc, gSrc, bSrc);
-				wm->decomposeColor<T>(*dst, rDst, gDst, bDst);
-				wm->decomposeColor<T>(p->foreColor, rFor, gFor, bFor);
-				wm->decomposeColor<T>(p->backColor, rBak, gBak, bBak);
-
-				*dst = wm->findBestColor((~rSrc | rFor) & (rSrc | rBak),
-										(~gSrc | gFor) & (gSrc | gBak),
-										(~bSrc | bFor) & (bSrc | bBak));
+				*dst = (src == p->colorBlack) ? p->backColor : ((src == p->colorWhite) ? p->foreColor : src);
+			} else if (sizeof(T) == 4) {
+				// In 32-bit, apply color mode seems to just return the original src
+				// with no changes. This is different to kInkTypeCopy.
+				*dst = src;
 			}
 		} else {
 			// Find the inverse of the colour and match it back to the palette if required
@@ -419,48 +405,78 @@ void InkPrimitives<T>::drawPoint(int x, int y, uint32 src, void *data) {
 		if (p->oneBitImage || p->applyColor) {
 			*dst = (src == p->colorBlack) ? p->foreColor : *dst;
 		} else {
-			// OR dst palette index with src.
-			// Originally designed for 1-bit mode to make white pixels
-			// transparent.
-			*dst = *dst | src;
+			if (sizeof(T) == 1) {
+				// OR dst palette index with src.
+				// Originally designed for 1-bit mode to make white pixels
+				// transparent.
+				*dst = *dst | src;
+			} else {
+				// In 32-bit mode, this is an AND.
+				*dst = *dst & src;
+			}
 		}
 		break;
 	case kInkTypeNotTrans:
 		if (p->oneBitImage || p->applyColor) {
 			*dst = (src == p->colorWhite) ? p->foreColor : *dst;
 		} else {
-			// OR dst palette index with the inverse of src.
-			*dst = *dst | ~src;
+			if (sizeof(T) == 1) {
+				// OR dst palette index with the inverse of src.
+				*dst = *dst | ~src;
+			} else {
+				// In 32-bit mode, this is an AND.
+				*dst = *dst & ~(src & 0xffffff00);
+			}
 		}
 		break;
 	case kInkTypeReverse:
-		// XOR dst palette index with src.
-		// Originally designed for 1-bit mode so that
-		// black pixels would appear white on a black
-		// background.
-		*dst ^= src;
+		if (sizeof(T) == 1) {
+			// XOR dst palette index with src.
+			// Originally designed for 1-bit mode so that
+			// black pixels would appear white on a black
+			// background.
+			*dst ^= src;
+		} else {
+			// In 32-bit mode, this is the opposite??
+			*dst ^= ~(src);
+		}
 		break;
 	case kInkTypeNotReverse:
-		// XOR dst palette index with the inverse of src.
-		*dst ^= ~(src);
+		if (sizeof(T) == 1) {
+			// XOR dst palette index with the inverse of src.
+			*dst ^= ~(src);
+		} else {
+			// In 32-bit mode, this is the opposite??
+			*dst ^= src & 0xffffff00;
+		}
 		break;
 	case kInkTypeGhost:
 		if (p->oneBitImage || p->applyColor) {
 			*dst = (src == p->colorBlack) ? p->backColor : *dst;
 		} else {
-			// AND dst palette index with the inverse of src.
-			// Originally designed for 1-bit mode so that
-			// black pixels would be invisible until they were
-			// over a black background, showing as white.
-			*dst = *dst & ~src;
+			if (sizeof(T) == 1) {
+				// AND dst palette index with the inverse of src.
+				// Originally designed for 1-bit mode so that
+				// black pixels would be invisible until they were
+				// over a black background, showing as white.
+				*dst = *dst & ~src;
+			} else {
+				// In 32-bit mode, OR dst RGBA with inverse src
+				*dst = *dst | ~src;
+			}
 		}
 		break;
 	case kInkTypeNotGhost:
 		if (p->oneBitImage || p->applyColor) {
 			*dst = (src == p->colorWhite) ? p->backColor : *dst;
 		} else {
-			// AND dst palette index with src.
-			*dst = *dst & src;
+			if (sizeof(T) == 1) {
+				// AND dst palette index with src.
+				*dst = *dst & src;
+			} else {
+				// In 32-bit mode, OR dst RGBA with src
+				*dst = *dst | src;
+			}
 		}
 		break;
 	default: {
@@ -566,7 +582,7 @@ uint32 DirectorPlotData::preprocessColor(uint32 src) {
 	// HACK: Right now this method is just used for adjusting the colourization on text
 	// sprites, as it would be costly to colourize the chunks on the fly each
 	// time a section needs drawing. It's ugly but mostly works.
-	if (sprite == kTextSprite) {
+	if (sprite == kTextSprite || sprite == kButtonSprite || sprite == kCheckboxSprite || sprite == kRadioButtonSprite) {
 		switch(ink) {
 		case kInkTypeMask:
 			src = (src == backColor ? foreColor : 0xff);
@@ -704,8 +720,11 @@ void DirectorPlotData::inkBlitSurface(Common::Rect &srcRect, const Graphics::Sur
 	if (!srf)
 		return;
 
+	if (mask && srfMask)
+		error("DirectorPlotData::inkBlitSurface: Masking not supported on surfaces with separate mask");
+
 	// TODO: Determine why colourization causes problems in Warlock
-	if (sprite == kTextSprite)
+	if (sprite == kTextSprite || sprite == kButtonSprite || sprite == kCheckboxSprite || sprite == kRadioButtonSprite)
 		applyColor = false;
 
 	Common::Rect srfClip = srf->getBounds();
@@ -722,8 +741,10 @@ void DirectorPlotData::inkBlitSurface(Common::Rect &srcRect, const Graphics::Sur
 		offsetRect.clip(srfClip);
 		switch (ink) {
 		case kInkTypeCopy:
-			dst->blitFrom(*srf, offsetRect, destRect);
-			return;
+			if (!mask) {
+				dst->blitFrom(*srf, offsetRect, destRect);
+				return;
+			}
 			break;
 		default:
 			break;
@@ -741,13 +762,24 @@ void DirectorPlotData::inkBlitSurface(Common::Rect &srcRect, const Graphics::Sur
 		srcPoint.x = abs(srcRect.left - destRect.left);
 		const byte *msk = mask ? (const byte *)mask->getBasePtr(srcPoint.x, srcPoint.y) : nullptr;
 
+		if (srfMask) {
+			if (srcPoint.y >= srfMask->h)
+				continue;
+
+			msk = (const byte *)srfMask->getBasePtr(srcPoint.x, srcPoint.y);
+		}
+
 		for (int j = 0; j < destRect.width(); j++, srcPoint.x++) {
 			if (!srfClip.contains(srcPoint)) {
 				failedBoundsCheck = true;
 				continue;
 			}
 
-			if (!mask || (msk && (*msk++))) {
+			// Do not try render beyond the mask bounds
+			if (srfMask && (srcPoint.x >= srfMask->w))
+				continue;
+
+			if (!(mask || srfMask) || (msk && (*msk++))) {
 				if (d->_wm->_pixelformat.bytesPerPixel == 1) {
 					primitives->drawPoint(destRect.left + j, destRect.top + i,
 										preprocessColor(*((byte *)srf->getBasePtr(srcPoint.x, srcPoint.y))), this);

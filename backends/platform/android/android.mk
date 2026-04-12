@@ -47,7 +47,7 @@ $(PATH_BUILD)/mainAssets/build.gradle: $(PATH_DIST)/mainAssets.gradle | $(PATH_B
 
 $(PATH_BUILD_ASSETS)/MD5SUMS: config.mk $(DIST_FILES_THEMES) $(DIST_FILES_ENGINEDATA) $(DIST_FILES_ENGINEDATA_BIG) $(DIST_FILES_SOUNDFONTS) $(DIST_FILES_NETWORKING) $(DIST_FILES_VKEYBD) $(DIST_FILES_DOCS) $(DIST_FILES_PLATFORM) $(DIST_FILES_SHADERS) | $(PATH_BUILD)
 	$(INSTALL) -d $(PATH_BUILD_ASSETS)/assets/
-	$(INSTALL) -c -m 644 $(DIST_FILES_THEMES) $(DIST_FILES_ENGINEDATA) $(DIST_FILES_ENGINEDATA_BIG) $(DIST_FILES_SOUNDFONTS) $(DIST_FILES_NETWORKING) $(DIST_FILES_VKEYBD) $(DIST_FILES_DOCS) $(DIST_FILES_PLATFORM) $(PATH_BUILD_ASSETS)/assets/
+	$(INSTALL) -c -m 644 $(DIST_FILES_THEMES) $(DIST_FILES_ENGINEDATA) $(DIST_FILES_ENGINEDATA_BIG) $(DIST_FILES_SOUNDFONTS) $(DIST_FILES_NETWORKING) $(DIST_FILES_VKEYBD) $(DIST_FILES_PLATFORM) $(PATH_BUILD_ASSETS)/assets/
 ifneq ($(DIST_FILES_SHADERS),)
 	$(INSTALL) -d $(PATH_BUILD_ASSETS)/assets/shaders
 	$(INSTALL) -c -m 644 $(DIST_FILES_SHADERS) $(PATH_BUILD_ASSETS)/assets/shaders
@@ -56,27 +56,9 @@ ifneq ($(GAMES_BUNDLE_DIRECTORY),)
 	$(INSTALL) -d $(PATH_BUILD_ASSETS)/assets/games
 	$(CP) -r $(GAMES_BUNDLE_DIRECTORY)/. $(PATH_BUILD_ASSETS)/assets/games/
 endif
-	(cd $(PATH_BUILD_ASSETS)/ && find assets -type f | sort | xargs md5sum) > $@
-
-ifdef DIST_ANDROID_CACERT_PEM
-$(PATH_BUILD_ASSETS)/assets/cacert.pem: $(DIST_ANDROID_CACERT_PEM)
-	$(INSTALL) -d $(PATH_BUILD_ASSETS)/assets/
-	$(INSTALL) -c -m 644 $(DIST_ANDROID_CACERT_PEM) $(PATH_BUILD_ASSETS)/assets/cacert.pem
-$(PATH_BUILD_ASSETS)/MD5SUMS: $(PATH_BUILD_ASSETS)/assets/cacert.pem
-else
-ifdef USE_CURL
-$(PATH_BUILD_ASSETS)/assets/cacert.pem:
-	$(INSTALL) -d $(PATH_BUILD_ASSETS)/assets/
-	$(QUIET_CURL)$(CURL) -s https://curl.se/ca/cacert.pem --time-cond $(PATH_BUILD_ASSETS)/assets/cacert.pem --output $(PATH_BUILD_ASSETS)/assets/cacert.pem
-androidcacert:
-	$(INSTALL) -d $(PATH_BUILD_ASSETS)/assets/
-	$(QUIET_CURL)$(CURL) -s https://curl.se/ca/cacert.pem --time-cond $(PATH_BUILD_ASSETS)/assets/cacert.pem --output $(PATH_BUILD_ASSETS)/assets/cacert.pem
-
-.PHONY: androidcacert
-endif
-endif
-# Make MD5SUMS depend on cacert. If it's not here and neither DIST_ANDROID_CACERT_PEM nor USE_CURL are defined, it will error out
-$(PATH_BUILD_ASSETS)/MD5SUMS: $(PATH_BUILD_ASSETS)/assets/cacert.pem
+	$(INSTALL) -d $(PATH_BUILD_ASSETS)/doc/
+	$(INSTALL) -c -m 644 $(DIST_FILES_DOCS) $(PATH_BUILD_ASSETS)/doc/
+	(cd $(PATH_BUILD_ASSETS)/ && find assets doc -type f | sort | xargs md5sum) > $@
 
 $(PATH_BUILD_LIBSCUMMVM): libscummvm.so | $(PATH_BUILD)
 	$(INSTALL) -d  $(PATH_BUILD_LIB)

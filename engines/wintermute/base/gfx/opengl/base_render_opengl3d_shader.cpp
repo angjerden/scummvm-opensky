@@ -20,11 +20,17 @@
  */
 
 #include "engines/wintermute/ad/ad_block.h"
+#include "engines/wintermute/ad/ad_game.h"
 #include "engines/wintermute/ad/ad_generic.h"
+#include "engines/wintermute/ad/ad_scene.h"
+#include "engines/wintermute/ad/ad_scene_geometry.h"
 #include "engines/wintermute/ad/ad_walkplane.h"
+#include "engines/wintermute/ad/ad_waypoint_group3d.h"
 #include "engines/wintermute/base/base_game.h"
 #include "engines/wintermute/base/gfx/base_image.h"
 #include "engines/wintermute/base/gfx/3dcamera.h"
+#include "engines/wintermute/base/gfx/3dlight.h"
+#include "engines/wintermute/platform_osystem.h"
 
 #include "graphics/opengl/system_headers.h"
 
@@ -46,32 +52,82 @@ BaseRenderer3D *makeOpenGL3DShaderRenderer(BaseGame *inGame) {
 }
 
 BaseRenderOpenGL3DShader::BaseRenderOpenGL3DShader(BaseGame *inGame) : BaseRenderer3D(inGame) {
-	setDefaultAmbientLightColor();
-	_spriteVBO = 0;
 	_alphaRef = 0;
 }
 
 BaseRenderOpenGL3DShader::~BaseRenderOpenGL3DShader() {
 	_camera = nullptr; // ref only
 	glDeleteBuffers(1, &_spriteVBO);
+	glDeleteBuffers(1, &_fadeVBO);
+	glDeleteBuffers(1, &_rectangleVBO);
+	glDeleteBuffers(1, &_simpleShadowVBO);
+	glDeleteBuffers(1, &_postfilterVBO);
 }
 
 bool BaseRenderOpenGL3DShader::initRenderer(int width, int height, bool windowed) {
+	_simpleShadow[0].x = -1.0f;
+	_simpleShadow[0].y = 0.0f;
+	_simpleShadow[0].z = 1.0f;
+	_simpleShadow[0].nx = 0.0f;
+	_simpleShadow[0].ny = 1.0f;
+	_simpleShadow[0].nz = 0.0f;
+	_simpleShadow[0].u = 0.0f;
+	_simpleShadow[0].v = 1.0f;
+
+	_simpleShadow[1].x = -1.0f;
+	_simpleShadow[1].y = 0.0f;
+	_simpleShadow[1].z = -1.0f;
+	_simpleShadow[1].nx = 0.0f;
+	_simpleShadow[1].ny = 1.0f;
+	_simpleShadow[1].nz = 0.0f;
+	_simpleShadow[1].u = 1.0f;
+	_simpleShadow[1].v = 1.0f;
+
+	_simpleShadow[2].x = 1.0f;
+	_simpleShadow[2].y = 0.0f;
+	_simpleShadow[2].z = 1.0f;
+	_simpleShadow[2].nx = 0.0f;
+	_simpleShadow[2].ny = 1.0f;
+	_simpleShadow[2].nz = 0.0f;
+	_simpleShadow[2].u = 0.0f;
+	_simpleShadow[2].v = 0.0f;
+
+	_simpleShadow[3].x = 1.0f;
+	_simpleShadow[3].y = 0.0f;
+	_simpleShadow[3].z = -1.0f;
+	_simpleShadow[3].nx = 0.0f;
+	_simpleShadow[3].ny = 1.0f;
+	_simpleShadow[3].nz = 0.0f;
+	_simpleShadow[3].u = 1.0f;
+	_simpleShadow[3].v = 0.0f;
 
 	glGenBuffers(1, &_spriteVBO);
 	glBindBuffer(GL_ARRAY_BUFFER, _spriteVBO);
-	glBufferData(GL_ARRAY_BUFFER, 4 * sizeof(SpriteVertex), nullptr, GL_DYNAMIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, 4 * sizeof(SpriteVertex), nullptr, GL_STATIC_DRAW);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-	static const char *spriteAttributes[] = {"position", "texcoord", "color", nullptr};
+	static const char *spriteAttributes[] = { "position", "texcoord", "color", nullptr };
 	_spriteShader = OpenGL::Shader::fromFiles("wme_sprite", spriteAttributes);
-
 	_spriteShader->enableVertexAttribute("position", _spriteVBO, 3, GL_FLOAT, false, sizeof(SpriteVertex), 0);
 	_spriteShader->enableVertexAttribute("texcoord", _spriteVBO, 2, GL_FLOAT, false, sizeof(SpriteVertex), 12);
 	_spriteShader->enableVertexAttribute("color", _spriteVBO, 4, GL_FLOAT, false, sizeof(SpriteVertex), 20);
 
 	static const char *geometryAttributes[] = { "position", "color", nullptr };
 	_geometryShader = OpenGL::Shader::fromFiles("wme_geometry", geometryAttributes);
+
+	glGenBuffers(1, &_simpleShadowVBO);
+	glBindBuffer(GL_ARRAY_BUFFER, _simpleShadowVBO);
+	glBufferData(GL_ARRAY_BUFFER, 4 * sizeof(SimpleShadowVertex), _simpleShadow, GL_STATIC_DRAW);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	static const char *simpleShadowAttributes[] = { "position", "normal", "texcoord", nullptr };
+	_simpleShadowShader = OpenGL::Shader::fromFiles("wme_simple_shadow", simpleShadowAttributes);
+	_simpleShadowShader->enableVertexAttribute("position", _simpleShadowVBO, 3, GL_FLOAT, false, sizeof(SimpleShadowVertex), 0);
+	_simpleShadowShader->enableVertexAttribute("normal", _simpleShadowVBO, 3, GL_FLOAT, false, sizeof(SimpleShadowVertex), 12);
+	_simpleShadowShader->enableVertexAttribute("texcoord", _simpleShadowVBO, 2, GL_FLOAT, false, sizeof(SimpleShadowVertex), 24);
+
+	static const char *flatShadowAttributes[] = { "position", nullptr };
+	_flatShadowShader = OpenGL::Shader::fromFiles("wme_flat_shadow_modelx", flatShadowAttributes);
 
 	static const char *shadowVolumeAttributes[] = { "position", nullptr };
 	_shadowVolumeShader = OpenGL::Shader::fromFiles("wme_shadow_volume", shadowVolumeAttributes);
@@ -83,7 +139,7 @@ bool BaseRenderOpenGL3DShader::initRenderer(int width, int height, bool windowed
 	DXMatrixIdentity(&m);
 	_transformStack.push_back(m);
 
-	static const char *XModelAttributes[] = {"position", "texcoord", "normal", nullptr};
+	static const char *XModelAttributes[] = { "position", "texcoord", "normal", nullptr };
 	_xmodelShader = OpenGL::Shader::fromFiles("wme_modelx", XModelAttributes);
 
 	setDefaultAmbientLightColor();
@@ -93,46 +149,65 @@ bool BaseRenderOpenGL3DShader::initRenderer(int width, int height, bool windowed
 		lightEnable(i, false);
 	}
 
-	float fadeVertexCoords[8];
-
-	fadeVertexCoords[0 * 2 + 0] = 0;
-	fadeVertexCoords[0 * 2 + 1] = height;
-	fadeVertexCoords[1 * 2 + 0] = 0;
-	fadeVertexCoords[1 * 2 + 1] = 0;
-	fadeVertexCoords[2 * 2 + 0] = width;
-	fadeVertexCoords[2 * 2 + 1] = height;
-	fadeVertexCoords[3 * 2 + 0] = width;
-	fadeVertexCoords[3 * 2 + 1] = 0;
-
 	glGenBuffers(1, &_fadeVBO);
 	glBindBuffer(GL_ARRAY_BUFFER, _fadeVBO);
-	glBufferData(GL_ARRAY_BUFFER, 4 * 8, fadeVertexCoords, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, 4 * sizeof(RectangleVertex), nullptr, GL_STATIC_DRAW);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 
 	static const char *fadeAttributes[] = { "position", nullptr };
 	_fadeShader = OpenGL::Shader::fromFiles("wme_fade", fadeAttributes);
-	_fadeShader->enableVertexAttribute("position", _fadeVBO, 2, GL_FLOAT, false, 8, 0);
+	_fadeShader->enableVertexAttribute("position", _fadeVBO, 3, GL_FLOAT, false, sizeof(RectangleVertex), 0);
 
-	glGenBuffers(1, &_lineVBO);
-	glBindBuffer(GL_ARRAY_BUFFER, _lineVBO);
-	glBufferData(GL_ARRAY_BUFFER, 2 * 8, nullptr, GL_DYNAMIC_DRAW);
+	glGenBuffers(1, &_rectangleVBO);
+	glBindBuffer(GL_ARRAY_BUFFER, _rectangleVBO);
+	glBufferData(GL_ARRAY_BUFFER, 4 * sizeof(RectangleVertex), nullptr, GL_STATIC_DRAW);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 
 	static const char *lineAttributes[] = { "position", nullptr };
 	_lineShader = OpenGL::Shader::fromFiles("wme_line", lineAttributes);
-	_lineShader->enableVertexAttribute("position", _lineVBO, 2, GL_FLOAT, false, 8, 0);
+	_lineShader->enableVertexAttribute("position", _rectangleVBO, 3, GL_FLOAT, false, sizeof(RectangleVertex), 0);
 
+	const GLfloat quadVertices[] = {
+		-1.0f, -1.0f, 0.0f, 0.0f,
+		 1.0f, -1.0f, 1.0f, 0.0f,
+		-1.0f,  1.0f, 0.0f, 1.0f,
+		 1.0f,  1.0f, 1.0f, 1.0f,
+	};
+	glGenBuffers(1, &_postfilterVBO);
+	glBindBuffer(GL_ARRAY_BUFFER, _postfilterVBO);
+	glBufferData(GL_ARRAY_BUFFER, 16 * sizeof(GLfloat), quadVertices, GL_STATIC_DRAW);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
 
+	static const char *postfilterAttributes[] = { "position", "texcoord", nullptr };
+	_postfilterShader = OpenGL::Shader::fromFiles("wme_postfilter", postfilterAttributes);
+	_postfilterShader->enableVertexAttribute("position", _postfilterVBO, 2, GL_FLOAT, false, 4 * sizeof(GLfloat), 0);
+	_postfilterShader->enableVertexAttribute("texcoord", _postfilterVBO, 2, GL_FLOAT, false, 4 * sizeof(GLfloat), 8);
+
+	glGenTextures(1, &_postfilterTexture);
+	glBindTexture(GL_TEXTURE_2D, _postfilterTexture);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+
+	setSpriteBlendMode(Graphics::BLEND_NORMAL, true);
 
 	_windowed = !ConfMan.getBool("fullscreen");
 	_width = width;
 	_height = height;
 
+	g_system->showMouse(false);
+
 	setViewport(0, 0, width, height);
 
 	setProjection();
 
+	_postFilterMode = kPostFilterOff;
+
 	_active = true;
+
+	_game->_supportsRealTimeShadows = true;
+
+	setDefaultAmbientLightColor();
 
 	return true;
 }
@@ -140,21 +215,39 @@ bool BaseRenderOpenGL3DShader::initRenderer(int width, int height, bool windowed
 bool BaseRenderOpenGL3DShader::flip() {
 	_lastTexture = nullptr;
 
+	// Store blend mode and cull face mode
+	GLboolean stateBlend, stateCullFace;
+	glGetBooleanv(GL_BLEND, &stateBlend);
+	glGetBooleanv(GL_CULL_FACE, &stateCullFace);
+
+	postfilter();
+
 	// Disable blend mode and cull face to prevent interfere with backend renderer
 	glDisable(GL_BLEND);
 	glDisable(GL_CULL_FACE);
-	
+
 	g_system->updateScreen();
-	
+
+	// Restore blend mode and cull face state
+	if (stateBlend)
+		glEnable(GL_BLEND);
+	else
+		glDisable(GL_BLEND);
+
+	if (stateCullFace)
+		glEnable(GL_CULL_FACE);
+	else
+		glDisable(GL_CULL_FACE);
+
 	_state = RSTATE_NONE;
 	return true;
 }
 
-bool BaseRenderOpenGL3DShader::fill(byte r, byte g, byte b, Common::Rect *rect) {
-	if(!_gameRef->_editorMode) {
+bool BaseRenderOpenGL3DShader::clear() {
+	if(!_game->_editorMode) {
 		glViewport(0, _height, _width, _height);
 	}
-	glClearColor(r / 255.0f, g / 255.0f, b / 255.0f, 1.0f);
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 	return true;
 }
@@ -163,9 +256,6 @@ bool BaseRenderOpenGL3DShader::setup2D(bool force) {
 	if (_state != RSTATE_2D || force) {
 		_state = RSTATE_2D;
 
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-
 		glDisable(GL_DEPTH_TEST);
 
 		glEnable(GL_BLEND);
@@ -173,8 +263,7 @@ bool BaseRenderOpenGL3DShader::setup2D(bool force) {
 
 		_alphaRef = 0.0f;
 
-		glPolygonMode(GL_FRONT, GL_FILL);
-		glFrontFace(GL_CCW);  // WME DX have CW
+		glFrontFace(GL_CW);  // WME DX have CCW
 		glEnable(GL_CULL_FACE);
 		glDisable(GL_STENCIL_TEST);
 	}
@@ -186,24 +275,11 @@ bool BaseRenderOpenGL3DShader::setup3D(Camera3D *camera, bool force) {
 	if (_state != RSTATE_3D || force) {
 		_state = RSTATE_3D;
 
-		glEnable(GL_NORMALIZE);
-
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-
-		// Disable blending for 3d rendering, it seems no need to enable it.
-		// It will be enabled in other places when needed.
-		// This is delta compared to original sources.
-		glDisable(GL_BLEND);
-		
 		glEnable(GL_DEPTH_TEST);
 		// WME uses 8 as a reference value and Direct3D expects it to be in the range [0, 255]
 		_alphaRef = 8 / 255.0f;
 
 		setAmbientLightRenderState();
-
-		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-
 
 		if (camera)
 			_camera = camera;
@@ -234,17 +310,19 @@ bool BaseRenderOpenGL3DShader::setup3D(Camera3D *camera, bool force) {
 		uint32 fogColor;
 		float fogStart, fogEnd;
 
-		_gameRef->getFogParams(&fogEnabled, &fogColor, &fogStart, &fogEnd);
+		_game->getFogParams(&fogEnabled, &fogColor, &fogStart, &fogEnd);
 		if (fogEnabled) {
-			// TODO: Implement fog
-			GLfloat color[4];
-			color[0] = RGBCOLGetR(fogColor) / 255.0f;
-			color[1] = RGBCOLGetG(fogColor) / 255.0f;
-			color[2] = RGBCOLGetB(fogColor) / 255.0f;
-			color[3] = RGBCOLGetA(fogColor) / 255.0f;
-			debug(5, "BaseRenderOpenGL3DShader::setup3D fog not yet implemented! [%f %f %f %f]", color[0], color[1], color[2], color[3]);
+			Math::Vector4d color;
+			color.x() = RGBCOLGetR(fogColor) / 255.0f;
+			color.y() = RGBCOLGetG(fogColor) / 255.0f;
+			color.z() = RGBCOLGetB(fogColor) / 255.0f;
+			color.w() = RGBCOLGetA(fogColor) / 255.0f;
+			_xmodelShader->setUniform("enableFog", true);
+			_xmodelShader->setUniform("fogColor", color);
+			_xmodelShader->setUniform1f("fogStart", fogStart);
+			_xmodelShader->setUniform1f("fogEnd", fogEnd);
 		} else {
-			// TODO: Disable fog in shader
+			_xmodelShader->setUniform("enableFog", false);
 		}
 
 		setProjection();
@@ -253,16 +331,26 @@ bool BaseRenderOpenGL3DShader::setup3D(Camera3D *camera, bool force) {
 	Math::Matrix4 viewMatrix, projectionMatrix;
 	viewMatrix.setData(_viewMatrix);
 	projectionMatrix.setData(_glProjectionMatrix);
+
 	_xmodelShader->use();
 	_xmodelShader->setUniform("viewMatrix", viewMatrix);
 	_xmodelShader->setUniform("projMatrix", projectionMatrix);
 	_xmodelShader->setUniform1f("alphaRef", _alphaRef);
 	_xmodelShader->setUniform("alphaTest", true);
 
-
 	_geometryShader->use();
 	_geometryShader->setUniform("viewMatrix", viewMatrix);
 	_geometryShader->setUniform("projMatrix", projectionMatrix);
+
+	_simpleShadowShader->use();
+	_simpleShadowShader->setUniform("viewMatrix", viewMatrix);
+	_simpleShadowShader->setUniform("projMatrix", projectionMatrix);
+	_simpleShadowShader->setUniform1f("alphaRef", _alphaRef);
+	_simpleShadowShader->setUniform("alphaTest", true);
+
+	_flatShadowShader->use();
+	_flatShadowShader->setUniform("viewMatrix", viewMatrix);
+	_flatShadowShader->setUniform("projMatrix", projectionMatrix);
 
 	_shadowVolumeShader->use();
 	_shadowVolumeShader->setUniform("viewMatrix", viewMatrix);
@@ -283,7 +371,7 @@ void BaseRenderOpenGL3DShader::setAmbientLightRenderState() {
 		g = RGBCOLGetG(_ambientLightColor);
 		b = RGBCOLGetB(_ambientLightColor);
 	} else {
-		uint32 color = _gameRef->getAmbientLightColor();
+		uint32 color = _game->getAmbientLightColor();
 
 		a = RGBCOLGetA(color);
 		r = RGBCOLGetR(color);
@@ -307,7 +395,6 @@ bool BaseRenderOpenGL3DShader::setupLines() {
 	if (_state != RSTATE_LINES) {
 		_state = RSTATE_LINES;
 
-		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 		glDisable(GL_DEPTH_TEST);
 		glFrontFace(GL_CW); // WME DX have CCW
 		glEnable(GL_CULL_FACE);
@@ -316,35 +403,30 @@ bool BaseRenderOpenGL3DShader::setupLines() {
 		_lineShader->setUniform1f("alphaRef", _alphaRef);
 		_lineShader->setUniform("alphaTest", true);
 
-		glDisable(GL_TEXTURE_2D);
 		glBindTexture(GL_TEXTURE_2D, 0);
+		glDisable(GL_TEXTURE_2D);
 		_lastTexture = nullptr;
 	}
 
 	return true;
 }
 
-bool BaseRenderOpenGL3DShader::drawSpriteEx(BaseSurface *tex, const Wintermute::Rect32 &rect,
-										const Wintermute::Vector2 &pos, const Wintermute::Vector2 &rot,
-										const Wintermute::Vector2 &scale, float angle, uint32 color,
-										bool alphaDisable, Graphics::TSpriteBlendMode blendMode,
-										bool mirrorX, bool mirrorY) {
+bool BaseRenderOpenGL3DShader::drawSpriteEx(BaseSurface *tex, const Common::Rect32 &rect,
+	                                    const DXVector2 &pos, const DXVector2 &rot,
+	                                    const DXVector2 &scale,
+	                                    float angle, uint32 color, bool alphaDisable,
+	                                    Graphics::TSpriteBlendMode blendMode,
+	                                    bool mirrorX, bool mirrorY) {
 	BaseSurfaceOpenGL3D *texture = dynamic_cast<BaseSurfaceOpenGL3D *>(tex);
 	if (!texture)
 		return false;
-
-	if (_spriteBatchMode) {
-		_batchTexture = texture;
-		_batchAlphaDisable = alphaDisable;
-		_batchBlendMode = blendMode;
-	}
 
 	if (_forceAlphaColor != 0) {
 		color = _forceAlphaColor;
 	}
 
-	float width = (rect.right - rect.left) * scale.x;
-	float height = (rect.bottom - rect.top) * scale.y;
+	float width = (rect.right - rect.left) * scale._x;
+	float height = (rect.bottom - rect.top) * scale._y;
 
 	int texWidth = texture->getGLTextureWidth();
 	int texHeight = texture->getGLTextureHeight();
@@ -362,16 +444,7 @@ bool BaseRenderOpenGL3DShader::drawSpriteEx(BaseSurface *tex, const Wintermute::
 		SWAP(texTop, texBottom);
 	}
 
-	SpriteVertex vertices[4] = {};
-
-	// batch mode
-	if (_spriteBatchMode) {
-		// TODO
-		commitSpriteBatch();
-	}
-
-	// Convert to OpenGL origin space
-	SWAP(texTop, texBottom);
+	SpriteVertex vertices[4];
 
 	// texture coords
 	vertices[0].u = texLeft;
@@ -386,27 +459,34 @@ bool BaseRenderOpenGL3DShader::drawSpriteEx(BaseSurface *tex, const Wintermute::
 	vertices[3].u = texRight;
 	vertices[3].v = texTop;
 
-	float offset = _height / 2.0f;
-	float correctedYPos = (pos.y - offset) * -1.0f + offset;
-
 	// position coords
-	vertices[0].x = pos.x;
-	vertices[0].y = correctedYPos;
+	vertices[0].x = pos._x;
+	vertices[0].y = pos._y + height;
 	vertices[0].z = 0.9f;
 
-	vertices[1].x = pos.x;
-	vertices[1].y = correctedYPos - height;
+	vertices[1].x = pos._x;
+	vertices[1].y = pos._y;
 	vertices[1].z = 0.9f;
 
-	vertices[2].x = pos.x + width;
-	vertices[2].y = correctedYPos;
+	vertices[2].x = pos._x + width;
+	vertices[2].y = pos._y + height;
 	vertices[2].z = 0.9f;
 
-	vertices[3].x = pos.x + width;
-	vertices[3].y = correctedYPos - height;
+	vertices[3].x = pos._x + width;
+	vertices[3].y = pos._y;
 	vertices[3].z = 0.9f;
 
-	// not exactly sure about the color format, but this seems to work
+	if (angle != 0) {
+		DXVector2 sc(1.0f, 1.0f);
+		DXVector2 rotation(rot._x, rot._y);
+		transformVertices(vertices, &rotation, &sc, angle);
+	}
+
+	for (int i = 0; i < 4; i++) {
+		vertices[i].x += _drawOffsetX;
+		vertices[i].y += _drawOffsetY;
+	}
+
 	byte a = RGBCOLGetA(color);
 	byte r = RGBCOLGetR(color);
 	byte g = RGBCOLGetG(color);
@@ -419,64 +499,34 @@ bool BaseRenderOpenGL3DShader::drawSpriteEx(BaseSurface *tex, const Wintermute::
 		vertices[i].a = a / 255.0f;
 	}
 
-	if (angle != 0) {
-		DXVector2 sc(1.0f, 1.0f);
-		DXVector2 rotation(rot.x, (rot.y - (_height / 2.0f)) * -1.0f + (_height / 2.0f));
-		transformVertices(vertices, &rotation, &sc, degToRad(-angle));
-	}
-
-	if (_spriteBatchMode) {
-		// TODO
-	} else {
-		setSpriteBlendMode(blendMode);
-		if (alphaDisable) {
-			_spriteShader->setUniform("alphaTest", false);
-			glDisable(GL_BLEND);
-		}
-
-		if (_lastTexture != texture) {
-			_lastTexture = texture;
-			glBindTexture(GL_TEXTURE_2D, texture->getTextureName());
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			// for sprites we clamp to the edge, to avoid line fragments at the edges
-			// this is not done by wme, though
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-			glEnable(GL_TEXTURE_2D);
-		}
-
-		glBindBuffer(GL_ARRAY_BUFFER, _spriteVBO);
-		glBufferSubData(GL_ARRAY_BUFFER, 0, 4 * sizeof(SpriteVertex), vertices);
-
-		setProjection2D(_spriteShader);
-
-		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-
-		if (alphaDisable) {
-			_spriteShader->setUniform("alphaTest", true);
-			glEnable(GL_BLEND);
-		}
-	}
-
-	return true;
-}
-
-bool BaseRenderOpenGL3DShader::commitSpriteBatch() {
-	// render
-	setSpriteBlendMode(_batchBlendMode);
-	if (_batchAlphaDisable) {
+	setSpriteBlendMode(blendMode);
+	if (alphaDisable) {
 		_spriteShader->setUniform("alphaTest", false);
 		glDisable(GL_BLEND);
 	}
 
-	if (_lastTexture != _batchTexture) {
-		_lastTexture = _batchTexture;
-		glBindTexture(GL_TEXTURE_2D, _batchTexture->getTextureName());
+	if (_lastTexture != texture) {
+		_lastTexture = texture;
+		glBindTexture(GL_TEXTURE_2D, texture->getTextureName());
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		// for sprites we clamp to the edge, to avoid line fragments at the edges
+		// this is not done by wme, but centering pixel by 0.5
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glEnable(GL_TEXTURE_2D);
 	}
 
-	// TODO
+	glBindBuffer(GL_ARRAY_BUFFER, _spriteVBO);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, 4 * sizeof(SpriteVertex), vertices);
 
-	if (_batchAlphaDisable) {
+	glViewport(0, 0, _width, _height);
+	setProjection2D(_spriteShader);
+
+	glFrontFace(GL_CW);
+
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+	if (alphaDisable) {
 		_spriteShader->setUniform("alphaTest", true);
 		glEnable(GL_BLEND);
 	}
@@ -484,17 +534,19 @@ bool BaseRenderOpenGL3DShader::commitSpriteBatch() {
 	return true;
 }
 
+bool BaseRenderOpenGL3DShader::commitSpriteBatch() {
+	// nothing to implement
+	return true;
+}
+
 bool BaseRenderOpenGL3DShader::startSpriteBatch() {
-	//_spriteBatchMode = true;
+	// nothing to implement
 	return true;
 }
 
 bool BaseRenderOpenGL3DShader::endSpriteBatch() {
-	if (!_spriteBatchMode)
-		return false;
-
-	_spriteBatchMode = false;
-	return commitSpriteBatch();
+	// nothing to implement
+	return true;
 }
 
 DXMatrix *BaseRenderOpenGL3DShader::buildMatrix(DXMatrix* out, const DXVector2 *centre, const DXVector2 *scaling, float angle) {
@@ -544,8 +596,8 @@ bool BaseRenderOpenGL3DShader::setProjection() {
 	bool customViewport;
 	getProjectionParams(&resWidth, &resHeight, &layerWidth, &layerHeight, &modWidth, &modHeight, &customViewport);
 
-	Rect32 rc;
-	_gameRef->getCurrentViewportRect(&rc);
+	Common::Rect32 rc;
+	_game->getCurrentViewportRect(&rc);
 	float viewportWidth = (float)rc.right - (float)rc.left;
 	float viewportHeight = (float)rc.bottom - (float)rc.top;
 
@@ -560,8 +612,8 @@ bool BaseRenderOpenGL3DShader::setProjection() {
 	float scaleMod = resHeight / viewportHeight;
 	float scaleRatio = MAX(layerWidth / resWidth, layerHeight / resHeight) /** 1.05*/;
 
-	float offsetX = (float)_gameRef->_offsetX;
-	float offsetY = (float)_gameRef->_offsetY;
+	float offsetX = (float)_game->_offsetX;
+	float offsetY = (float)_game->_offsetY;
 
 	if (!customViewport) {
 		offsetX -= _drawOffsetX;
@@ -577,16 +629,25 @@ bool BaseRenderOpenGL3DShader::setProjection() {
 }
 
 bool BaseRenderOpenGL3DShader::drawLine(int x1, int y1, int x2, int y2, uint32 color) {
-	glBindBuffer(GL_ARRAY_BUFFER, _lineVBO);
+	setupLines();
 
-	float lineCoords[4];
+	x1 += _drawOffsetX;
+	x2 += _drawOffsetX;
+	y1 += _drawOffsetY;
+	y2 += _drawOffsetY;
 
-	lineCoords[0] = x1;
-	lineCoords[1] = _height - y1;
-	lineCoords[2] = x2;
-	lineCoords[3] = _height - y2;
+	// position coords
+	RectangleVertex vertices[2];
+	vertices[0].x = x1;
+	vertices[0].y = y1;
+	vertices[0].z = 0.9f;
+	vertices[1].x = x2;
+	vertices[1].y = y2;
+	vertices[1].z = 0.9f;
 
-	glBufferSubData(GL_ARRAY_BUFFER, 0, 2 * 8, lineCoords);
+	glBindBuffer(GL_ARRAY_BUFFER, _rectangleVBO);
+
+	glBufferSubData(GL_ARRAY_BUFFER, 0, 2 * sizeof(RectangleVertex), vertices);
 
 	byte a = RGBCOLGetA(color);
 	byte r = RGBCOLGetR(color);
@@ -601,6 +662,9 @@ bool BaseRenderOpenGL3DShader::drawLine(int x1, int y1, int x2, int y2, uint32 c
 
 	_lineShader->use();
 	_lineShader->setUniform("color", colorValue);
+
+	glViewport(0, 0, _width, _height);
+
 	setProjection2D(_lineShader);
 
 	glDrawArrays(GL_LINES, 0, 2);
@@ -609,54 +673,126 @@ bool BaseRenderOpenGL3DShader::drawLine(int x1, int y1, int x2, int y2, uint32 c
 	return true;
 }
 
-void BaseRenderOpenGL3DShader::fadeToColor(byte r, byte g, byte b, byte a) {
+bool BaseRenderOpenGL3DShader::fillRect(int x, int y, int w, int h, uint32 color) {
+	setupLines();
+
+	x += _drawOffsetX;
+	y += _drawOffsetY;
+
+	// position coords
+	RectangleVertex vertices[4];
+	vertices[0].x = x;
+	vertices[0].y = y + h;
+	vertices[0].z = 0.9f;
+	vertices[1].x = x;
+	vertices[1].y = y;
+	vertices[1].z = 0.9f;
+	vertices[2].x = x + w;
+	vertices[2].y = y + h;
+	vertices[2].z = 0.9f;
+	vertices[3].x = x + w;
+	vertices[3].y = y;
+	vertices[3].z = 0.9f;
+
+	glBindBuffer(GL_ARRAY_BUFFER, _rectangleVBO);
+
+	glBufferSubData(GL_ARRAY_BUFFER, 0, 4 * sizeof(RectangleVertex), vertices);
+
+	byte a = RGBCOLGetA(color);
+	byte r = RGBCOLGetR(color);
+	byte g = RGBCOLGetG(color);
+	byte b = RGBCOLGetB(color);
+
+	Math::Vector4d colorValue;
+	colorValue.x() = r / 255.0f;
+	colorValue.y() = g / 255.0f;
+	colorValue.z() = b / 255.0f;
+	colorValue.w() = a / 255.0f;
+
+	_lineShader->use();
+	_lineShader->setUniform("color", colorValue);
+
+	glViewport(0, 0, _width, _height);
+	setProjection2D(_lineShader);
+
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	setup2D();
+	return true;
+}
+
+bool BaseRenderOpenGL3DShader::fadeToColor(byte r, byte g, byte b, byte a) {
+	float left, right, bottom, top;
+
+	left = _viewportRect.left;
+	right = _viewportRect.right;
+	bottom = _viewportRect.bottom;
+	top = _viewportRect.top;
+
+	// position coords
+	RectangleVertex vertices[4];
+	vertices[0].x = left;
+	vertices[0].y = bottom;
+	vertices[0].z = 0.0f;
+	vertices[1].x = left;
+	vertices[1].y = top;
+	vertices[1].z = 0.0f;
+	vertices[2].x = right;
+	vertices[2].y = bottom;
+	vertices[2].z = 0.0f;
+	vertices[3].x = right;
+	vertices[3].y = top;
+	vertices[3].z = 0.0f;
+
 	Math::Vector4d color;
 	color.x() = r / 255.0f;
 	color.y() = g / 255.0f;
 	color.z() = b / 255.0f;
 	color.w() = a / 255.0f;
 
-	setSpriteBlendMode(Graphics::BLEND_UNKNOWN);
+	glEnable(GL_BLEND);
+	setSpriteBlendMode(Graphics::BLEND_NORMAL);
 
 	glDisable(GL_DEPTH_TEST);
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glDisable(GL_TEXTURE_2D);
-	glBindBuffer(GL_ARRAY_BUFFER, _fadeVBO);
 	_lastTexture = nullptr;
+
+	glViewport(0, 0, _width, _height);
+	setProjection2D(_fadeShader);
 
 	_fadeShader->use();
 	_fadeShader->setUniform("color", color);
-	setProjection2D(_fadeShader);
+
+	glBindBuffer(GL_ARRAY_BUFFER, _fadeVBO);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, 4 * sizeof(RectangleVertex), vertices);
 
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	
 	setup2D(true);
+
+	return true;
 }
 
-BaseImage *BaseRenderOpenGL3DShader::takeScreenshot() {
+BaseImage *BaseRenderOpenGL3DShader::takeScreenshot(int newWidth, int newHeight) {
 	BaseImage *screenshot = new BaseImage();
 	Graphics::Surface *surface = new Graphics::Surface();
-#ifdef SCUMM_BIG_ENDIAN
-	Graphics::PixelFormat format(4, 8, 8, 8, 8, 24, 16, 8, 0);
-#else
-	Graphics::PixelFormat format(4, 8, 8, 8, 8, 0, 8, 16, 24);
-#endif
+	Graphics::PixelFormat format = Graphics::PixelFormat::createFormatRGBA32();
 	surface->create(_viewportRect.width(), _viewportRect.height(), format);
 
-	glReadPixels(_viewportRect.left, _viewportRect.height() - _viewportRect.bottom, _viewportRect.width(), _viewportRect.height(),
-				 GL_RGBA, GL_UNSIGNED_BYTE, surface->getPixels());
-	flipVertical(surface);
-	Graphics::Surface *converted = surface->convertTo(getPixelFormat());
-	screenshot->copyFrom(converted);
+	glReadPixels(_viewportRect.left, _viewportRect.height() - _viewportRect.bottom,
+	             _viewportRect.width(), _viewportRect.height(),
+	             GL_RGBA, GL_UNSIGNED_BYTE, surface->getPixels());
+	screenshot->copyFrom(surface, newWidth, newHeight, Graphics::FLIP_V);
 	delete surface;
-	delete converted;
 	return screenshot;
 }
 
 bool BaseRenderOpenGL3DShader::enableShadows() {
-	_gameRef->_supportsRealTimeShadows = false;
 	return true;
 }
 
@@ -664,23 +800,43 @@ bool BaseRenderOpenGL3DShader::disableShadows() {
 	return true;
 }
 
-void BaseRenderOpenGL3DShader::displayShadow(BaseObject *object, const DXVector3 *lightPos, bool lightPosRelative) {
-	if (!_ready || !object || !lightPos)
+void BaseRenderOpenGL3DShader::displaySimpleShadow(BaseObject *object) {
+	if (!_ready || !object)
 		return;
 
-	// redirect simple shadow if needed
-	bool simpleShadow = _gameRef->getMaxShadowType(object) <= SHADOW_SIMPLE;
-	if (!_gameRef->_supportsRealTimeShadows)
-		simpleShadow = true;
-	if (simpleShadow)
-		return renderSimpleShadow(object);
+	BaseSurface *shadowImage;
+	if (object->_shadowImage) {
+		shadowImage = object->_shadowImage;
+	} else {
+		shadowImage = _game->_shadowImage;
+	}
 
-	// TODO: to be implemented
-	return;
-}
+	if (!shadowImage) {
+		return;
+	}
 
-void BaseRenderOpenGL3DShader::renderSimpleShadow(BaseObject *object) {
-	// TODO: to be implemented
+	DXMatrix scale, trans, rot, finalm;
+	DXMatrixScaling(&scale, object->_shadowSize * object->_scale3D, 1.0f, object->_shadowSize * object->_scale3D);
+	DXMatrixRotationY(&rot, degToRad(object->_angle));
+	DXMatrixTranslation(&trans, object->_posVector._x, object->_posVector._y, object->_posVector._z);
+	DXMatrixMultiply(&finalm, &scale, &rot);
+	DXMatrixMultiply(&finalm, &finalm, &trans);
+	setWorldTransform(finalm);
+
+	glFrontFace(GL_CCW);
+
+	glDepthMask(GL_FALSE);
+	glEnable(GL_TEXTURE_2D);
+	static_cast<BaseSurfaceOpenGL3D *>(shadowImage)->setTexture();
+
+	_simpleShadowShader->use();
+
+	glBindBuffer(GL_ARRAY_BUFFER, _simpleShadowVBO);
+
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+	glDisable(GL_TEXTURE_2D);
+	glDepthMask(GL_TRUE);
 }
 
 void BaseRenderOpenGL3DShader::setSpriteBlendMode(Graphics::TSpriteBlendMode blendMode, bool forceChange) {
@@ -707,8 +863,7 @@ void BaseRenderOpenGL3DShader::setSpriteBlendMode(Graphics::TSpriteBlendMode ble
 	}
 }
 
-bool BaseRenderOpenGL3DShader::stencilSupported() {
-	// assume that we have a stencil buffer
+bool BaseRenderOpenGL3DShader::shadowVolumeSupported() {
 	return true;
 }
 
@@ -716,13 +871,23 @@ int BaseRenderOpenGL3DShader::getMaxActiveLights() {
 	return 8;
 }
 
-bool BaseRenderOpenGL3DShader::invalidateTexture(BaseSurfaceOpenGL3D *texture) {
+bool BaseRenderOpenGL3DShader::invalidateTexture(BaseSurface *texture) {
 	if (_lastTexture == texture)
 		_lastTexture = nullptr;
-	if (_batchTexture == texture)
-		_batchTexture = nullptr;
 
 	return true;
+}
+
+bool BaseRenderOpenGL3DShader::invalidateDeviceObjects() {
+	return STATUS_OK;
+}
+
+bool BaseRenderOpenGL3DShader::restoreDeviceObjects() {
+	return STATUS_OK;
+}
+
+bool BaseRenderOpenGL3DShader::resetDevice() {
+	return STATUS_OK;
 }
 
 // implements D3D LightEnable()
@@ -737,8 +902,8 @@ void BaseRenderOpenGL3DShader::lightEnable(int index, bool enable) {
 
 // backend layer 3DLight::SetLight
 void BaseRenderOpenGL3DShader::setLightParameters(int index, const DXVector3 &position,
-												  const DXVector3 &direction,
-												  const DXVector4 &diffuse, bool spotlight) {
+	                                          const DXVector3 &direction,
+	                                          const DXVector4 &diffuse, bool spotlight) {
 	Math::Vector4d position4d;
 	position4d.x() = position._x;
 	position4d.y() = position._y;
@@ -776,54 +941,111 @@ void BaseRenderOpenGL3DShader::setLightParameters(int index, const DXVector3 &po
 
 // backend layer AdSceneGeometry::Render
 void BaseRenderOpenGL3DShader::renderSceneGeometry(const BaseArray<AdWalkplane *> &planes, const BaseArray<AdBlock *> &blocks,
-											   const BaseArray<AdGeneric *> &generics, const BaseArray<Light3D *> &lights, Camera3D *camera) {
-	// don't render scene geometry, as OpenGL ES 2 has no wireframe rendering and we don't have a shader alternative yet
-}
-
-// backend layer 3DShadowVolume::Render()
-void BaseRenderOpenGL3DShader::renderShadowGeometry(const BaseArray<AdWalkplane *> &planes, const BaseArray<AdBlock *> &blocks,
-													const BaseArray<AdGeneric *> &generics, Camera3D *camera) {
+	                                           const BaseArray<AdGeneric *> &generics, const BaseArray<Light3D *> &lights, Camera3D *camera) {
 	DXMatrix matIdentity;
 	DXMatrixIdentity(&matIdentity);
 
 	if (camera)
-		_gameRef->_renderer3D->setup3D(camera, true);
+		_game->_renderer3D->setup3D(camera, true);
+	
+	setWorldTransform(matIdentity);
+
+	glDisable(GL_DEPTH_TEST);
+	glFrontFace(GL_CW); // WME DX have CCW
+	glEnable(GL_BLEND);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glDisable(GL_TEXTURE_2D);
+
+	for (int32 i = 0; i < planes.getSize(); i++) {
+		if (planes[i]->_active) {
+			planes[i]->_mesh->render(true);
+		}
+	}
+
+	// render blocks
+	for (int32 i = 0; i < blocks.getSize(); i++) {
+		if (blocks[i]->_active) {
+			blocks[i]->_mesh->render(true);
+		}
+	}
+
+	// render generic objects
+	for (int32 i = 0; i < generics.getSize(); i++) {
+		if (generics[i]->_active) {
+			generics[i]->_mesh->render(true);
+		}
+	}
+
+	// render waypoints
+	AdScene *scene = ((AdGame *)_game)->_scene;
+	AdSceneGeometry *geom = scene->_geom;
+	if (geom && geom->_wptMarker) {
+		DXMatrix viewMat, projMat, worldMat;
+		DXVector3 vec2d(0.0f, 0.0f, 0.0f);
+
+		getViewTransform(&viewMat);
+		getProjectionTransform(&projMat);
+		DXMatrixIdentity(&worldMat);
+
+		DXViewport vport = getViewPort();
+
+		setup2D();
+
+		for (int32 i = 0; i < geom->_waypointGroups.getSize(); i++) {
+			for (int32 j = 0; j < geom->_waypointGroups[i]->_points.getSize(); j++) {
+				DXVec3Project(&vec2d, geom->_waypointGroups[i]->_points[j], &vport, &projMat, &viewMat, &worldMat);
+				geom->_wptMarker->display(vec2d._x + scene->getOffsetLeft() - _drawOffsetX, vec2d._y + scene->getOffsetTop() - _drawOffsetY);
+			}
+		}
+	}
+}
+
+// backend layer 3DShadowVolume::Render()
+void BaseRenderOpenGL3DShader::renderShadowGeometry(const BaseArray<AdWalkplane *> &planes, const BaseArray<AdBlock *> &blocks,
+	                                            const BaseArray<AdGeneric *> &generics, Camera3D *camera) {
+	DXMatrix matIdentity;
+	DXMatrixIdentity(&matIdentity);
+
+	if (camera)
+		_game->_renderer3D->setup3D(camera, true);
 
 	setWorldTransform(matIdentity);
 
 	// disable color write
 	setSpriteBlendMode(Graphics::BLEND_UNKNOWN);
 	glBlendFunc(GL_ZERO, GL_ONE);
+	glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
 
 	// no texture
 	_lastTexture = nullptr;
-	glDisable(GL_TEXTURE_2D);
 	glBindTexture(GL_TEXTURE_2D, 0);
+	glDisable(GL_TEXTURE_2D);
 
 	glFrontFace(GL_CW); // WME DX have CCW
 
 	// render blocks
-	for (uint i = 0; i < blocks.size(); i++) {
+	for (int32 i = 0; i < blocks.getSize(); i++) {
 		if (blocks[i]->_active && blocks[i]->_receiveShadows) {
 			blocks[i]->_mesh->render();
 		}
 	}
 
 	// render walk planes
-	for (uint i = 0; i < planes.size(); i++) {
+	for (int32 i = 0; i < planes.getSize(); i++) {
 		if (planes[i]->_active && planes[i]->_receiveShadows) {
 			planes[i]->_mesh->render();
 		}
 	}
 
 	// render generic objects
-	for (uint i = 0; i < generics.size(); i++) {
+	for (int32 i = 0; i < generics.getSize(); i++) {
 		if (generics[i]->_active && generics[i]->_receiveShadows) {
 			generics[i]->_mesh->render();
 		}
 	}
 
 	setSpriteBlendMode(Graphics::BLEND_NORMAL);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 }
 
 // implements D3D SetRenderState() D3DRS_CULLMODE - CCW
@@ -839,12 +1061,12 @@ void BaseRenderOpenGL3DShader::disableCulling() {
 
 // implements D3D SetViewport() for 2D renderer
 bool BaseRenderOpenGL3DShader::setViewport(int left, int top, int right, int bottom) {
-	_viewportRect.setRect(left, top, right, bottom);
+	BasePlatform::setRect(&_viewportRect, left, top, right, bottom);
 	_viewport._x = left;
 	_viewport._y = top;
 	_viewport._width = right - left;
 	_viewport._height = bottom - top;
-	glViewport(left, _height - bottom, right - left, bottom - top);
+	glViewport(left, top, right - left, bottom - top);
 	return true;
 }
 
@@ -857,7 +1079,8 @@ bool BaseRenderOpenGL3DShader::setViewport3D(DXViewport *viewport) {
 
 bool BaseRenderOpenGL3DShader::setProjection2D(OpenGL::Shader *shader) {
 	DXMatrix matrix2D;
-	DXMatrixOrthoOffCenterLH(&matrix2D, 0, _width, 0, _height, 0.0f, 1.0f);
+	DXMatrixIdentity(&matrix2D);
+	DXMatrixOrthoOffCenterLH(&matrix2D, 0, _width, _height, 0, 0.0f, 1.0f);
 
 	// convert DX [0, 1] depth range to OpenGL [-1, 1] depth range.
 	matrix2D.matrix._33 = 2.0f;
@@ -890,6 +1113,15 @@ bool BaseRenderOpenGL3DShader::setWorldTransform(const DXMatrix &transform) {
 	_xmodelShader->setUniform("modelMatrix", modelMatrix);
 	_xmodelShader->setUniform("normalMatrix", normalMatrix);
 
+	_geometryShader->use();
+	_geometryShader->setUniform("modelMatrix", modelMatrix);
+
+	_simpleShadowShader->use();
+	_simpleShadowShader->setUniform("modelMatrix", modelMatrix);
+
+	_flatShadowShader->use();
+	_flatShadowShader->setUniform("modelMatrix", modelMatrix);
+
 	_shadowVolumeShader->use();
 	_shadowVolumeShader->setUniform("modelMatrix", modelMatrix);
 
@@ -918,22 +1150,52 @@ bool BaseRenderOpenGL3DShader::setProjectionTransform(const DXMatrix &transform)
 }
 
 void BaseRenderOpenGL3DShader::postfilter() {
+	if (_postFilterMode == kPostFilterOff)
+		return;
+
+	setup2D();
+	glViewport(0, 0, _width, _height);
+
+	if (_postFilterMode == kPostFilterBlackAndWhite ||
+		_postFilterMode == kPostFilterSepia) {
+		glDisable(GL_BLEND);
+		glDisable(GL_CULL_FACE);
+
+		_postfilterShader->use();
+
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, _postfilterTexture);
+		glUniform1i(_postfilterShader->getUniformLocation("tex"), 0);
+
+		if (_postFilterMode == kPostFilterSepia) {
+			_postfilterShader->setUniform("sepiaMode", true);
+		} else {
+			_postfilterShader->setUniform("sepiaMode", false);
+		}
+
+		g_system->presentBuffer();
+		glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 0, 0, _width, _height, 0);
+
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+		glBindTexture(GL_TEXTURE_2D, 0);
+	}
 }
 
 BaseSurface *BaseRenderOpenGL3DShader::createSurface() {
-	return new BaseSurfaceOpenGL3D(_gameRef, this);
+	return new BaseSurfaceOpenGL3D(_game, this);
 }
 
 Mesh3DS *BaseRenderOpenGL3DShader::createMesh3DS() {
-	return new Mesh3DSOpenGLShader(_gameRef, _geometryShader);
+	return new Mesh3DSOpenGLShader(_game, _geometryShader);
 }
 
 XMesh *BaseRenderOpenGL3DShader::createXMesh() {
-	return new XMeshOpenGLShader(_gameRef, _xmodelShader);
+	return new XMeshOpenGLShader(_game, _xmodelShader, _flatShadowShader);
 }
 
 ShadowVolume *BaseRenderOpenGL3DShader::createShadowVolume() {
-	return new ShadowVolumeOpenGLShader(_gameRef, _shadowVolumeShader, _shadowMaskShader);
+	return new ShadowVolumeOpenGLShader(_game, _shadowVolumeShader, _shadowMaskShader);
 }
 
 // ScummVM specific ends <--

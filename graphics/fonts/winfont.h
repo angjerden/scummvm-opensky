@@ -23,6 +23,7 @@
 #define GRAPHICS_WINFONT_H
 
 #include "common/str.h"
+#include "common/path.h"
 #include "graphics/font.h"
 
 namespace Common {
@@ -105,7 +106,7 @@ private:
 
 	uint16 _glyphCount;
 	struct GlyphEntry {
-		GlyphEntry() { bitmap = 0; charWidth = 0; offset = 0; }
+		GlyphEntry() : charWidth(0), offset(0), bitmap(nullptr) {}
 		~GlyphEntry() { delete[] bitmap; }
 
 		uint16 charWidth;

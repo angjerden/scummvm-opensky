@@ -20,8 +20,9 @@
  */
 
 #include "m4/riddle/rooms/section7/room701.h"
-#include "m4/graphics/gr_series.h"
 #include "m4/riddle/vars.h"
+#include "m4/adv_r/adv_control.h"
+#include "m4/graphics/gr_series.h"
 
 namespace M4 {
 namespace Riddle {
@@ -92,7 +93,7 @@ void Room701::init() {
 	}
 
 	digi_preload("701_s01", -1);
-	digi_play_loop("701_s01", 2, 45, -1, -1);
+	digi_play_loop("701_s01", 3, 45, -1, -1);
 }
 
 void Room701::pre_parser() {
@@ -147,7 +148,9 @@ void Room701::parser() {
 		case 21:
 			sendWSMessage_120000(_G(my_walker), -1);
 			sendWSMessage_10000(1, _agentPoshExpressMach, _agentTalkLoopTjSeries, 11, 14, -1, _agentTalkLoopTjSeries, 11, 13, 1);
-
+			sendWSMessage_1a0000(_agentPoshExpressMach, 11);
+			digi_play("701X09", 1, 255, 22, -1);
+			
 			break;
 
 		case 22:
@@ -252,7 +255,7 @@ void Room701::parser() {
 		digi_play("com005", 1, 255, -1, 997);
 	else if (takeFl && player_said("Yeti Skin"))
 		digi_play("701R24", 1, 255, -1, -1);
-	else if (player_said("PRAYER WHEEL BROCHURE", "PRAYER WHEEL") && inv_player_has("PRAYER WHEEL BROCHURE")) {
+	else if (player_said_any("PRAYER WHEEL BROCHURE", "PRAYER WHEEL") && inv_player_has("PRAYER WHEEL BROCHURE")) {
 		switch (_G(kernel).trigger) {
 		case -1:
 			player_set_commands_allowed(false);
@@ -304,7 +307,7 @@ void Room701::parser() {
 
 			case 3:
 				digi_stop(3);
-				_G(game).new_room = 702;
+				_G(game).setRoom(702);
 				break;
 
 			default:
@@ -349,7 +352,7 @@ void Room701::parser() {
 
 			case 6:
 				digi_stop(3);
-				_G(game).new_room = 702;
+				_G(game).setRoom(702);
 				break;
 
 			default:
@@ -357,7 +360,9 @@ void Room701::parser() {
 			}
 		}
 	} // player_said("rm702")
-
+	else
+		return;
+	
 	_G(player).command_ready = false;
 }
 
@@ -1398,8 +1403,7 @@ void Room701::daemon() {
 			break;
 		}
 
-		_G(game).new_room = 495;
-		_G(game).new_section = 4;
+		_G(game).setRoom(495);
 
 		break;
 

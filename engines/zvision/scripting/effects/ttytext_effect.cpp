@@ -19,18 +19,15 @@
  *
  */
 
-#include "common/scummsys.h"
-
-#include "zvision/scripting/effects/ttytext_effect.h"
-
-#include "zvision/zvision.h"
-#include "zvision/scripting/script_manager.h"
-#include "zvision/graphics/render_manager.h"
-#include "zvision/text/text.h"
-
-#include "common/stream.h"
 #include "common/file.h"
+#include "common/scummsys.h"
+#include "common/stream.h"
 #include "common/unicode-bidi.h"
+#include "zvision/zvision.h"
+#include "zvision/graphics/render_manager.h"
+#include "zvision/scripting/script_manager.h"
+#include "zvision/scripting/effects/ttytext_effect.h"
+#include "zvision/text/text.h"
 
 namespace ZVision {
 
@@ -46,13 +43,16 @@ ttyTextNode::ttyTextNode(ZVision *engine, uint32 key, const Common::Path &file, 
 	_lineStartPos = 0;
 	_startX = 0;
 
-	Common::File *infile = _engine->getSearchManager()->openFile(file);
+	Common::File *infile = new Common::File;
+	infile->open(file);
 	if (infile) {
 		while (!infile->eos()) {
 			Common::U32String asciiLine = readWideLine(*infile);
 			if (asciiLine.empty()) {
 				continue;
 			}
+			if (engine->getLanguage() == Common::RU_RUS)
+				fixPseudo1251(&asciiLine);
 			_txtbuf += asciiLine;
 		}
 
@@ -61,7 +61,7 @@ ttyTextNode::ttyTextNode(ZVision *engine, uint32 key, const Common::Path &file, 
 	_isRTL = Common::convertBiDiU32String(_txtbuf).visual != _txtbuf;
 	_img.create(_r.width(), _r.height(), _engine->_resourcePixelFormat);
 	_state._sharp = true;
-	_state.readAllStyles(_txtbuf.encode());
+	_state.readAllStyles(_txtbuf);
 	_state.updateFontWithTextState(_fnt);
 	_engine->getScriptManager()->setStateValue(_key, 1);
 }
@@ -182,7 +182,7 @@ void ttyTextNode::newline() {
 	_startX = _dx;
 }
 
-void ttyTextNode::outchar(uint16 chr) {
+void ttyTextNode::outchar(uint32 chr) {
 	uint32 clr = _engine->_resourcePixelFormat.RGBToColor(_state._red, _state._green, _state._blue);
 
 	if (_dx + _fnt.getCharWidth(chr) > _r.width())

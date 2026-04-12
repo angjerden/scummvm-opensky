@@ -35,6 +35,7 @@
 #include "common/rendermode.h"
 #include "common/str.h"
 #include "common/textconsole.h"
+#include "common/text-to-speech.h"
 #include "graphics/surface.h"
 #include "graphics/sjis.h"
 #include "graphics/palette.h"
@@ -322,6 +323,9 @@ class ResourceManager;
 #define PIT_V7_SUBTIMER_INC            3977.0
 #define PIT_V7_SUBTIMER_THRESH         4971.0
 
+#define PIT_HE_PUTT_PUTT_DIVISOR       9362.0
+#define PIT_HE_FATTY_BEAR_DIVISOR      21845.0
+
 #define LOOM_STEAM_CDDA_RATE           240.0
 
 /**
@@ -476,6 +480,9 @@ struct InternalGUIControl {
 	int highlightedFillColor;
 	bool centerText;
 	Common::String label;
+#ifdef USE_TTS
+	Common::String alternateTTSLabel;
+#endif
 	bool doubleLinesFlag;
 };
 
@@ -513,6 +520,7 @@ class ScummEngine : public Engine, public Common::Serializable {
 	friend class MacV5Gui;
 	friend class MacV6Gui;
 	friend class LogicHEBasketball;
+	friend class ScummEditor;
 
 public:
 	/* Put often used variables at the top.
@@ -739,6 +747,7 @@ protected:
 
 	void initBanners();
 	Common::KeyState showBannerAndPause(int bannerId, int32 waitTime, const char *msg, ...);
+	bool showBannerAndPauseForTextInput(int bannerId, const char *prompt, Common::String &input, uint maxLength = 255);
 	Common::KeyState showOldStyleBannerAndPause(const char *msg, int color, int32 waitTime);
 	Common::KeyState printMessageAndPause(const char *msg, int color, int32 waitTime, bool drawOnSentenceLine);
 
@@ -796,8 +805,9 @@ protected:
 	void drawDraftsInventory();
 
 public:
-	char displayMessage(const char *altButton, MSVC_PRINTF const char *message, ...) GCC_PRINTF(3, 4);
+	char displayMessage(MSVC_PRINTF const char *message, ...) GCC_PRINTF(2, 3);
 	bool displayMessageYesNo(MSVC_PRINTF const char *message, ...) GCC_PRINTF(2, 3);
+	bool displayMessageOKQuit(MSVC_PRINTF const char *message, ...) GCC_PRINTF(2, 3);
 
 protected:
 	byte _fastMode = 0;
@@ -826,6 +836,61 @@ public:
 		return _scummVars[var];
 	}
 
+	bool applyMi2NiDemoOverride();
+	struct Playback {
+		struct FrameEvent {
+			bool hasPos = false;
+			uint16 x = 0;
+			uint16 y = 0;
+
+			uint16 mbs = 0;
+			uint16 key = 0;
+		};
+
+		static void parseStream(const Common::Array<byte> &stream, Common::Array<FrameEvent> &outEvents);
+
+		bool _loaded = false;
+		bool _attempted = false;
+		bool _active = false;
+
+		bool _mi2DemoVarsApplied = false;
+
+		Common::Array<FrameEvent> _events;
+
+		uint32 _streamOff = 0;
+		uint32 _streamBytes = 0;
+
+		uint32 _nextIndex = 0;
+		int _lastRoom = -1;
+
+		bool _hasPrevMbs = false;
+		uint16 _prevMbs = 0;
+		uint32 _firstInteractIndex = 0;
+		bool _firstInteractValid = false;
+
+		int16 _curX = 0;
+		int16 _curY = 0;
+		bool _pendingLUp = false;
+		bool _pendingRUp = false;
+
+		bool _sputmCmdActive = false;
+		byte _sputmCmdEnterCount = 0;
+		Common::String _sputmCmdBuf;
+		Common::String _name;
+		
+		void reset();
+		bool tryLoadPlayback(ScummEngine *engine, const Common::Path &path = Common::Path("demo.rec"));
+		bool startPlayback(ScummEngine *engine);
+		void playbackPump(ScummEngine *engine);
+		
+		//MI2 DOS NI Demo specific playback helpers
+		void mi2DemoArmPlaybackByRoom(ScummEngine *engine);
+		void mi2DemoPlaybackJumpRoom(ScummEngine *engine, int room);
+		bool handleMi2NIDemoSputmDebugKey(ScummEngine *engine, uint16 rawKey);
+	};
+
+	Playback _playback;
+
 protected:
 	int16 _varwatch = 0;
 	int32 *_roomVars = nullptr;
@@ -847,7 +912,7 @@ protected:
 	int _numPalettes = 0;
 	int _numSprites = 0;
 	int _numTalkies = 0;
-	int _numUnk = 0;
+	int _numWindows = 0;
 	int _HEHeapSize = 0;
 
 public:
@@ -978,6 +1043,14 @@ protected:
 
 	OpcodeEntry _opcodes[256];
 
+	/**
+	 * Small helper to avoid checking `_currentScript != 0xFF` before every
+	 * `vm.slot[_currentScript].number` use that would require so.
+	 */
+	bool currentScriptSlotIs(uint16 script) const {
+		return _currentScript != 0xFF && vm.slot[_currentScript].number == script;
+	}
+
 	virtual void setupOpcodes() = 0;
 	void executeOpcode(byte i);
 	const char *getOpcodeDesc(byte i);
@@ -1072,6 +1145,7 @@ protected:
 	void deleteRoomOffsets();
 	virtual void readRoomsOffsets();
 	void askForDisk(const Common::Path &filename, int disknum);
+	byte getEncByte(int room);
 	bool openResourceFile(const Common::Path &filename, byte encByte);
 
 	void loadPtrToResource(ResType type, ResId idx, const byte *ptr);
@@ -1211,7 +1285,7 @@ protected:
 
 	void verbMouseOver(int verb);
 	int findVerbAtPos(int x, int y) const;
-	virtual void drawVerb(int verb, int mode);
+	virtual void drawVerb(int verb, int mode, Common::TextToSpeechManager::Action ttsAction = Common::TextToSpeechManager::INTERRUPT);
 	virtual void runInputScript(int clickArea, int val, int mode);
 	void restoreVerbBG(int verb);
 	void drawVerbBitmap(int verb, int x, int y);
@@ -1332,6 +1406,7 @@ protected:
 	void initCycl(const byte *ptr);	// Color cycle
 
 	void decodeNESBaseTiles();
+	void playNESTitleScreens();
 
 	void drawObject(int obj, int scrollType);
 	void drawRoomObjects(int arg);
@@ -1358,7 +1433,7 @@ protected:
 	const byte *getPalettePtr(int palindex, int room);
 
 	void setPaletteFromTable(const byte *ptr, int numcolor, int firstIndex = 0);
-	void resetPalette();
+	void resetPalette(bool isBootUp = false);
 
 	void setCurrentPalette(int pal);
 	void setRoomPalette(int pal, int room);
@@ -1597,6 +1672,7 @@ public:
 	Graphics::Surface _textSurface;
 	int _textSurfaceMultiplier = 0;
 
+	bool _isModernMacVersion = false;
 	bool _useGammaCorrection = true;
 
 	Graphics::Surface *_macScreen = nullptr;
@@ -1618,6 +1694,16 @@ protected:
 
 	Localizer *_localizer = nullptr;
 
+#ifdef USE_TTS
+	bool _voiceNextString = false;
+	bool _checkPreviousSaid = false;
+	bool _voicePassHelpButtons = false;
+	int _previousVerb = -1;
+	int _previousControl = -1;
+	Common::String _previousSaid;
+	Common::String _passHelpButtons[6];
+#endif
+
 	void restoreCharsetBg();
 	void clearCharsetMask();
 	void clearTextSurface();
@@ -1631,11 +1717,17 @@ protected:
 	virtual void displayDialog();
 	int countNumberOfWaits(); // For SE speech support, from disasm
 	bool newLine();
-	void drawString(int a, const byte *msg);
+	void drawString(int a, const byte *msg, Common::TextToSpeechManager::Action ttsAction = Common::TextToSpeechManager::QUEUE);
 	virtual void fakeBidiString(byte *ltext, bool ignoreVerb, int ltextSize) const;
 	void wrapSegaCDText();
 	void debugMessage(const byte *msg);
 	virtual void showMessageDialog(const byte *msg);
+	
+#ifdef USE_TTS
+	void sayText(const Common::String &text, Common::TextToSpeechManager::Action action = Common::TextToSpeechManager::QUEUE) const;
+	void stopTextToSpeech() const;
+	void sayButtonText();
+#endif
 
 	virtual int convertMessageToString(const byte *msg, byte *dst, int dstSize);
 	int convertIntMessage(byte *dst, int dstSize, int var);
@@ -1864,6 +1956,11 @@ public:
 
 	// Exists both in V7 and in V72HE:
 	byte VAR_NUM_GLOBAL_OBJS = 0xFF;
+
+	byte VAR_LAST_FRAME_BURN_TIME = 0xFF;  // HE90+
+	byte VAR_LAST_FRAME_SCUMM_TIME = 0xFF; // HE90+
+
+	byte VAR_WINDEX_RUNNING = 0xFF;
 
 #ifdef USE_RGB_COLOR
 	// FM-Towns / PC-Engine specific

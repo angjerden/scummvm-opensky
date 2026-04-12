@@ -77,7 +77,9 @@ void OpenGLRenderer::init() {
 
 	glDisable(GL_LIGHTING);
 	glDisable(GL_TEXTURE_2D);
-	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_CULL_FACE);
+	glFrontFace(GL_CW);
+	glCullFace(GL_BACK);
 	glEnable(GL_SCISSOR_TEST);
 	setViewport(_viewport);
 	glEnable(GL_DEPTH_CLAMP);
@@ -126,7 +128,8 @@ void OpenGLRenderer::drawTexturedRect2D(const Common::Rect &screenRect, const Co
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 
-	glDisable(GL_DEPTH_TEST);
+
+	glDisable(GL_CULL_FACE);
 	glEnable(GL_TEXTURE_2D);
 	glColor4f(1.0, 1.0, 1.0, 1.0);
 	glDepthMask(GL_FALSE);
@@ -154,7 +157,7 @@ void OpenGLRenderer::drawTexturedRect2D(const Common::Rect &screenRect, const Co
 
 	glDisable(GL_BLEND);
 	glDepthMask(GL_TRUE);
-	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_CULL_FACE);
 	glBindTexture(GL_TEXTURE_2D, 0); // Bind the default (empty) texture to avoid darker colors!
 	glFlush();
 }
@@ -162,7 +165,7 @@ void OpenGLRenderer::drawTexturedRect2D(const Common::Rect &screenRect, const Co
 void OpenGLRenderer::drawSkybox(Texture *texture, Math::Vector3d camera) {
 	OpenGLTexture *glTexture = static_cast<OpenGLTexture *>(texture);
 
-	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_CULL_FACE);
 	glEnable(GL_TEXTURE_2D);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 
@@ -171,6 +174,8 @@ void OpenGLRenderer::drawSkybox(Texture *texture, Math::Vector3d camera) {
 	glNormalPointer(GL_FLOAT, 0, _skyNormals);
 	if (texture->_width == 1008)
 		glTexCoordPointer(2, GL_FLOAT, 0, _skyUvs1008);
+	else if (texture->_width == 672)
+		glTexCoordPointer(2, GL_FLOAT, 0, _skyUvs672);
 	else if (texture->_width == 128)
 		glTexCoordPointer(2, GL_FLOAT, 0, _skyUvs128);
 	else
@@ -195,8 +200,50 @@ void OpenGLRenderer::drawSkybox(Texture *texture, Math::Vector3d camera) {
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glDisable(GL_TEXTURE_2D);
-	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_CULL_FACE);
 	glFlush();
+}
+
+void OpenGLRenderer::drawThunder(Texture *texture, const Math::Vector3d position, const float size) {
+	OpenGLTexture *glTexture = static_cast<OpenGLTexture *>(texture);
+	glPushMatrix();
+	{
+		glTranslatef(position.x(), position.y(), position.z());
+
+		GLfloat m[16];
+		glGetFloatv(GL_MODELVIEW_MATRIX, m);
+		for (int i = 0; i < 3; i++)
+			for (int j = 0; j < 3; j++)
+				m[i * 4 + j] = (i == j) ? 1.0f : 0.0f;
+		glLoadMatrixf(m);
+
+		glRotatef(-90, 0.0f, 0.0f, 1.0f);
+
+		// === Texturing setup ===
+		glEnable(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, glTexture->_id);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+
+		// === Blending (thunder should glow) ===
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_ONE, GL_ONE);
+
+		// === Draw the billboarded quad ===
+		float half = size * 0.5f;
+		glBegin(GL_QUADS);
+			glTexCoord2f(0.0f, 0.0f); glVertex3f(-half, -half, 0.0f);
+			glTexCoord2f(0.0f, 0.72f); glVertex3f( half, -half, 0.0f);
+			glTexCoord2f(1.0f, 0.72f); glVertex3f( half,  half, 0.0f);
+			glTexCoord2f(1.0f, 0.0f); glVertex3f(-half,  half, 0.0f);
+		glEnd();
+
+		// === Cleanup ===
+		glDisable(GL_BLEND);
+		glBindTexture(GL_TEXTURE_2D, 0);
+		glDisable(GL_TEXTURE_2D);
+	}
+	glPopMatrix();
 }
 
 void OpenGLRenderer::updateProjectionMatrix(float fov, float aspectRatio, float nearClipPlane, float farClipPlane) {
@@ -222,13 +269,22 @@ void OpenGLRenderer::positionCamera(const Math::Vector3d &pos, const Math::Vecto
 	glMultMatrixf(lookMatrix.getData());
 	glRotatef(rollAngle, 0.0f, 0.0f, 1.0f);
 	glTranslatef(-pos.x(), -pos.y(), -pos.z());
-	glTranslatef(_shakeOffset.x, _shakeOffset.y, 0);
+
+	// Apply a 2D shake effect on the projection matrix.
+	// This avoids moving the camera in the 3D world, which could cause clipping issues.
+	glMatrixMode(GL_PROJECTION);
+	GLfloat projMatrix[16];
+	glGetFloatv(GL_PROJECTION_MATRIX, projMatrix);
+	glLoadIdentity();
+	glTranslatef(_shakeOffset.x * 0.025f, _shakeOffset.y * 0.025f, 0.0f);
+	glMultMatrixf(projMatrix);
+	glMatrixMode(GL_MODELVIEW);
 }
 
 void OpenGLRenderer::renderSensorShoot(byte color, const Math::Vector3d sensor, const Math::Vector3d target, const Common::Rect &viewArea) {
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ZERO);
-	glColor3ub(255, 255, 255);
+	glColor4ub(255, 255, 255, 255);
 
 	glLineWidth(20);
 	glEnableClientState(GL_VERTEX_ARRAY);
@@ -252,12 +308,12 @@ void OpenGLRenderer::renderCrossair(const Common::Point &crossairPosition) {
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ZERO);
 
-	glDisable(GL_DEPTH_TEST);
+
 	glDepthMask(GL_FALSE);
 
 	useColor(255, 255, 255);
 
-	glLineWidth(MAX(2, g_system->getWidth() / 192)); // It will not work in every OpenGL implementation since the
+	glLineWidth(MAX(2, g_system->getWidth() / 640)); // It will not work in every OpenGL implementation since the
 	                                                 // spec doesn't require support for line widths other than 1
 	glEnableClientState(GL_VERTEX_ARRAY);
 	copyToVertexArray(0, Math::Vector3d(crossairPosition.x - 3, crossairPosition.y, 0));
@@ -278,7 +334,6 @@ void OpenGLRenderer::renderCrossair(const Common::Point &crossairPosition) {
 	glLineWidth(1);
 
 	glDisable(GL_BLEND);
-	glEnable(GL_DEPTH_TEST);
 	glDepthMask(GL_TRUE);
 }
 
@@ -293,15 +348,24 @@ void OpenGLRenderer::renderPlayerShootRay(byte color, const Common::Point &posit
 	if (_renderMode == Common::kRenderCGA || _renderMode == Common::kRenderZX) {
 		r = g = b = 255;
 	} else {
-		r = g = b = 255;
+		if (_renderMode == Common::kRenderHercG) {
+			// Hercules Green
+			r = b = 0;
+			g = 255;
+		} else if (_renderMode == Common::kRenderHercA) {
+			// Hercules Amber
+			r = 255;
+			g = 191;
+			b = 0;
+		} else
+			r = g = b = 255;
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ZERO);
 	}
 
-	glDisable(GL_DEPTH_TEST);
 	glDepthMask(GL_FALSE);
 
-	glColor3ub(r, g, b);
+	glColor4ub(r, g, b, 255);
 
 	glLineWidth(5); // It will not work in every OpenGL implementation since the
 	                // spec doesn't require support for line widths other than 1
@@ -322,7 +386,6 @@ void OpenGLRenderer::renderPlayerShootRay(byte color, const Common::Point &posit
 	glLineWidth(1);
 
 	glDisable(GL_BLEND);
-	glEnable(GL_DEPTH_TEST);
 	glDepthMask(GL_TRUE);
 }
 
@@ -335,7 +398,7 @@ void OpenGLRenderer::drawCelestialBody(Math::Vector3d position, float radius, by
 	float twicePi = (float)(2.0 * M_PI);
 
 	// Quick billboard effect inspired from this code:
-	// http://www.lighthouse3d.com/opengl/billboarding/index.php?billCheat
+	// https://www.lighthouse3d.com/opengl/billboarding/index.php?billCheat
 	glMatrixMode(GL_MODELVIEW);
 	glPushMatrix();
 	GLfloat m[16];
@@ -351,7 +414,6 @@ void OpenGLRenderer::drawCelestialBody(Math::Vector3d position, float radius, by
 		}
 
 	glLoadMatrixf(m);
-	glDisable(GL_DEPTH_TEST);
 	glDepthMask(GL_FALSE);
 
 	setStippleData(stipple);
@@ -393,7 +455,6 @@ void OpenGLRenderer::drawCelestialBody(Math::Vector3d position, float radius, by
 		useStipple(false);
 	}
 
-	glEnable(GL_DEPTH_TEST);
 	glDepthMask(GL_TRUE);
 	glPopMatrix();
 }
@@ -409,29 +470,43 @@ void OpenGLRenderer::renderPlayerShootBall(byte color, const Common::Point &posi
 	if (_renderMode == Common::kRenderCGA || _renderMode == Common::kRenderZX) {
 		r = g = b = 255;
 	} else {
-		r = g = b = 255;
+		if (_renderMode == Common::kRenderHercG) {
+			// Hercules Green
+			r = b = 0;
+			g = 255;
+		} else if (_renderMode == Common::kRenderHercA) {
+			// Hercules Amber
+			r = 255;
+			g = 191;
+			b = 0;
+		} else
+			r = g = b = 255;
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ZERO);
 	}
 
-	glDisable(GL_DEPTH_TEST);
 	glDepthMask(GL_FALSE);
 
-	glColor3ub(r, g, b);
+	glColor4ub(r, g, b, 255);
 	int triangleAmount = 20;
 	float twicePi = (float)(2.0 * M_PI);
-	float coef = (9 - frame) / 9.0;
-	float radius = (1 - coef) * 4.0;
 
-	Common::Point initial_position(viewArea.left + viewArea.width() / 2 + 2, viewArea.height() + viewArea.top);
-	Common::Point ball_position = coef * position + (1 - coef) * initial_position;
+	// Exponential ease-out trajectory inspired by the original ZX animation.
+	// The stone shrinks as it flies into the screen (perspective).
+	float coef = 1.0f - powf(0.5f, (8 - frame + 1) / 2.0f);
+	float radius = 1.0f + frame * 0.5f;
+
+	float startX = viewArea.left + viewArea.width() / 2.0f + 2;
+	float startY = viewArea.height() + viewArea.top;
+	float ballX = coef * position.x + (1.0f - coef) * startX;
+	float ballY = coef * position.y + (1.0f - coef) * startY;
 
 	glEnableClientState(GL_VERTEX_ARRAY);
-	copyToVertexArray(0, Math::Vector3d(ball_position.x, ball_position.y, 0));
+	copyToVertexArray(0, Math::Vector3d(ballX, ballY, 0));
 
 	for (int i = 0; i <= triangleAmount; i++) {
-		float x = ball_position.x + (radius * cos(i *  twicePi / triangleAmount));
-		float y = ball_position.y + (radius * sin(i * twicePi / triangleAmount));
+		float x = ballX + (radius * cos(i * twicePi / triangleAmount));
+		float y = ballY + (radius * sin(i * twicePi / triangleAmount));
 		copyToVertexArray(i + 1, Math::Vector3d(x, y, 0));
 	}
 
@@ -440,7 +515,6 @@ void OpenGLRenderer::renderPlayerShootBall(byte color, const Common::Point &posi
 	glDisableClientState(GL_VERTEX_ARRAY);
 
 	glDisable(GL_BLEND);
-	glEnable(GL_DEPTH_TEST);
 	glDepthMask(GL_TRUE);
 }
 
@@ -458,7 +532,7 @@ void OpenGLRenderer::renderFace(const Common::Array<Math::Vector3d> &vertices) {
 		copyToVertexArray(0, v0);
 		copyToVertexArray(1, v1);
 		glVertexPointer(3, GL_FLOAT, 0, _verts);
-		glLineWidth(MAX(1, g_system->getWidth() / 192));
+		glLineWidth(MAX(1, g_system->getWidth() / 640));
 		glDrawArrays(GL_LINES, 0, 2);
 		glLineWidth(1);
 		glDisableClientState(GL_VERTEX_ARRAY);
@@ -480,13 +554,11 @@ void OpenGLRenderer::renderFace(const Common::Array<Math::Vector3d> &vertices) {
 	glDisableClientState(GL_VERTEX_ARRAY);
 }
 
-void OpenGLRenderer::depthTesting(bool enabled) {
+void OpenGLRenderer::enableCulling(bool enabled) {
 	if (enabled) {
-		// If we re-enable depth testing, we need to clear the depth buffer
-		glClear(GL_DEPTH_BUFFER_BIT);
-		glEnable(GL_DEPTH_TEST);
+		glEnable(GL_CULL_FACE);
 	} else {
-		glDisable(GL_DEPTH_TEST);
+		glDisable(GL_CULL_FACE);
 	}
 }
 
@@ -531,7 +603,7 @@ void OpenGLRenderer::useStipple(bool enabled) {
 }
 
 void OpenGLRenderer::useColor(uint8 r, uint8 g, uint8 b) {
-	glColor3ub(r, g, b);
+	glColor4ub(r, g, b, 255);
 }
 
 void OpenGLRenderer::clear(uint8 r, uint8 g, uint8 b, bool ignoreViewport) {
@@ -547,7 +619,7 @@ void OpenGLRenderer::drawFloor(uint8 color) {
 	uint8 r1, g1, b1, r2, g2, b2;
 	byte *stipple;
 	assert(getRGBAt(color, 0, r1, g1, b1, r2, g2, b2, stipple)); // TODO: move check inside this function
-	glColor3ub(r1, g1, b1);
+	glColor4ub(r1, g1, b1, 255);
 
 	glEnableClientState(GL_VERTEX_ARRAY);
 	copyToVertexArray(0, Math::Vector3d(-100000.0, 0.0, -100000.0));

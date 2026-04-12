@@ -25,6 +25,8 @@
 
 #include "graphics/macgui/mactext.h"
 
+#include "image/png.h"
+
 namespace Graphics {
 
 enum {
@@ -117,7 +119,7 @@ uint MacTextLine::getChunkNum(int *col) {
 
 MacText::MacText(MacWidget *parent, int x, int y, int w, int h, MacWindowManager *wm, const Common::U32String &s, const MacFont *macFont, uint32 fgcolor, uint32 bgcolor, int maxWidth, TextAlign textAlignment, int interlinear, uint16 border, uint16 gutter, uint16 boxShadow, uint16 textShadow, bool fixedDims, bool scrollBar) :
 	MacWidget(parent, x, y, w, h, wm, true, border, gutter, boxShadow),
-	_macFont(macFont) {
+	_macFont(macFont), _scrollBar(scrollBar) {
 
 	D(6, "MacText::MacText(): fgcolor: %d, bgcolor: %d s: \"%s\"", fgcolor, bgcolor, Common::toPrintable(s.encode()).c_str());
 
@@ -150,7 +152,7 @@ MacText::MacText(MacWidget *parent, int x, int y, int w, int h, MacWindowManager
 // NOTE: This constructor and the one afterward are for MacText engines that don't use widgets. This is the classic was MacText was constructed.
 MacText::MacText(const Common::U32String &s, MacWindowManager *wm, const MacFont *macFont, uint32 fgcolor, uint32 bgcolor, int maxWidth, TextAlign textAlignment, int interlinear, bool fixedDims, bool scrollBar) :
 	MacWidget(nullptr, 0, 0, 0, 0, wm, false, 0, 0, 0),
-	_macFont(macFont) {
+	_macFont(macFont), _scrollBar(scrollBar) {
 
 	_str = s;
 
@@ -176,7 +178,7 @@ MacText::MacText(const Common::U32String &s, MacWindowManager *wm, const MacFont
 // Working with plain Font
 MacText::MacText(const Common::U32String &s, MacWindowManager *wm, const Font *font, uint32 fgcolor, uint32 bgcolor, int maxWidth, TextAlign textAlignment, int interlinear, bool fixedDims, bool scrollBar) :
 	MacWidget(nullptr, 0, 0, 0, 0, wm, false, 0, 0, 0),
-	_macFont(nullptr) {
+	_macFont(nullptr), _scrollBar(scrollBar) {
 
 	_str = s;
 
@@ -198,7 +200,7 @@ MacText::MacText(const Common::U32String &s, MacWindowManager *wm, const Font *f
 void MacText::init(uint32 fgcolor, uint32 bgcolor, int maxWidth, TextAlign textAlignment, int interlinear, uint16 textShadow, bool macFontMode) {
 	_fullRefresh = true;
 
-	_canvas._maxWidth = maxWidth;
+	_canvas._maxWidth = maxWidth - _border * 2 - _gutter * 2 - _shadow;
 	_canvas._textAlignment = textAlignment;
 	_canvas._textShadow = textShadow;
 	_canvas._interLinear = interlinear;
@@ -231,12 +233,16 @@ void MacText::init(uint32 fgcolor, uint32 bgcolor, int maxWidth, TextAlign textA
 
 	_fullRefresh = true;
 	_inTextSelection = false;
+	_selectionIsDirty = false;
 
 	_scrollPos = 0;
 	_editable = false;
 	_selectable = false;
 
+	_addInputPadding = false;
+
 	_editableRow = 0;
+	_autoSelect = true;
 
 	_menu = nullptr;
 
@@ -278,7 +284,10 @@ MacText::~MacText() {
 	if (_wm->getActiveWidget() == this)
 		_wm->setActiveWidget(nullptr);
 
+	g_system->getTimerManager()->removeTimerProc(&cursorTimerHandler);
+
 	_borderSurface.free();
+	_borderMaskSurface.free();
 
 	delete _cursorRect;
 	delete _cursorSurface;
@@ -327,6 +336,13 @@ void MacText::resizeScrollBar(int w, int h) {
 		_borderSurface.clear(_wm->_colorGreen);
 	}
 	_scrollBorder.blitBorderInto(_borderSurface, kWindowBorderScrollbar | kWindowBorderActive);
+
+	_borderMaskSurface.free();
+	_borderMaskSurface.create(w, h, _wm->_pixelformat);
+	if (_wm->_pixelformat.bytesPerPixel == 1) {
+		_borderMaskSurface.clear(_wm->_colorGreen);
+	}
+	_scrollBorder.blitBorderInto(_borderMaskSurface, kWindowBorderScrollbar | kWindowBorderActive, true, 0xff);
 }
 
 // this func returns the fg color of the first character we met in text
@@ -352,6 +368,8 @@ int getStringWidth(MacFontRun &format, const Common::U32String &str) {
 }
 
 void MacText::setMaxWidth(int maxWidth) {
+	maxWidth = maxWidth - _border * 2 - _gutter * 2 - _shadow;
+
 	if (maxWidth == _canvas._maxWidth)
 		return;
 
@@ -384,7 +402,7 @@ void MacText::setMaxWidth(int maxWidth) {
 		absoluteCharOffset -= lineWidth;
 		++_cursorRow;
 	}
-	
+
 	int ppos = 0;
 	if (absoluteCharOffset > _canvas.getLineCharWidth(_cursorRow, true))
 		ppos = _canvas.getLineCharWidth(_cursorRow, true);
@@ -625,6 +643,8 @@ void MacText::setDefaultFormatting(uint16 fontId, byte textSlant, uint16 fontSiz
 void MacText::render() {
 	if (_fullRefresh) {
 		_canvas._surface->clear(_canvas._tbgcolor);
+		_canvas._glyphMask->clear(0);
+		_canvas._charBoxMask->clear(0);
 		if (_canvas._textShadow)
 			_canvas._shadowSurface->clear(_canvas._tbgcolor);
 
@@ -633,11 +653,37 @@ void MacText::render() {
 		_fullRefresh = false;
 
 #if 0
+		byte pal[256 * 3];
 		Common::DumpFile out;
-		Common::String filename = Common::String::format("z-%p.png", (void *)this);
+		Common::Path filename(Common::String::format("z-%p-1-image.png", (void *)this));
 		if (out.open(filename)) {
-			warning("Wrote: %s", filename.c_str());
-			Image::writePNG(out, _canvas._surface->rawSurface());
+			warning("Wrote: %s", filename.toString().c_str());
+			_canvas._surface->grabPalette(pal, 0, 256);
+			Image::writePNG(out, _canvas._surface->rawSurface(), pal);
+			out.flush();
+			out.close();
+		}
+
+		// set b/w palette for mask
+		memset(pal, 0, sizeof(pal));
+		pal[0xff * 3 + 0] = 0xff;
+		pal[0xff * 3 + 1] = 0xff;
+		pal[0xff * 3 + 2] = 0xff;
+
+		filename = Common::Path(Common::String::format("z-%p-2-glyphMask.png", (void *)this));
+		if (out.open(filename)) {
+			warning("Wrote: %s", filename.toString().c_str());
+			Image::writePNG(out, _canvas._glyphMask->rawSurface(), pal);
+			out.flush();
+			out.close();
+		}
+
+		filename = Common::Path(Common::String::format("z-%p-3-charBoxMask.png", (void *)this));
+		if (out.open(filename)) {
+			warning("Wrote: %s", filename.toString().c_str());
+			Image::writePNG(out, _canvas._charBoxMask->rawSurface(), pal);
+			out.flush();
+			out.close();
 		}
 #endif
 	}
@@ -710,11 +756,14 @@ void MacText::setActive(bool active) {
 	MacWidget::setActive(active);
 
 	g_system->getTimerManager()->removeTimerProc(&cursorTimerHandler);
-	if (_active) {
+	if (_active && _editable) {
 		g_system->getTimerManager()->installTimerProc(&cursorTimerHandler, 200000, this, "macEditableText");
-		// inactive -> active, we reset the selection
-		setSelection(_selStart, true);
-		setSelection(_selEnd, false);
+
+		if (_autoSelect) {
+			// inactive -> active, we reset the selection
+			setSelection(_selStart, true);
+			setSelection(_selEnd, false);
+		}
 	} else {
 		// clear the selection and cursor
 		_selectedText.endY = -1;
@@ -817,7 +866,12 @@ void MacText::appendText(const Common::U32String &str, const Font *font, uint16 
 void MacText::appendText_(const Common::U32String &strWithFont, uint oldLen) {
 	clearChunkInput();
 
-	_canvas.splitString(strWithFont, -1, _defaultFormatting);
+	Common::U32String finalText = strWithFont;
+
+    if (_addInputPadding && _editable && strWithFont.lastChar() != '\n')
+		finalText += '\n';
+
+	_canvas.splitString(finalText, -1, _defaultFormatting);
 	recalcDims();
 
 	_canvas.render(oldLen - 1, _canvas._text.size());
@@ -827,7 +881,8 @@ void MacText::appendText_(const Common::U32String &strWithFont, uint oldLen) {
 	if (_editable) {
 		_scrollPos = MAX<int>(0, getTextHeight() - getDimensions().height());
 
-		_cursorRow = getLineCount();
+		short paddingLines = _addInputPadding ? 1 : 0;
+        _cursorRow = MAX<int>(getLineCount() - 1 - paddingLines, 0);
 		_cursorCol = _canvas.getLineCharWidth(_cursorRow);
 
 		updateCursorPos();
@@ -903,7 +958,7 @@ void MacText::draw(ManagedSurface *g, int x, int y, int w, int h, int xoff, int 
 	if (_canvas._textShadow)
 		g->blitFrom(*_canvas._shadowSurface, Common::Rect(MIN<int>(_canvas._surface->w, x), MIN<int>(_canvas._surface->h, y), MIN<int>(_canvas._surface->w, x + w), MIN<int>(_canvas._surface->h, y + h)), Common::Point(xoff + _canvas._textShadow, yoff + _canvas._textShadow));
 
-	g->transBlitFrom(*_canvas._surface, Common::Rect(MIN<int>(_canvas._surface->w, x), MIN<int>(_canvas._surface->h, y), MIN<int>(_canvas._surface->w, x + w), MIN<int>(_canvas._surface->h, y + h)), Common::Point(xoff, yoff), _canvas._tbgcolor);
+	g->simpleBlitFrom(*_canvas._surface, Common::Rect(MIN<int>(_canvas._surface->w, x), MIN<int>(_canvas._surface->h, y), MIN<int>(_canvas._surface->w, x + w), MIN<int>(_canvas._surface->h, y + h)), Common::Point(xoff, yoff));
 
 	if (_scrollBar && _scrollBorder.hasBorder(kWindowBorderScrollbar)) {
 		uint32 transcolor = (_wm->_pixelformat.bytesPerPixel == 1) ? _wm->_colorGreen : 0;
@@ -954,7 +1009,7 @@ bool MacText::draw(bool forceRedraw) {
 
 	for (int bb = 0; bb < _border; bb++) {
 		Common::Rect borderRect(bb, bb, _composeSurface->w - bb, _composeSurface->h - bb);
-		_composeSurface->frameRect(borderRect, 0xff);
+		_composeSurface->frameRect(borderRect, _borderColor);
 	}
 
 	if (_selectedText.endY != -1)
@@ -1010,8 +1065,10 @@ uint getNewlinesInString(const Common::U32String &str) {
 }
 
 void MacText::drawSelection(int xoff, int yoff) {
-	if (_selectedText.endY == -1)
+	if (_selectedText.endY == -1 || !_selectionIsDirty)
 		return;
+
+	_selectionIsDirty = false;
 
 	// we check if the selection size is 0, then we don't draw it anymore, and we set the cursor here
 	// it's a small optimize, but can bring us correct behavior
@@ -1142,6 +1199,7 @@ Common::U32String MacText::getSelection(bool formatted, bool newlines) {
 
 void MacText::clearSelection() {
 	_selectedText.endY = _selectedText.startY = -1;
+	_selectionIsDirty = true;
 }
 
 uint MacText::getSelectionIndex(bool start) {
@@ -1230,6 +1288,7 @@ void MacText::setSelection(int pos, bool start) {
 	}
 
 	_contentIsDirty = true;
+	_selectionIsDirty = true;
 }
 
 bool MacText::isCutAllowed() {
@@ -1297,9 +1356,8 @@ bool MacText::processEvent(Common::Event &event) {
 				}
 				return true;
 			default:
-				break;
+				return false;
 			}
-			return false;
 		}
 
 		switch (event.kbd.keycode) {
@@ -1461,6 +1519,7 @@ bool MacText::processEvent(Common::Event &event) {
 					(_selectedText.endX == _selectedText.startX && _selectedText.endY == _selectedText.startY)) {
 				_selectedText.startY = _selectedText.endY = -1;
 				_contentIsDirty = true;
+				_selectionIsDirty = true;
 
 				if (_menu)
 					_menu->enableCommand("Edit", "Copy", false);
@@ -1519,8 +1578,8 @@ void MacText::startMarking(int x, int y) {
 		return;
 
 	Common::Point offset = calculateOffset();
-	x -= getDimensions().left - offset.x;
-	y -= getDimensions().top - offset.y;
+	x -= getDimensions().left + offset.x;
+	y -= getDimensions().top + offset.y;
 
 	y += _scrollPos;
 
@@ -1529,12 +1588,13 @@ void MacText::startMarking(int x, int y) {
 	_selectedText.endY = -1;
 
 	_inTextSelection = true;
+	_selectionIsDirty = true;
 }
 
 void MacText::updateTextSelection(int x, int y) {
 	Common::Point offset = calculateOffset();
-	x -= getDimensions().left - offset.x;
-	y -= getDimensions().top - offset.y;
+	x -= getDimensions().left + offset.x;
+	y -= getDimensions().top + offset.y;
 
 	y += _scrollPos;
 
@@ -1545,6 +1605,7 @@ void MacText::updateTextSelection(int x, int y) {
 			_selectedText.endY, _selectedText.endRow, _selectedText.endCol);
 
 	_contentIsDirty = true;
+	_selectionIsDirty = true;
 }
 
 int MacText::getMouseChar(int x, int y) {
@@ -1554,7 +1615,7 @@ int MacText::getMouseChar(int x, int y) {
 	y += _scrollPos;
 
 	int dx, dy, row, col;
-	getRowCol(x, y, &dx, &dy, &row, &col);
+	getLineCharacter(x, y, &dx, &dy, &row, &col);
 	debug(5, "mouseChar: x: %d, y: %d, row: %d, col: %d", x, y, row, col);
 
 	int index = 1;
@@ -1576,7 +1637,7 @@ int MacText::getMouseWord(int x, int y) {
 	y += _scrollPos;
 
 	int dx, dy, row, col;
-	getRowCol(x, y, &dx, &dy, &row, &col);
+	getLineCharacter(x, y, &dx, &dy, &row, &col);
 
 	int index = 1;
 	bool inWhitespace = true;
@@ -1648,7 +1709,7 @@ int MacText::getMouseItem(int x, int y) {
 	y += _scrollPos;
 
 	int dx, dy, row, col;
-	getRowCol(x, y, &dx, &dy, &row, &col);
+	getLineCharacter(x, y, &dx, &dy, &row, &col);
 
 	// getMouseItem
 	// - starts from index 1
@@ -1706,7 +1767,7 @@ int MacText::getMouseLine(int x, int y) {
 	y += _scrollPos;
 
 	int dx, dy, row, col;
-	getRowCol(x, y, &dx, &dy, &row, &col);
+	getLineCharacter(x, y, &dx, &dy, &row, &col);
 
 	return row + 1;
 }
@@ -1809,6 +1870,42 @@ void MacText::getRowCol(int x, int y, int *sx, int *sy, int *row, int *col, int 
 	if (chunk_)
 		*chunk_ = (int)chunk;
 }
+
+void MacText::getLineCharacter(int x, int y, int *sx, int *sy, int *line, int *character, int *chunk_) {
+	int nsx = 0, nsy = 0, nrow = 0, ncol = 0;
+	getRowCol(x, y, &nsx, &nsy, &nrow, &ncol, chunk_);
+
+	int nline = 0, ncharacter = 0;
+	// Determine the position in character space, taking into account newlines.
+	for (int i = 0; i < nrow; i++) {
+		if (_canvas._text[i].paragraphEnd) {
+			nline += 1;
+			ncharacter = 0;
+		} else {
+			for (auto &it : _canvas._text[i].chunks) {
+				ncharacter += it.text.size();
+			}
+		}
+	}
+
+
+	for (uint i = 0; i < _canvas._text[nrow].chunks.size(); i++) {
+		Common::U32String &text =  _canvas._text[nrow].chunks[i].text;
+		if (ncol > (int)text.size()) {
+			ncol -= text.size();
+			ncharacter += text.size();
+		} else {
+			ncharacter += ncol;
+		}
+	}
+
+	if (line)
+		*line = nline;
+	if (character)
+		*character = ncharacter;
+}
+
+
 
 Common::U32String MacText::getTextChunk(int startRow, int startCol, int endRow, int endCol, bool formatted, bool newlines) {
 	return _canvas.getTextChunk(startRow, startCol, endRow, endCol, formatted, newlines);

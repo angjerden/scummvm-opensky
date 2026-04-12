@@ -182,6 +182,44 @@ Disable fade-out effects
 
 ,,,,,,
 
+.. _ALCACHOFA:
+
+Alcachofa
+******************
+
+.. _high_quality:
+
+High Quality
+	Toggles some optional graphical effects.
+
+	*high_quality*
+
+.. _32_bits:
+
+32-Bit Mode
+	Toggles between full 32-bit colors or reduced 16-bit color.
+	Might need a restart to take effect.
+
+	*32_bits*
+
+,,,,,,
+
+.. _ALG:
+
+ALG
+******************
+
+.. _single_speed_videos:
+
+Use lower quality single speed CD-ROM video
+	Some games come with videos in single and double CD-ROM speed.
+	The double CD-ROM speed videos are of slightly higher quality and bandwith.
+	By default the double speed videos are used, this toggle changes to single speed videos.
+
+	*single_speed_videos*
+
+,,,,,,
+
 .. _BLADERUNNER:
 
 Bladerunner
@@ -1294,6 +1332,35 @@ Use original save/load screens
 	Uses the original save/load screens instead of the ScummVM screens.
 
 	*originalsaveload*
+
+,,,,,,,,,,
+
+
+.. _Tot:
+
+Tot
+**************
+
+Use original save/load screens
+	Use the original save/load screens instead of the ScummVM ones.
+
+	*originalsaveload*
+
+Disable transitions
+	Disables transitions when moving between screens.
+
+	*transitions_disable*
+
+AdLib OPL3 mode
+	Enables OPL3 features when AdLib is selected. Depending on the game, this prevents cut-off notes, adds extra notes or instruments, and/or adds stereo.
+
+	*opl3_mode*
+
+Copy protection
+	Enables the in-game copy protection.
+
+	*copy_protection*
+
 
 ,,,,,,,,,,
 
