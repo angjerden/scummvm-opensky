@@ -34,6 +34,7 @@
 #include "sky/intro.h"
 #include "sky/logic.h"
 #include "sky/mouse.h"
+#include "sky/openskydefs.h"
 #include "sky/music/adlibmusic.h"
 #include "sky/music/gmmusic.h"
 #include "sky/music/mt32music.h"
@@ -464,6 +465,11 @@ Common::Error SkyEngine::init() {
 	ConfMan.registerDefault("speech_volume", 192);
 	ConfMan.registerDefault("mute", "false");
 	syncSoundSettings();
+
+	// Add OpenSky folder to look for speech
+	Common::Path skyPath = ConfMan.getPath("path");
+	Common::Path openSkySpeechPath = skyPath.appendComponent(OPENSKY_PATH).appendComponent(OPENSKY_SPEECHPATH);
+	SearchMan.addDirectory(openSkySpeechPath, 0, 2);
 
 	_debugger = new Debugger(_skyLogic, _skyMouse, _skyScreen, _skyCompact);
 	setDebugger(_debugger);
