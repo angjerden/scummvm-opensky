@@ -423,7 +423,35 @@ DisplayedText Text::displayText(char *textPtr, uint32 bufLen, uint8 *dest, Graph
 				textChar = '?';
 			}
 
-			line += textChar - 0x20;
+			// Checking for scandinavian characters æ Æ ø Ø å Å
+			// they form a multi-byte sequence in UTF-8
+			// Æ = \303 \206
+			// æ = \303 \246
+			// Ø = \303 \230
+			// ø = \303 \270
+			// Å = \303 \205
+			// å = \303 \245
+
+			if (textChar == 195) {
+				uint8 nextChar = *curPos++;
+				if (nextChar == 166) {
+					line += char('æ'); // æ
+				} else if (nextChar == 134) {
+					line += char('Æ'); // Æ
+				} else if (nextChar == 184) {
+					line += char('ø'); // ø
+				} else if (nextChar == 152) {
+					line += char('Ø'); // Ø
+				} else if (nextChar == 165) {
+					line += char('å'); // å
+				} else if (nextChar == 133) {
+					line += char('Å'); // Å
+				}
+			}
+
+			if (textChar != 0xC3) {
+				line += textChar - 0x20;
+			}
 			textChar = *curPos++;
 		}
 
