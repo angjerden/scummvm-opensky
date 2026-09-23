@@ -19,15 +19,46 @@
  *
  */
 
+#include "common/endian.h"
 #include "common/file.h"
 
 #include "freescape/freescape.h"
 #include "freescape/games/driller/driller.h"
-#include "freescape/language/8bitDetokeniser.h"
+#include "freescape/language/variables.h"
 
 namespace Freescape {
 
 extern byte kC64Palette[16][3];
+
+static Common::Array<byte> loadDrillerC64PackedProgram(Common::SeekableReadStream *file) {
+	static const struct {
+		uint16 loadAddress;
+		uint16 address;
+		uint16 size;
+	} parts[] = {
+		{0x0400, 0x0400, 2112},
+		{0x0c40, 0x0c40, 43276},
+		{0xb54c, 0xb54c, 4788},
+		{0xc800, 0xc800, 2047},
+		// The tape loader moves this block to $d000 before loading the title.
+		{0x4000, 0xd000, 4096}
+	};
+
+	if (file->size() != 56329)
+		error("Invalid packed Driller C64 program size");
+
+	Common::Array<byte> packed;
+	packed.resize(0xe000 - 0x0400 + 2);
+	WRITE_LE_UINT16(packed.data(), 0x0400);
+	// Concatenated PRGs retain their two-byte load addresses.
+	for (const auto &part : parts) {
+		if (file->readUint16LE() != part.loadAddress)
+			error("Invalid Driller C64 tape block at $%04x", part.loadAddress);
+		if (file->read(packed.data() + part.address - 0x0400 + 2, part.size) != part.size)
+			error("Truncated Driller C64 tape block at $%04x", part.loadAddress);
+	}
+	return packed;
+}
 
 void DrillerEngine::initC64() {
 	_viewArea = Common::Rect(32, 16, 288, 120);
@@ -42,18 +73,22 @@ void DrillerEngine::loadAssetsC64FullGame() {
 		load8bitBinary(&file, 0x8e02, 4);
 		loadGlobalObjects(&file, 0x1855, 8);
 	} else if (_targetName.hasPrefix("driller")) {
-		file.open("driller.c64.data");
+		if (!file.open("driller.c64.data"))
+			error("Unable to open driller.c64.data");
 
-		if (_variant & GF_C64_TAPE) {
-			loadFonts(&file, 0x402);
-			load8bitBinary(&file, 0x8b04, 16);
+		if (_variant & GF_C64_PACKED) {
+			Common::Array<byte> packed = loadDrillerC64PackedProgram(&file);
+			Common::Array<byte> data = unpackC64Snapshot(packed);
+			Common::MemoryReadStream stream(data.data(), data.size(), DisposeAfterUse::NO);
+			loadMessagesFixedSize(&stream, 0x1a78, 14, 20);
+			loadGlobalObjects(&stream, 0x1c53, 8);
+			loadFonts(&stream, 0x0800);
+			load8bitBinary(&stream, 0x9200, 16);
+		} else if (_variant & (GF_C64_TAPE | GF_C64_DISC)) {
 			loadMessagesFixedSize(&file, 0x167a, 14, 20);
 			loadGlobalObjects(&file, 0x1855, 8);
-		/*} else if (_variant & GF_C64_BUDGET) {
-			//loadFonts(&file, 0x402);
-			load8bitBinary(&file, 0x7df7, 16);
-			loadMessagesFixedSize(&file, 0x1399, 14, 20);
-			loadGlobalObjects(&file, 0x150a, 8);*/
+			loadFonts(&file, 0x402);
+			load8bitBinary(&file, 0x8b04, 16);
 		} else
 			error("Unknown C64 variant %x", _variant);
 
@@ -117,16 +152,21 @@ void DrillerEngine::loadAssetsC64FullGame() {
 		_colorMap[10][2] = 0x5a;
 		_colorMap[10][3] = 0xa5;
 
-		// TODO
-		_colorMap[12][0] = 0xee;
-		_colorMap[12][1] = 0x77;
-		_colorMap[12][2] = 0x9e;
-		_colorMap[12][3] = 0xd5;
+		_colorMap[11][0] = 0xaf;
+		_colorMap[11][1] = 0xfa;
+		_colorMap[11][2] = 0xaf;
+		_colorMap[11][3] = 0xfa;
 
-		_colorMap[13][0] = 0xaf;
-		_colorMap[13][1] = 0xfa;
-		_colorMap[13][2] = 0xaf;
-		_colorMap[13][3] = 0xfa;
+
+		_colorMap[12][0] = 0x77;
+		_colorMap[12][1] = 0xdd;
+		_colorMap[12][2] = 0x77;
+		_colorMap[12][3] = 0xdd;
+
+		_colorMap[13][0] = 0xcc;
+		_colorMap[13][1] = 0xcc;
+		_colorMap[13][2] = 0xcc;
+		_colorMap[13][3] = 0xcc;
 
 		// TODO
 		_colorMap[14][0] = 0x77;
@@ -153,9 +193,52 @@ void DrillerEngine::loadAssetsC64FullGame() {
 	} else
 		error("Unknown C64 release");
 
-	_playerSid = new DrillerSIDPlayer(_mixer);
+	// Only one SID instance can be active at a time; music is the default.
+	// Create the inactive player first so its SID is destroyed before
+	// the active player's SID is created.
+	_playerC64Sfx = new DrillerC64SFXPlayer();
+	_playerC64Sfx->destroySID();
+	_playerMusic = new DrillerSIDPlayer();
+
+	// C64 SFX index mapping
+	// Based on analysis of the C64 binary SFX routines
+	_soundIndexShoot = 2;           // SFX #2 - Dual-voice noise sweep (explosion/drilling)
+	_soundIndexCollide = 3;         // SFX #3 - Noise pitch slide (collision)
+	_soundIndexStepUp = 5;          // SFX #5 - Pulse slide up
+	_soundIndexStepDown = 4;        // SFX #4 - Pulse slide down
+	_soundIndexFall = 11;           // SFX #11 - Triangle slide down fast (falling)
+	_soundIndexStart = 8;           // SFX #8 - Triangle slide up (teleporter/energy)
+	_soundIndexMenu = 6;            // SFX #6 - Triangle blip
+	_soundIndexAreaChange = 8;      // SFX #8 - Triangle slide up
+	_soundIndexHit = 7;             // SFX #7 - Dual noise burst
+	_soundIndexNoShield = 9;        // SFX #9 - Dual slide noise (damage)
+	_soundIndexNoEnergy = 9;        // SFX #9 - Dual slide noise (damage)
+	_soundIndexFallen = 18;         // SFX #18 - Major explosion
+	_soundIndexTimeout = 10;        // SFX #10 - Programmed noise bursts (alarm)
+	_soundIndexForceEndGame = 18;   // SFX #18 - Major explosion
+	_soundIndexCrushed = 18;        // SFX #18 - Major explosion
+	_soundIndexMissionComplete = 14; // SFX #14 - 3-step chord
 }
 
+void DrillerEngine::toggleC64Sound() {
+	if (_c64UseSFX) {
+		if (_sound == _playerC64Sfx)
+			_sound = nullptr;
+		if (_playerC64Sfx)
+			_playerC64Sfx->destroySID();
+		if (_playerMusic)
+			_playerMusic->startMusic();
+		_c64UseSFX = false;
+	} else {
+		if (_playerMusic)
+			_playerMusic->stopMusic();
+		if (_playerC64Sfx)
+			_playerC64Sfx->initSID();
+		if (_sound == nullptr)
+			_sound = _playerC64Sfx;
+		_c64UseSFX = true;
+	}
+}
 
 void DrillerEngine::drawC64UI(Graphics::Surface *surface) {
 
@@ -231,6 +314,14 @@ void DrillerEngine::drawC64UI(Graphics::Surface *surface) {
 		Common::Rect shieldBar(88 - 4  - shield, 180 - 4, 88 - 4, 186 - 4);
 		surface->fillRect(shieldBar, green);
 	}
+
+	_gfx->readFromPalette(7, r, g, b);
+	uint32 yellow = _gfx->_texturePixelFormat.ARGBToColor(0xFF, r, g, b);
+
+	surface->fillRect(Common::Rect(87, 156, 104, 166), back);
+	drawCompass(surface, 94, 156, compassYaw() - 30, 11, 75, yellow);
+	surface->fillRect(Common::Rect(224, 151, 235, 160), back);
+	drawCompass(surface, 223, 156, _pitch - 30, 12, 60, yellow);
 }
 
 } // End of namespace Freescape

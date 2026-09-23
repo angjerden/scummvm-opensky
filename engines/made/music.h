@@ -36,24 +36,53 @@ namespace Made {
 
 class GenericResource;
 
+/** Synthesizer types reported to game scripts. */
+enum SynthType {
+	kSynthTypeDefault = 0,
+	kSynthTypePCSpeaker = 1,
+	kSynthTypeAdLib = 2,
+	kSynthTypeAdLibGold = 3,
+	kSynthTypeMT32 = 4
+};
+
 class MusicPlayer {
+public:
+	virtual ~MusicPlayer() {}
+
+	virtual void close() = 0;
+
+	virtual bool load(int16 musicNum) = 0;
+	virtual void play(int16 musicNum) = 0;
+	virtual void stop() = 0;
+	virtual void pause() = 0;
+	virtual void resume() = 0;
+
+	virtual bool isPlaying() = 0;
+	virtual void syncSoundSettings() = 0;
+
+	virtual SynthType getSynthType() const { return kSynthTypeDefault; }
+};
+
+class DOSMusicPlayer : public MusicPlayer {
 private:
 	static const uint8 MT32_GOODBYE_MSG[MidiDriver_MT32GM::MT32_DISPLAY_NUM_CHARS];
 
 public:
-	MusicPlayer(MadeEngine *vm, bool milesAudio);
-	~MusicPlayer();
+	DOSMusicPlayer(MadeEngine *vm, bool milesAudio);
+	~DOSMusicPlayer();
 
-	void close();
+	void close() override;
 
-	void playXMIDI(GenericResource *midiResource);
-	void playSMF(GenericResource *midiResource);
-	void stop();
-	void pause();
-	void resume();
+	bool load(int16 musicNum) override;
+	void play(int16 musicNum) override;
+	void stop() override;
+	void pause() override;
+	void resume() override;
 
-	bool isPlaying();
-	void syncSoundSettings();
+	bool isPlaying() override;
+	void syncSoundSettings() override;
+
+	SynthType getSynthType() const override;
 
 private:
 	MadeEngine *_vm;
@@ -61,6 +90,11 @@ private:
 	MidiDriver_Multisource *_driver;
 
 	MusicType _driverType;
+
+	GenericResource *_musicRes;
+
+	void playXMIDI(GenericResource *midiResource);
+	void playSMF(GenericResource *midiResource);
 
 	static void timerCallback(void *refCon);
 	void onTimer();

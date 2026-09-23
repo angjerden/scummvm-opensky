@@ -42,13 +42,22 @@ bool EventManagerWrapper::pollEvent(Common::Event &event) {
 				break;
 			_currentActionDown = event.customType;
 			_keyRepeatTime = time + kKeyRepeatInitialDelay;
+			// Track all simultaneously held actions
+			if (Common::find(_activeActions.begin(), _activeActions.end(), event.customType) == _activeActions.end())
+				_activeActions.push_back(event.customType);
 			break;
 		case Common::EVENT_CUSTOM_ENGINE_ACTION_END:
 			if (event.customType == kActionEscape)
 				break;
 			if (event.customType == _currentActionDown) {
-				// Only stop firing events if it's the current key
 				_currentActionDown = kActionNone;
+			}
+			// Remove from active actions
+			for (uint i = 0; i < _activeActions.size(); i++) {
+				if (_activeActions[i] == event.customType) {
+					_activeActions.remove_at(i);
+					break;
+				}
 			}
 			break;
 		case Common::EVENT_KEYDOWN:
@@ -100,8 +109,10 @@ bool EventManagerWrapper::pollEvent(Common::Event &event) {
 
 void EventManagerWrapper::purgeKeyboardEvents() {
 	_delegate->purgeKeyboardEvents();
-	_currentKeyDown.keycode = Common::KEYCODE_INVALID;
+	_currentKeyDown.reset();
 	_currentActionDown = kActionNone;
+	_activeActions.clear();
+	_keyRepeatTime = 0;
 }
 
 void EventManagerWrapper::purgeMouseEvents() {
@@ -116,6 +127,14 @@ void EventManagerWrapper::clearExitEvents() {
 	_delegate->resetQuit();
 	//_delegate->resetReturnToLauncher();
 
+}
+
+bool EventManagerWrapper::isActionActive(const Common::CustomEventType &action) {
+	return Common::find(_activeActions.begin(), _activeActions.end(), action) != _activeActions.end();
+}
+
+bool EventManagerWrapper::isKeyPressed() {
+	return _currentKeyDown.keycode != Common::KEYCODE_INVALID;
 }
 
 } // namespace Freescape

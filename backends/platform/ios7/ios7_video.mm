@@ -92,6 +92,15 @@ bool iOS7_fetchEvent(InternalEvent *event) {
 	UILongPressGestureRecognizer *oneFingerLongPressGesture;
 	UILongPressGestureRecognizer *twoFingerLongPressGesture;
 	UILongPressGestureRecognizer *pencilTwoTapLongTouchGesture;
+	UIPinchGestureRecognizer *pinchKeyboard;
+	UISwipeGestureRecognizer *swipeRight;
+	UISwipeGestureRecognizer *swipeLeft;
+	UISwipeGestureRecognizer *swipeUp;
+	UISwipeGestureRecognizer *swipeDown;
+	UISwipeGestureRecognizer *swipeRight3;
+	UISwipeGestureRecognizer *swipeLeft3;
+	UISwipeGestureRecognizer *swipeUp3;
+	UISwipeGestureRecognizer *swipeDown3;
 	CGPoint touchesBegan;
 #endif
 }
@@ -255,51 +264,51 @@ bool iOS7_fetchEvent(InternalEvent *event) {
 	[pencilTwoTapLongTouchGesture setDelaysTouchesEnded:NO];
 	[pencilTwoTapLongTouchGesture setCancelsTouchesInView:NO];
 
-	UIPinchGestureRecognizer *pinchKeyboard = [[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(keyboardPinch:)];
+	pinchKeyboard = [[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(keyboardPinch:)];
 
-	UISwipeGestureRecognizer *swipeRight = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(twoFingersSwipeRight:)];
+	swipeRight = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(twoFingersSwipeRight:)];
 	swipeRight.direction = UISwipeGestureRecognizerDirectionRight;
 	swipeRight.numberOfTouchesRequired = 2;
 	swipeRight.delaysTouchesBegan = NO;
 	swipeRight.delaysTouchesEnded = NO;
 
-	UISwipeGestureRecognizer *swipeLeft = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(twoFingersSwipeLeft:)];
+	swipeLeft = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(twoFingersSwipeLeft:)];
 	swipeLeft.direction = UISwipeGestureRecognizerDirectionLeft;
 	swipeLeft.numberOfTouchesRequired = 2;
 	swipeLeft.delaysTouchesBegan = NO;
 	swipeLeft.delaysTouchesEnded = NO;
 
-	UISwipeGestureRecognizer *swipeUp = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(twoFingersSwipeUp:)];
+	swipeUp = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(twoFingersSwipeUp:)];
 	swipeUp.direction = UISwipeGestureRecognizerDirectionUp;
 	swipeUp.numberOfTouchesRequired = 2;
 	swipeUp.delaysTouchesBegan = NO;
 	swipeUp.delaysTouchesEnded = NO;
 
-	UISwipeGestureRecognizer *swipeDown = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(twoFingersSwipeDown:)];
+	swipeDown = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(twoFingersSwipeDown:)];
 	swipeDown.direction = UISwipeGestureRecognizerDirectionDown;
 	swipeDown.numberOfTouchesRequired = 2;
 	swipeDown.delaysTouchesBegan = NO;
 	swipeDown.delaysTouchesEnded = NO;
 
-	UISwipeGestureRecognizer *swipeRight3 = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(threeFingersSwipeRight:)];
+	swipeRight3 = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(threeFingersSwipeRight:)];
 	swipeRight3.direction = UISwipeGestureRecognizerDirectionRight;
 	swipeRight3.numberOfTouchesRequired = 3;
 	swipeRight3.delaysTouchesBegan = NO;
 	swipeRight3.delaysTouchesEnded = NO;
 
-	UISwipeGestureRecognizer *swipeLeft3 = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(threeFingersSwipeLeft:)];
+	swipeLeft3 = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(threeFingersSwipeLeft:)];
 	swipeLeft3.direction = UISwipeGestureRecognizerDirectionLeft;
 	swipeLeft3.numberOfTouchesRequired = 3;
 	swipeLeft3.delaysTouchesBegan = NO;
 	swipeLeft3.delaysTouchesEnded = NO;
 
-	UISwipeGestureRecognizer *swipeUp3 = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(threeFingersSwipeUp:)];
+	swipeUp3 = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(threeFingersSwipeUp:)];
 	swipeUp3.direction = UISwipeGestureRecognizerDirectionUp;
 	swipeUp3.numberOfTouchesRequired = 3;
 	swipeUp3.delaysTouchesBegan = NO;
 	swipeUp3.delaysTouchesEnded = NO;
 
-	UISwipeGestureRecognizer *swipeDown3 = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(threeFingersSwipeDown:)];
+	swipeDown3 = [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(threeFingersSwipeDown:)];
 	swipeDown3.direction = UISwipeGestureRecognizerDirectionDown;
 	swipeDown3.numberOfTouchesRequired = 3;
 	swipeDown3.delaysTouchesBegan = NO;
@@ -510,54 +519,30 @@ bool iOS7_fetchEvent(InternalEvent *event) {
 	// available when running on iOS 11+ if it has been compiled on iOS 11+
 #ifdef __IPHONE_11_0
 	if ( @available(iOS 11, tvOS 11, *) ) {
-		CGRect newFrame = self.frame;
 #if TARGET_OS_IOS
-		CGRect screenSize = self.window.bounds;
 		UIEdgeInsets inset = [[[UIApplication sharedApplication] keyWindow] safeAreaInsets];
-		UIInterfaceOrientation orientation = [iOS7AppDelegate currentOrientation];
+		// Skip the safe area inset at the bottom.
+		// We want to utilize as much screen area as possible and few
+		// games and launcher elements are put at the very bottom of
+		// the screen.
+		// The insets seem to be expressed in logical coordinate space
+		// (measured in points) while we expect the device coordinate
+		// space (measured in pixels), so we scale it using contentScaleFactor
+		CGFloat scale = [self contentScaleFactor];
+		iOS7_setSafeAreaInsets(inset.left * scale, inset.right * scale, inset.top * scale, 0);
 
-		// The code below adjust the screen size according to what Apple calls
-		// the "safe area". It also cover the cases when the software keyboard
-		// is visible and has changed the frame height so the keyboard doesn't
-		// cover any part of the game screen.
-		if (orientation != _currentOrientation) {
-			// If the orientation is changed the keyboard will hide or show
-			// depending on the current orientation. The frame size must be
-			// "reset" again to "full" screen size dimension. The keyboard
-			// will then calculate the approriate height when becoming visible.
-			newFrame = screenSize;
-			_currentOrientation = orientation;
-		}
-		// Make sure the frame height (either full screen or resized due to
-		// visible keyboard) is within the safe area.
-		CGFloat safeAreaHeight = screenSize.size.height - inset.top;
-		CGFloat height = newFrame.size.height < safeAreaHeight ? newFrame.size.height : safeAreaHeight;
-
-		if ( orientation == UIInterfaceOrientationPortrait ) {
-			newFrame = CGRectMake(screenSize.origin.x, screenSize.origin.y + inset.top, screenSize.size.width, height);
-		} else if ( orientation == UIInterfaceOrientationPortraitUpsideDown ) {
-			newFrame = CGRectMake(screenSize.origin.x, screenSize.origin.y, screenSize.size.width, height);
-		} else if ( orientation == UIInterfaceOrientationLandscapeLeft ) {
-			newFrame = CGRectMake(screenSize.origin.x, screenSize.origin.y, screenSize.size.width - inset.right, height);
-		} else if ( orientation == UIInterfaceOrientationLandscapeRight ) {
-			newFrame = CGRectMake(screenSize.origin.x + inset.left, screenSize.origin.y, screenSize.size.width - inset.left, height);
-		}
-
-		// Add margins to respect the iPhone and iPad safe areas. Use the right
-		// safe area inset if available since the position of the buttons are
-		// on the right hand side. The iPhone corners on the later models have
-		// the form of squircles rather than circles which cause button images
-		// to become cropped if placed too close to the corner.
-		// iPads has a more rectangular screen form. The inset margin on iPads
-		// is 0, however due to the rounding of the corners images gets cropped
-		// if placed too close to the corners. Use a constant margin for those.
-		const CGFloat margin = inset.right > 0 ? inset.right/4 : 10;
+		// Add a margin to the on-screen control buttons. The shape of the iPhone
+		// screen corners on the later models have the shape of squircles rather
+		// than circles which cause button images to become cropped if placed too
+		// close to the corner. iPads have 90 degrees screen corners and does have
+		// the same problem with cropped images. However add the same margin for
+		// consistency.
+		const CGFloat margin = 20;
 		// Touch mode button on top
 		[_toggleTouchModeButton setFrame:CGRectMake(self.frame.size.width - _toggleTouchModeButton.imageView.image.size.width - margin, margin, _toggleTouchModeButton.imageView.image.size.width, _toggleTouchModeButton.imageView.image.size.height)];
 		// Burger menu button below
 		[_menuButton setFrame:CGRectMake(self.frame.size.width - _menuButton.imageView.image.size.width - margin, _toggleTouchModeButton.imageView.image.size.height + margin, _menuButton.imageView.image.size.width, _menuButton.imageView.image.size.height)];
 #endif
-		self.frame = newFrame;
 	}
 #endif
 }
@@ -607,6 +592,15 @@ bool iOS7_fetchEvent(InternalEvent *event) {
 	[twoFingerLongPressGesture setEnabled:enabled];
 	[pencilThreeTapGesture setEnabled:enabled];
 	[pencilTwoTapLongTouchGesture setEnabled:enabled];
+	[pinchKeyboard setEnabled:enabled];
+	[swipeLeft setEnabled:enabled];
+	[swipeRight setEnabled:enabled];
+	[swipeUp setEnabled:enabled];
+	[swipeDown setEnabled:enabled];
+	[swipeLeft3 setEnabled:enabled];
+	[swipeRight3 setEnabled:enabled];
+	[swipeUp3 setEnabled:enabled];
+	[swipeDown3 setEnabled:enabled];
 }
 #endif
 

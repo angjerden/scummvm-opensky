@@ -35,18 +35,20 @@ namespace Action {
 // TODO: Add noise to the circle mask; there are artifacts at low brightness
 class MouseLightPuzzle : public RenderActionRecord {
 public:
-	MouseLightPuzzle() : RenderActionRecord(7) {}
+	MouseLightPuzzle() : RenderActionRecord(10) {}
 	virtual ~MouseLightPuzzle() {}
 
 	void init() override;
+	void updateGraphics() override;
 
 	void readData(Common::SeekableReadStream &stream) override;
 	void execute() override;
 	void handleInput(NancyInput &input) override;
 
-protected:
-	Common::String getRecordTypeName() const override { return "MouseLightPuzzle"; };
 	bool isViewportRelative() const override { return true; }
+
+protected:
+	Common::String getRecordTypeName() const override { return "MouseLightPuzzle"; }
 
 	Common::Path _imageName;
 	byte _radius = 0;

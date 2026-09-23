@@ -106,6 +106,7 @@ static const LingoV4Bytecode lingoV4[] = {
 	{ 0x64, LC::c_stackpeek, 	"b" },
 	{ 0x65, LC::c_stackdrop, 	"b" },
 	{ 0x66, LC::cb_v4theentitynamepush, "bN" },
+	{ 0x67, LC::cb_call,		"bN" }, // D5+ objcall
 
 	{ 0x81, LC::c_intpush,		"W" },
 	{ 0x82, LC::c_argcnoretpush,"w" },
@@ -141,6 +142,7 @@ static const LingoV4Bytecode lingoV4[] = {
 	{ 0xa4, LC::c_stackpeek, 	"w" },
 	{ 0xa5, LC::c_stackdrop, 	"w" },
 	{ 0xa6, LC::cb_v4theentitynamepush, "wN" },
+	{ 0xa7, LC::cb_call,		"wN" }, // D5+ objcall
 	{ 0, nullptr, nullptr }
 };
 
@@ -214,11 +216,11 @@ static const LingoV4TheEntity lingoV4TheEntity[] = {
 	{ 0x06, 0x23, kTheSprite,			kTheMemberNum,		true, kTEAItemId }, // D5
 	{ 0x06, 0x24, kTheSprite, 			kTheCastLibNum, 	true, kTEAItemId }, // D5
 	{ 0x06, 0x25, kTheSprite,			kTheMember,			true, kTEAItemId }, // D5
-	// scriptInstanceList
-	// currentTime
-	// mostRecentCuePoint
-	// tweened
-	// name
+	{ 0x06, 0x26, kTheSprite,			kTheScriptInstanceList,	true, kTEAItemId }, // D6
+	{ 0x06, 0x27, kTheSprite,			kTheCurrentTime,	true, kTEAItemId }, // D6
+	{ 0x06, 0x28, kTheSprite,			kTheMostRecentCuePoint,	true, kTEAItemId }, // D6
+	{ 0x06, 0x29, kTheSprite,			kTheTweened,		true, kTEAItemId }, // D6
+	{ 0x06, 0x2a, kTheSprite,			kTheName,			true, kTEAItemId }, // D6
 
 	{ 0x07, 0x01, kTheBeepOn,			kTheNOField,		true, kTEANOArgs },
 	{ 0x07, 0x02, kTheButtonStyle,		kTheNOField,		true, kTEANOArgs },
@@ -633,6 +635,10 @@ void LC::cb_theassign2() {
 		g_lingo->setTheEntity(entity->entity, id, kTEANOArgs, value);
 	} else {
 		warning("LC::cb_theassign2 Can't assign theEntity: (%s)", name.c_str());
+
+		if (debugChannelSet(-1, kDebugLingoStrict)) {
+			error("Uncaught Lingo error");
+		}
 	}
 }
 
@@ -979,7 +985,14 @@ void LC::cb_v4theentityassign() {
 		break;
 	case kTEAChunk:
 		{
-			Datum fieldRef = g_lingo->pop().asMemberID();
+			Datum fieldRef;
+			if (g_director->getVersion() < 500) {
+				fieldRef = g_lingo->pop().asMemberID();
+			} else {
+				Datum castLib = g_lingo->pop();
+				Datum fieldID = g_lingo->pop();
+				fieldRef = Datum(CastMemberID(fieldID.asInt(), castLib.asInt()));
+			}
 			fieldRef.type = FIELDREF;
 			Datum chunkRef = readChunkRef(fieldRef);
 			g_lingo->setTheEntity(entity, chunkRef, field, value);
@@ -1032,7 +1045,10 @@ ScriptContext *LingoCompiler::compileLingoV4(Common::SeekableReadStreamEndian &s
 	uint16 scriptId = lctxIndex;
 
 	// unk2
-	for (uint32 i = 0; i < 0x10; i++) {
+	stream.readSint16BE();
+	uint16 parentNumber = stream.readSint16BE();
+
+	for (uint32 i = 0; i < 0xC; i++) {
 		stream.readByte();
 	}
 
@@ -1098,7 +1114,7 @@ ScriptContext *LingoCompiler::compileLingoV4(Common::SeekableReadStreamEndian &s
 			castName = info->name;
 	} else {
 		warning("Script %d has no associated cast member", scriptId);
-		scriptType = kNoneScript;
+		scriptType = kMovieScript;
 	}
 
 	_assemblyArchive = archive;
@@ -1114,12 +1130,12 @@ ScriptContext *LingoCompiler::compileLingoV4(Common::SeekableReadStreamEndian &s
 		}
 		debugC(1, kDebugCompile, "Add V4 script %d: factory '%s'", scriptId, factoryName.c_str());
 
-		sc = _assemblyContext = new ScriptContext(factoryName, scriptType, _assemblyId);
+		sc = _assemblyContext = new ScriptContext(factoryName, scriptType, _assemblyId, parentNumber, scriptId);
 		registerFactory(factoryName);
 	} else {
 		debugC(1, kDebugCompile, "Add V4 script %d: %s %d", scriptId, scriptType2str(scriptType), _assemblyId);
 
-		sc = _assemblyContext = new ScriptContext(!castName.empty() ? castName : Common::String::format("%d", _assemblyId), scriptType, _assemblyId, archive->cast->_castLibID);
+		sc = _assemblyContext = new ScriptContext(!castName.empty() ? castName : Common::String::format("%d", _assemblyId), scriptType, _assemblyId, archive->cast->_castLibID, parentNumber, scriptId);
 	}
 
 	// initialise each property
@@ -1293,7 +1309,14 @@ ScriptContext *LingoCompiler::compileLingoV4(Common::SeekableReadStreamEndian &s
 		return nullptr;
 	}
 
-	uint32 codeStoreSize = functionsOffset - codeStoreOffset;
+	if (codeStoreOffset > (uint32)stream.size()) {
+		warning("Lscr code store offset 0x%x is out of bounds (size 0x%x)", codeStoreOffset, (uint32)stream.size());
+		return nullptr;
+	}
+
+	// D7+ may place the function table before the bytecode, so the code store
+	// must span the whole chunk, not [codeStoreOffset, functionsOffset)
+	uint32 codeStoreSize = (uint32)stream.size() - codeStoreOffset;
 	stream.seek(codeStoreOffset);
 	byte *codeStore = (byte *)malloc(codeStoreSize);
 	stream.read(codeStore, codeStoreSize);
@@ -1732,8 +1755,12 @@ void LingoArchive::addNamesV4(Common::SeekableReadStreamEndian &stream) {
 	uint16 offset = stream.readUint16();
 	uint16 count = stream.readUint16();
 
-	if ((uint32)stream.size() != size) {
-		warning("Lnam content missing");
+	// D7+ `size` may not match the stream length; validate offsets instead of bailing
+	if ((uint32)stream.size() != size)
+		debugC(1, kDebugCompile, "addNamesV4: Lnam size %u != stream size %u, proceeding", size, (uint32)stream.size());
+
+	if (offset > stream.size()) {
+		warning("Lnam names offset 0x%x out of bounds (size 0x%x)", offset, (uint32)stream.size());
 		return;
 	}
 
@@ -1742,6 +1769,10 @@ void LingoArchive::addNamesV4(Common::SeekableReadStreamEndian &stream) {
 	names.clear();
 
 	for (uint16 i = 0; i < count; i++) {
+		if (stream.eos() || (uint32)stream.pos() >= (uint32)stream.size()) {
+			warning("addNamesV4: ran out of data after %d of %d names", i, count);
+			break;
+		}
 		Common::String name = stream.readPascalString();
 
 		names.push_back(name);

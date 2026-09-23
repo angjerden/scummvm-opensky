@@ -34,6 +34,10 @@
 #include "common/translation.h"
 #endif
 
+#if defined(USE_IMGUI) && defined(ENABLE_EVENTRECORDER)
+#include "gui/EventRecorder.h"
+#endif
+
 #ifdef EMSCRIPTEN
 #include "backends/platform/sdl/emscripten/emscripten.h"
 #endif
@@ -71,7 +75,7 @@ static void getMouseState(int *x, int *y) {
 SdlGraphicsManager::SdlGraphicsManager(SdlEventSource *source, SdlWindow *window)
 	: _eventSource(source), _window(window), _hwScreen(nullptr)
 #if SDL_VERSION_ATLEAST(2, 0, 0)
-	, _allowWindowSizeReset(false), _hintedWidth(0), _hintedHeight(0), _lastFlags(0)
+	, _allowWindowSizeReset(false), _hintedWidth(0), _hintedHeight(0)
 #endif
 {
 	ConfMan.registerDefault("fullscreen_res", "desktop");
@@ -104,18 +108,11 @@ SdlGraphicsManager::State SdlGraphicsManager::getState() const {
 	state.fullscreen    = getFeatureState(OSystem::kFeatureFullscreenMode);
 	state.cursorPalette = getFeatureState(OSystem::kFeatureCursorPalette);
 	state.vsync         = getFeatureState(OSystem::kFeatureVSync);
+	state.rotation      = _rotationMode;
 #ifdef USE_RGB_COLOR
 	state.pixelFormat   = getScreenFormat();
 #endif
 	return state;
-}
-
-Common::RotationMode SdlGraphicsManager::getRotationMode() const {
-#if SDL_VERSION_ATLEAST(2, 0, 0)
-	return Common::parseRotationMode(ConfMan.getInt("rotation_mode"));
-#else
-	return Common::kRotationNormal;
-#endif
 }
 
 bool SdlGraphicsManager::setState(const State &state) {
@@ -137,6 +134,7 @@ bool SdlGraphicsManager::setState(const State &state) {
 		setFeatureState(OSystem::kFeatureFullscreenMode, state.fullscreen);
 		setFeatureState(OSystem::kFeatureCursorPalette, state.cursorPalette);
 		setFeatureState(OSystem::kFeatureVSync, state.vsync);
+		setRotationMode(state.rotation);
 
 	if (endGFXTransaction() != OSystem::kTransactionSuccess) {
 		return false;
@@ -255,28 +253,6 @@ bool SdlGraphicsManager::lockMouse(bool lock) {
 }
 
 bool SdlGraphicsManager::notifyMousePosition(Common::Point &mouse) {
-	switch (getRotationMode()) {
-	case Common::kRotationNormal:
-		break;
-	case Common::kRotation90: {
-		int x0 = mouse.x, y0 = mouse.y;
-		mouse.x = CLIP<int16>(y0, 0, _windowHeight - 1);
-		mouse.y = CLIP<int16>(_windowWidth - 1 - x0, 0, _windowWidth - 1);
-		break;
-	}
-	case Common::kRotation180: {
-		mouse.x = CLIP<int16>(_windowWidth - 1 - mouse.x, 0, _windowWidth - 1);
-		mouse.y = CLIP<int16>(_windowHeight - 1 - mouse.y, 0, _windowHeight - 1);
-		break;
-	}
-	case Common::kRotation270: {
-		int x0 = mouse.x, y0 = mouse.y;
-		mouse.x = CLIP<int16>(_windowHeight - 1 - y0, 0, _windowHeight - 1);
-		mouse.y = CLIP<int16>(x0, 0, _windowWidth - 1);
-		break;
-	}
-	}
-
 	bool showCursor = false;
 	// Currently on macOS we need to scale the events for HiDPI screen, but on
 	// Windows we do not. We can find out if we need to do it by querying the
@@ -364,13 +340,6 @@ bool SdlGraphicsManager::createOrUpdateWindow(int width, int height, const Uint3
 	if (!_window) {
 		return false;
 	}
-	Common::RotationMode rotation = getRotationMode();
-
-	if (rotation == Common::kRotation90 || rotation == Common::kRotation270) {
-		int w = width, h = height;
-		width = h;
-		height = w;
-	}
 
 	// width *=3;
 	// height *=3;
@@ -381,7 +350,7 @@ bool SdlGraphicsManager::createOrUpdateWindow(int width, int height, const Uint3
 	// size or pixel format of the internal game surface (since a user may have
 	// resized the game window), or when the launcher is visible (since a user
 	// may change the scaler, which should reset the window size)
-	if (!_window->getSDLWindow() || _lastFlags != flags || _overlayVisible || _allowWindowSizeReset) {
+	if (!_window->getSDLWindow() || _window->getWindowFlags() != flags || _overlayVisible || _allowWindowSizeReset) {
 #if SDL_VERSION_ATLEAST(3, 0, 0)
 		const bool fullscreen = (flags & (SDL_WINDOW_FULLSCREEN)) != 0;
 #else
@@ -409,7 +378,6 @@ bool SdlGraphicsManager::createOrUpdateWindow(int width, int height, const Uint3
 		}
 #endif
 
-		_lastFlags = flags;
 		_allowWindowSizeReset = false;
 	}
 
@@ -501,20 +469,14 @@ bool SdlGraphicsManager::notifyEvent(const Common::Event &event) {
 }
 
 void SdlGraphicsManager::toggleFullScreen() {
-	/* Don't use g_system for kFeatureOpenGLForGame as it's always supported
-	 * We want to check if we are a 3D graphics manager */
-	bool is3D = hasFeature(OSystem::kFeatureOpenGLForGame);
-
 	if (!g_system->hasFeature(OSystem::kFeatureFullscreenMode) ||
-	   (!g_system->hasFeature(OSystem::kFeatureFullscreenToggleKeepsContext) && is3D)) {
+	   !canSwitchFullscreen()) {
 		return;
 	}
 
-	if (!is3D)
-		beginGFXTransaction();
+	beginGFXTransaction();
 	setFeatureState(OSystem::kFeatureFullscreenMode, !getFeatureState(OSystem::kFeatureFullscreenMode));
-	if (!is3D)
-		endGFXTransaction();
+	endGFXTransaction();
 #ifdef USE_OSD
 	if (getFeatureState(OSystem::kFeatureFullscreenMode))
 		displayMessageOnOSD(_("Fullscreen mode"));
@@ -619,6 +581,8 @@ void SdlGraphicsManager::setImGuiCallbacks(const ImGuiCallbacks &callbacks) {
 		_imGuiCallbacks.init();
 	}
 	_imGuiInited = true;
+
+	updateScreen();
 }
 
 void SdlGraphicsManager::initImGui(SDL_Renderer *renderer, void *glContext) {
@@ -758,6 +722,9 @@ void SdlGraphicsManager::renderImGui() {
 
 	ImGui::NewFrame();
 	_imGuiCallbacks.render();
+#if defined(USE_IMGUI) && defined(ENABLE_EVENTRECORDER)
+	g_eventRec.showImGui();
+#endif
 	ImGui::Render();
 #ifdef USE_IMGUI_SDLRENDERER3
 	if (_imGuiSDLRenderer) {

@@ -22,8 +22,8 @@
 #ifndef ULTIMA4_FILE_H
 #define ULTIMA4_FILE_H
 
+#include "common/array.h"
 #include "common/str.h"
-#include "ultima/shared/std/containers.h"
 
 namespace Ultima {
 namespace Ultima4 {
@@ -33,7 +33,7 @@ namespace Ultima4 {
  * are read from the given offset, or the current file position if
  * offset is -1.
  */
-extern Std::vector<Common::String> u4read_stringtable(const Common::String &filename);
+extern Common::Array<Common::String> u4read_stringtable(const Common::String &filename);
 
 } // End of namespace Ultima4
 } // End of namespace Ultima

@@ -20,8 +20,9 @@
  */
 
 #include "m4/riddle/rooms/section8/room861.h"
-#include "m4/graphics/gr_series.h"
 #include "m4/riddle/vars.h"
+#include "m4/adv_r/adv_control.h"
+#include "m4/graphics/gr_series.h"
 
 namespace M4 {
 namespace Riddle {
@@ -79,7 +80,7 @@ void Room861::daemon() {
 
 	case 10:
 		digi_play("861_s01", 2, 255, -1, 861);
-		midi_play("tiawa", 180, 1, -1, 949);
+		midi_play("tiawa", 180, true, -1, 949);
 		_all2Mach = TriggerMachineByHash(1, 1, 0, 0, 0, 0, 0, 0,
 			100, 0x200, false, triggerMachineByHashCallback, "861 all2");
 		sendWSMessage_10000(1, _all2Mach, _all2Series, 1, 20, 20,

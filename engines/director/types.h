@@ -36,6 +36,7 @@ enum {
 };
 
 #define kQuirksCacheArchive "quirks"
+#define kSavedFilesArchive "saved"
 
 enum MovieFlag {
 	kMovieFlagRemapPalettesWhenNeeded =  (1 << 6),
@@ -57,7 +58,9 @@ enum CastType {
 	kCastDigitalVideo = 10,
 	kCastLingoScript = 11,
 	kCastRichText = 12,
-	kCastTransition = 14,
+	kCastOLE = 13,
+	kCastTransition = 14,		// D5
+	kCastXtra = 15,
 };
 
 enum ScriptType {
@@ -194,7 +197,7 @@ enum InkType {
 
 // ID matches up to the fake cast member ID used by EventScript
 enum LEvent {
-	kEventPrepareMovie, // 0
+	kEventPrepareMovie = 0, // 0
 	kEventStartMovie,
 	kEventStepMovie,
 	kEventStopMovie,
@@ -233,7 +236,13 @@ enum LEvent {
 
 	kEventStartUp, // 32
 
-	kEventMenuCallback // 33
+	kEventMenuCallback, // 33
+
+	kEventGetBehaviorDescription,
+	kEventGetPropertyDescriptionList,
+	kEventRunPropertyDialog,
+
+	kEventCuePassed,
 };
 
 enum TransitionType {
@@ -306,6 +315,8 @@ enum PaletteType {
 	kClutVivid = -5,
 	kClutNTSC = -6,
 	kClutMetallic = -7,
+	kClutWeb216 = -8,		// D7
+	kClutVGA = -9,			// D7
 	kClutSystemWin = -101,
 	kClutSystemWinD5 = -102
 };
@@ -348,6 +359,10 @@ enum ChunkType {
 };
 
 enum FileVer {
+	kFileVer010 = 0x100,
+	kFileVer020 = 0x200,
+	kFileVer100 = 0x3ff,
+	kFileVer200 = 0x400,
 	kFileVer300 = 0x404,
 	kFileVer310 = 0x405,
 	kFileVer400 = 0x45B,
@@ -375,6 +390,7 @@ enum DatumType {
 	GLOBALREF,
 	INT,
 	LOCALREF,
+	MEDIA,
 	MENUREF,
 	OBJECT,
 	PARRAY,
@@ -463,7 +479,13 @@ const char *castType2str(CastType type);
 const char *spriteType2str(SpriteType type);
 const char *inkType2str(InkType type);
 const char *symbolType2str(SymbolType type);
+const char *leventType2str(LEvent type);
+const char *eventHandlerSourceType2str(EventHandlerSourceType type);
 Common::String objectType2str(int fl);
+Common::String paletteType2str(PaletteType value);
+Common::String textAlignType2str(TextAlignType value);
+Common::String shapeType2str(ShapeType value);
+Common::String textType2str(TextType value);
 
 enum CollisionTest {
 	kCollisionNo = 0,
@@ -481,6 +503,14 @@ struct Hash<Director::CastMemberID> {
 		return id.hash();
 	}
 };
+
+template<>
+struct Hash<Director::LEvent> {
+	uint operator()(const Director::LEvent &event) const {
+		return event;
+	}
+};
+
 
 } // End of namespace Common
 

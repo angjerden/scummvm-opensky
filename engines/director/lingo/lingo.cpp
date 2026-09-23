@@ -109,6 +109,10 @@ Symbol& Symbol::operator=(const Symbol &s) {
 }
 
 bool Symbol::operator==(Symbol &s) const {
+	if ((s.type == VOIDSYM) && (type == VOIDSYM))
+		return true;
+	if ((!name || !s.name))
+		return false;
 	return ctx == s.ctx && (name->equalsIgnoreCase(*s.name));
 }
 
@@ -160,6 +164,9 @@ LingoState::~LingoState() {
 		if (callstack[i]->retContext) {
 			callstack[i]->retContext->decRefCount();
 		}
+		if (callstack[i]->retWindow) {
+			callstack[i]->retWindow->decRefCount();
+		}
 		delete callstack[i];
 	}
 	if (localVars)
@@ -174,7 +181,6 @@ Lingo::Lingo(DirectorEngine *vm) : _vm(vm) {
 	g_lingo = this;
 
 	_state = nullptr;
-	_currentChannelId = -1;
 	_globalCounter = 0;
 	_freezeState = false;
 	_freezePlay = false;
@@ -201,6 +207,7 @@ Lingo::Lingo(DirectorEngine *vm) : _vm(vm) {
 	_trace = false;
 	_traceLoad = 0;
 	_updateMovieEnabled = false;
+	_soundDevice = "DirectSound";
 
 	// events
 	_passEvent = false;
@@ -230,6 +237,9 @@ Lingo::~Lingo() {
 	cleanupMethods();
 	delete _compiler;
 	for (auto &it : _openXLibsState) {
+		delete it._value;
+	}
+	for (auto &it : _openXtrasState) {
 		delete it._value;
 	}
 }
@@ -395,6 +405,7 @@ void LingoArchive::addCode(const Common::U32String &code, ScriptType type, uint1
 
 	ScriptContext *sc = g_lingo->_compiler->compileLingo(code, this, type, CastMemberID(id, cast->_castLibID), contextName, false, preprocFlags);
 	if (sc) {
+		sc->setCast(cast);
 		scriptContexts[type][id] = sc;
 		sc->incRefCount();
 	}
@@ -419,7 +430,7 @@ Common::String Lingo::formatStack() {
 
 	for (uint i = 0; i < _state->stack.size(); i++) {
 		Datum d = _state->stack[i];
-		stack += Common::String::format("<%s> ", d.asString(true).c_str());
+		stack += Common::String::format("<%s> ", formatStringForDump(d.asString(true)).c_str());
 	}
 	return stack;
 }
@@ -618,6 +629,7 @@ Common::String Lingo::formatFunctionBody(Symbol &sym) {
 
 bool Lingo::execute(int targetFrame) {
 	uint localCounter = 0;
+	uint lastUpdate = 0;
 
 	while (!_abort && !_freezeState && !_playDone && _state->script && (*_state->script)[_state->pc] != STOP) {
 		if (targetFrame != -1 && (int)_state->callstack.size() == targetFrame)
@@ -644,13 +656,18 @@ bool Lingo::execute(int targetFrame) {
 
 		// process events every so often
 		if (localCounter > 0 && localCounter % 100 == 0) {
-			_vm->processEvents();
+			_vm->processSysEvents();
 			// Also process update widgets!
 			Movie *movie = g_director->getCurrentMovie();
 			Score *score = movie->getScore();
 			score->updateWidgets(true);
 
-			g_system->updateScreen();
+			if (g_system->getMillis() - lastUpdate > 20) {
+				lastUpdate = g_system->getMillis();
+				g_system->updateScreen();
+				// On Emscripten, updateScreen() may skip the swap, so force a yield here; a no-op elsewhere.
+				g_system->delayMillis(0);
+			}
 		}
 
 		uint current = _state->pc;
@@ -672,6 +689,11 @@ bool Lingo::execute(int targetFrame) {
 
 		g_debugger->stepHook();
 
+		if (_state->script == nullptr) {
+			debugC(1, kDebugLingoExec, "Lingo::execute(): PANIC: No script to execute (1)");
+			break;
+		}
+
 		_state->pc++;
 		(*((*_state->script)[_state->pc - 1]))();
 
@@ -686,9 +708,27 @@ bool Lingo::execute(int targetFrame) {
 		_globalCounter++;
 		localCounter++;
 
-		if (!_abort && _state->pc >= (*_state->script).size()) {
+		if (!_abort && _state->script == nullptr) {
+			debugC(1, kDebugLingoExec, "Lingo::execute(): PANIC: No script to execute (2)");
+			break;
+		}
+
+		if (!_abort && _state->pc >= _state->script->size()) {
 			warning("Lingo::execute(): Bad PC (%d)", _state->pc);
 			break;
+		}
+
+		if (_playDone) {
+			// Returning from a script with "play done" does not freeze the state. Instead it obliterates it,
+			// replacing it with the script context from the entry "play" statement.
+			// To be clear, if "play movie B" was invoked in movie A, and "play done" was invoked in movie B,
+			// the script from movie A will be resumed in movie B -before- the normal movie switch procedure.
+			while (_state->callstack.size()) {
+				popContext(true);
+			}
+
+			_playDone = false;
+			requeuePlayState();
 		}
 	}
 
@@ -699,8 +739,7 @@ bool Lingo::execute(int targetFrame) {
 	} else if (_freezeState) {
 		debugC(5, kDebugLingoExec, "Lingo::execute(): Context is frozen, pausing execution");
 		freezeState();
-	// Returning from a script with "play done" does not freeze the state. Instead it obliterates it.
-	} else if (_abort || _playDone || _vm->getCurrentMovie()->getScore()->_playState == kPlayStopped) {
+	} else if (_abort || _vm->getCurrentMovie()->getScore()->_playState == kPlayStopped) {
 		// Clean up call stack
 		while (_state->callstack.size()) {
 			popContext(true);
@@ -709,6 +748,7 @@ bool Lingo::execute(int targetFrame) {
 	_abort = false;
 	_freezeState = false;
 	_freezePlay = false;
+	_playDone = false;
 
 	g_debugger->stepHook();
 	// return true if execution finished, false if the context froze for later
@@ -743,10 +783,9 @@ void Lingo::executeScript(ScriptType type, CastMemberID id) {
 
 void Lingo::executeHandler(const Common::String &name, int numargs) {
 	debugC(1, kDebugLingoExec, "Executing script handler : %s", name.c_str());
-	Symbol sym = getHandler(name);
 
 	int frame = _state->callstack.size();
-	LC::call(sym, numargs, false);
+	LC::call(name, numargs, false);
 	execute(frame);
 }
 
@@ -763,6 +802,9 @@ void Lingo::lingoError(const char *s, ...) {
 		_caughtError = true;
 	} else {
 		warning("BUILDBOT: Uncaught Lingo error: %s", buf);
+		debug("Movie: %s", _vm->getCurrentMovie()->getArchive()->getPathName().toString(Common::Path::kNativeSeparator).c_str());
+		debugN("%s", formatCallStack(_state->pc).c_str());
+
 		if (debugChannelSet(-1, kDebugLingoStrict)) {
 			error("Uncaught Lingo error");
 		}
@@ -858,9 +900,6 @@ int Lingo::getAlignedType(const Datum &d1, const Datum &d2, bool equality) {
 		opType = FLOAT;
 	} else if ((d1Type == STRING && d2Type == INT) || (d1Type == INT && d2Type == STRING)) {
 		opType = STRING;
-	} else if ((d1Type == SYMBOL && d2Type != SYMBOL) || (d2Type == SYMBOL && d1Type != SYMBOL)) {
-		// some fun undefined behaviour: adding anything to a symbol returns an int.
-		opType = INT;
 	} else if (d1Type == d2Type) {
 		opType = d1Type;
 	}
@@ -924,6 +963,20 @@ Datum::Datum(AbstractObject *val) {
 	u.obj = val;
 	if (val) {
 		type = OBJECT;
+		refCount = val->getRefCount();
+		*refCount += 1;
+	} else {
+		type = VOID;
+		refCount = new int;
+		*refCount = 1;
+	}
+	ignoreGlobal = false;
+}
+
+Datum::Datum(CastMember *val) {
+	u.obj = val;
+	if (val) {
+		type = MEDIA;
 		refCount = val->getRefCount();
 		*refCount += 1;
 	} else {
@@ -999,6 +1052,9 @@ void Datum::reset() {
 		case PARRAY:
 			delete u.parr;
 			break;
+		case MEDIA:
+			delete u.obj;
+			break;
 		case OBJECT:
 			if (u.obj->getObjType() == kWindowObj) {
 				// Window has an override for decRefCount, use it directly
@@ -1027,7 +1083,7 @@ void Datum::reset() {
 			warning("Datum::reset(): Unprocessed REF type %d", type);
 			break;
 		}
-		if (type != OBJECT) // object owns refCount
+		if (type != OBJECT && type != MEDIA) // object owns refCount
 			delete refCount;
 	}
 #endif
@@ -1046,6 +1102,7 @@ int Datum::asInt() const {
 
 	switch (type) {
 	case STRING:
+	case SYMBOL:
 		{
 			Common::String src = asString();
 			char *endPtr = nullptr;
@@ -1070,11 +1127,6 @@ int Datum::asInt() const {
 		} else {
 			res = (int)u.f;
 		}
-		break;
-	case SYMBOL:
-		// Undefined behaviour, but relied on by bad game code that e.g. adds things to symbols.
-		// Return a 32-bit number that's sort of related.
-		res = (int)((uint64)u.s & 0xffffffffL);
 		break;
 	default:
 		warning("Incorrect operation asInt() for type: %s", type2str());
@@ -1143,6 +1195,9 @@ Common::String Datum::asString(bool printonly) const {
 		} else {
 			s = Common::String::format("#%s", u.s->c_str());
 		}
+		break;
+	case MEDIA:
+		s = Common::String::format("media %08x", ((uint32)(size_t)((void *)u.obj)) & 0xffffffff);
 		break;
 	case OBJECT:
 		if (!printonly) {
@@ -1359,6 +1414,8 @@ const char *Datum::type2str(bool ilk) const {
 		return "LOCALREF";
 	case MENUREF:
 		return "MENUREF";
+	case MEDIA:
+		return ilk ? "media" : "MEDIA";
 	case OBJECT:
 		return ilk ? "object" : "OBJECT";
 	case PARRAY:
@@ -1408,6 +1465,18 @@ int Datum::equalTo(const Datum &d, bool ignoreCase) const {
 		} else {
 			return compareStringEquality(asString(), d.asString());
 		}
+	case ARRAY:
+	case POINT:
+	case RECT:
+		// Compare element by element.
+		if (u.farr->arr.size() != d.u.farr->arr.size())
+			return 0;
+		for (uint i = 0; i < u.farr->arr.size(); i++) {
+			if (!u.farr->arr[i].equalTo(d.u.farr->arr[i], ignoreCase))
+				return 0;
+		}
+		return 1;
+	case MEDIA:
 	case OBJECT:
 		return u.obj == d.u.obj;
 	case CASTREF:
@@ -1502,6 +1571,13 @@ uint32 Datum::compareTo(const Datum &d) const {
 			}
 		}
 		return result;
+
+		// non-coercable strings always outrank numbers and VOID
+	} else if ((this->type == FLOAT || this->type == INT || this->type == VOID) && (d.type == STRING || d.type == SYMBOL)) {
+		return kCompareLessEqual | kCompareLess;
+	} else if ((d.type == FLOAT || d.type == INT || d.type == VOID) && (this->type == STRING || this->type == SYMBOL)) {
+		return kCompareGreaterEqual | kCompareGreater;
+
 	} else {
 		warning("Datum::compareTo(): Invalid comparison between types %s and %s", type2str(), d.type2str());
 		return kCompareError;
@@ -1570,7 +1646,7 @@ void Lingo::executeImmediateScripts(Frame *frame) {
 	}
 }
 
-void Lingo::executePerFrameHook(int frame, int subframe) {
+void Lingo::executePerFrameHook(int frame, int subframe, bool stepFrame) {
 	// Execute perFrameHook and actorList stepFrame, if any is available
 	// Starting D4, stepFrame of each objects in actorList is executed
 	// however the support for legacy mAtFrame is still there. (in future versions)
@@ -1586,18 +1662,16 @@ void Lingo::executePerFrameHook(int frame, int subframe) {
 		}
 	}
 
-	if (_vm->getVersion() >= 400) {
-		if (_actorList.u.farr->arr.size() > 0 && _vm->getVersion() >= 400) {
-			for (uint i = 0; i < _actorList.u.farr->arr.size(); i++) {
-				Datum actor = _actorList.u.farr->arr[i];
-				Symbol method = actor.u.obj->getMethod("stepFrame");
-				if (method.type != VOIDSYM) {
-					debugC(1, kDebugLingoExec, "Executing perFrameHook : <%s>, frame %d, subframe %d", actor.asString(true).c_str(), frame, subframe);
-					if (method.nargs == 1)
-						push(actor);
-					LC::call(method, method.nargs, false);
-					execute();
-				}
+	if (stepFrame && _actorList.u.farr->arr.size() > 0 && _vm->getVersion() >= 400) {
+		for (uint i = 0; i < _actorList.u.farr->arr.size(); i++) {
+			Datum actor = _actorList.u.farr->arr[i];
+			Symbol method = actor.u.obj->getMethod("stepFrame");
+			if (method.type != VOIDSYM) {
+				debugC(1, kDebugLingoExec, "Executing perFrameHook : <%s>, frame %d, subframe %d", actor.asString(true).c_str(), frame, subframe);
+				if (method.nargs == 1)
+					push(actor);
+				LC::call(method, method.nargs, false);
+				execute();
 			}
 		}
 	}
@@ -1696,6 +1770,7 @@ void Lingo::varAssign(const Datum &var, const Datum &value) {
 		// So while we require other variable types to be initialized before assigning to them,
 		// let's not enforce that for globals.
 		_globalvars[*var.u.s] = value;
+		g_debugger->varWriteHook(*var.u.s);
 		break;
 	case LOCALREF:
 		{
@@ -1915,23 +1990,35 @@ CastMemberID Lingo::resolveCastMember(const Datum &memberID, const Datum &castLi
 		return CastMemberID(-1, castLib.asInt());
 	}
 
-	switch (memberID.type) {
+	int libID = -1;
+	switch (castLib.type) {
 	case STRING:
-		return movie->getCastMemberIDByNameAndType(memberID.asString(), castLib.asInt(), type);
+		libID = movie->getCastLibIDByName(castLib.asString());
 		break;
 	case INT:
 	case FLOAT:
-		if (g_director->getVersion() >= 500 && memberID.asInt() > 0x20000) {
+	case VOID:
+		libID = castLib.asInt();
+		break;
+	default:
+		error("Lingo::resolveCastMember: unsupported castLib type %s", castLib.type2str());
+		break;
+	}
+
+	switch (memberID.type) {
+	case STRING:
+		return movie->getCastMemberIDByNameAndType(memberID.asString(), libID, type);
+		break;
+	case INT:
+	case FLOAT: {
 			// Composite ID
-			return CastMemberID().fromMultiplex(memberID.asInt());
-		}
-		if (castLib.asInt() == 0) {
-			// When specifying 0 as the castlib, D5 will assume this
-			// means the default (i.e. first) cast library. It will not
-			// try other libraries for matches if the member is a number.
-			return CastMemberID(memberID.asInt(), DEFAULT_CAST_LIB);
-		} else {
-			return CastMemberID(memberID.asInt(), castLib.asInt());
+			CastMemberID multi = CastMemberID().fromMultiplex(memberID.asInt());
+			// All numbers up to 0x20000 count as castLib 1, aka DEFAULT_CAST_LIB
+			// If the castLib is defined, then use the masked-off member number but
+			// override the castLib.
+			if (libID > 0)
+				multi.castLib = libID;
+			return multi;
 		}
 		break;
 	case VOID:

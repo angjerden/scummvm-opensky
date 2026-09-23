@@ -74,15 +74,18 @@ void SafeDialPuzzle::updateGraphics() {
 		g_nancy->_sound->playSound(_resetSound);
 	}
 
-	if (_animState == kResetAnim) {
-		// Framerate-dependent animation. We're restricting the engine to ~60fps so it shouldn't be too fast
+	if (_animState == kResetAnim && _nextAnim < g_nancy->getTotalPlayTime()) {
 		_drawSurface.blitFrom(_resetImage, _resetDialSrcs[_current % _resetDialSrcs.size()], _dialDest);
 		++_current;
 		if (_current >= _resetDialSrcs.size() * _resetTurns) {
 			_animState = kNone;
 			_current = 0;
 			drawDialFrame(_current);
+		} else {
+			// Nancy 12 and up step the animation on a timer, earlier games do so every frame
+			_nextAnim = g_nancy->getTotalPlayTime() + (g_nancy->getGameType() >= kGameTypeNancy12 ? 100 : 0); // hardcoded
 		}
+
 		_needsRedraw = true;
 	}
 }
@@ -90,9 +93,17 @@ void SafeDialPuzzle::updateGraphics() {
 void SafeDialPuzzle::readData(Common::SeekableReadStream &stream) {
 	readFilename(stream, _imageName1);
 	readFilename(stream, _imageName2);
-	readFilename(stream, _resetImageName);
+	if (g_nancy->getGameType() < kGameTypeNancy12) {
+		// Nancy 12 dropped the separate reset image from the header
+		readFilename(stream, _resetImageName);
+	}
 
 	_numInbetweens = (!_imageName2.empty() ? 1 : 0);
+
+	if (g_nancy->getGameType() >= kGameTypeNancy12) {
+		// The second image doubles as the one holding the reset spinning frames
+		_resetImageName = _imageName2;
+	}
 
 	uint16 num = 10;
 	if (g_nancy->getGameType() >= kGameTypeNancy4) {
@@ -101,14 +112,19 @@ void SafeDialPuzzle::readData(Common::SeekableReadStream &stream) {
 	}
 
 	readRect(stream, _dialDest);
-	readRectArray(stream, _dialSrcs, num * (1 + _numInbetweens), 20);
+	readRectArray(stream, _dialSrcs, num * (1 + _numInbetweens), g_nancy->getGameType() >= kGameTypeNancy12 ? 24 : 20);
 
 	readRect(stream, _resetDest);
 	readRect(stream, _resetSrc);
 	readRect(stream, _arrowDest);
 	readRect(stream, _arrowSrc);
 
-	readRectArray(stream, _resetDialSrcs, 10);
+	readRectArray(stream, _resetDialSrcs, g_nancy->getGameType() >= kGameTypeNancy12 ? 12 : 10);
+
+	// Trailing empty rects are unused slots, and are skipped while animating
+	while (_resetDialSrcs.size() && _resetDialSrcs.back().isEmpty()) {
+		_resetDialSrcs.pop_back();
+	}
 
 	_resetTurns = stream.readUint16LE();
 
@@ -131,6 +147,10 @@ void SafeDialPuzzle::readData(Common::SeekableReadStream &stream) {
 		Common::Rect temp = _cwHotspot;
 		_cwHotspot = _ccwHotspot;
 		_ccwHotspot = temp;
+	} else if (g_nancy->getGameType() >= kGameTypeNancy12) {
+		// Nancy 12's dial frames are laid out counter-clockwise, so the counter-clockwise
+		// hotspot is the one that steps forwards through them
+		_ccwTurnsForwards = true;
 	}
 
 	_spinSound.readNormal(stream);
@@ -164,7 +184,7 @@ void SafeDialPuzzle::execute() {
 			if (_playerSequence == _correctSequence) {
 				_solved = true;
 				_state = kActionTrigger;
-				_nextAnim = g_nancy->getTotalPlayTime() + 1000 * _solveSoundDelay;
+				_nextAnim = g_nancy->getTotalPlayTime() + (g_nancy->getGameType() >= kGameTypeNancy12 ? 300 : 1000) * _solveSoundDelay;
 			}
 		}
 
@@ -214,48 +234,28 @@ void SafeDialPuzzle::handleInput(NancyInput &input) {
 
 		return;
 	} else if (NancySceneState.getViewport().convertViewportToScreen(_ccwHotspot).contains(input.mousePos)) {
-		if (!_enableWraparound && _current == 0) {
+		if (!canTurnDial(_ccwTurnsForwards)) {
 			return;
 		}
 
-		g_nancy->_cursor->setCursorType(_useMoveArrows ? CursorManager::kMoveLeft : CursorManager::kRotateCCW);
+		g_nancy->_cursor->setCursorType(_useMoveArrows ? CursorManager::kMoveLeft : CursorManager::kDialCCW);
 
 		if (!g_nancy->_sound->isSoundPlaying(_spinSound) && input.input & NancyInput::kLeftMouseButtonUp && _nextAnim < g_nancy->getTotalPlayTime() &&
 				_animState != kReset && _animState != kResetAnim) {
-			if (_current == 0) {
-				_current = _dialSrcs.size() / (1 + _numInbetweens) - 1;
-			} else {
-				--_current;
-			}
-
-			drawDialFrame(_current * (1 + _numInbetweens) + (_numInbetweens ? 1 : 0));
-			_nextAnim = g_nancy->getTotalPlayTime() + (g_nancy->getGameType() == kGameTypeNancy3 ? 250 : 500); // hardcoded
-
-			g_nancy->_sound->playSound(_spinSound);
-			_animState = kSpin;
+			turnDial(_ccwTurnsForwards);
 		}
 
 		return;
 	} else if (NancySceneState.getViewport().convertViewportToScreen(_cwHotspot).contains(input.mousePos)) {
-		if (!_enableWraparound && _current == (_dialSrcs.size() / (1 + _numInbetweens) - 1)) {
+		if (!canTurnDial(!_ccwTurnsForwards)) {
 			return;
 		}
 
-		g_nancy->_cursor->setCursorType(_useMoveArrows ? CursorManager::kMoveRight : CursorManager::kRotateCW);
+		g_nancy->_cursor->setCursorType(_useMoveArrows ? CursorManager::kMoveRight : CursorManager::kDialCW);
 
 		if (!g_nancy->_sound->isSoundPlaying(_spinSound) && input.input & NancyInput::kLeftMouseButtonUp && _nextAnim < g_nancy->getTotalPlayTime() &&
 				_animState != kReset && _animState != kResetAnim) {
-			drawDialFrame(_current * (1 + _numInbetweens) + 1);
-			_nextAnim = g_nancy->getTotalPlayTime() + (g_nancy->getGameType() == kGameTypeNancy3 ? 250 : 500); // hardcoded
-
-			if (_current == (_dialSrcs.size() / (1 + _numInbetweens)) - 1) {
-				_current = 0;
-			} else {
-				++_current;
-			}
-
-			g_nancy->_sound->playSound(_spinSound);
-			_animState = kSpin;
+			turnDial(!_ccwTurnsForwards);
 		}
 
 		return;
@@ -265,8 +265,12 @@ void SafeDialPuzzle::handleInput(NancyInput &input) {
 		return;
 	}
 
+	// The puzzle arrow cursor only exists in Nancy 10 and up
+	CursorManager::CursorType buttonCursor = g_nancy->getGameType() >= kGameTypeNancy10 ?
+		CursorManager::kPuzzleArrow : CursorManager::kHotspot;
+
 	if (NancySceneState.getViewport().convertViewportToScreen(_arrowDest).contains(input.mousePos)) {
-		g_nancy->_cursor->setCursorType(CursorManager::kHotspot);
+		g_nancy->_cursor->setCursorType(buttonCursor);
 
 		if (!g_nancy->_sound->isSoundPlaying(_selectSound) && input.input & NancyInput::kLeftMouseButtonUp) {
 			g_nancy->_sound->playSound(_selectSound);
@@ -279,11 +283,14 @@ void SafeDialPuzzle::handleInput(NancyInput &input) {
 
 		return;
 	} else if (NancySceneState.getViewport().convertViewportToScreen(_resetDest).contains(input.mousePos)) {
-		g_nancy->_cursor->setCursorType(CursorManager::kHotspot);
+		g_nancy->_cursor->setCursorType(buttonCursor);
 
 		if (!g_nancy->_sound->isSoundPlaying(_resetSound) && input.input & NancyInput::kLeftMouseButtonUp) {
-			_drawSurface.blitFrom(_image1, _resetSrc, _resetDest);
-			g_nancy->_sound->playSound(_resetSound);
+			if (!_resetSrc.isEmpty()) {
+				_drawSurface.blitFrom(_image1, _resetSrc, _resetDest);
+			}
+
+			g_nancy->_sound->playSound(_selectSound);
 			_animState = kReset;
 			_nextAnim = g_nancy->getTotalPlayTime() + 500; // hardcoded
 			_current = 0;
@@ -295,8 +302,31 @@ void SafeDialPuzzle::handleInput(NancyInput &input) {
 	}
 }
 
+bool SafeDialPuzzle::canTurnDial(bool forwards) const {
+	if (_enableWraparound) {
+		return true;
+	}
+
+	return forwards ? _current != numDialPositions() - 1 : _current != 0;
+}
+
+void SafeDialPuzzle::turnDial(bool forwards) {
+	// The in-between frame of a step always belongs to the lower of the two positions
+	if (forwards) {
+		drawDialFrame(_current * (1 + _numInbetweens) + 1);
+		_current = (_current == numDialPositions() - 1) ? 0 : _current + 1;
+	} else {
+		_current = (_current == 0) ? numDialPositions() - 1 : _current - 1;
+		drawDialFrame(_current * (1 + _numInbetweens) + (_numInbetweens ? 1 : 0));
+	}
+
+	_nextAnim = g_nancy->getTotalPlayTime() + (g_nancy->getGameType() == kGameTypeNancy3 ? 250 : 500); // hardcoded
+
+	g_nancy->_sound->playSound(_spinSound);
+	_animState = kSpin;
+}
+
 void SafeDialPuzzle::drawDialFrame(uint frame) {
-	debug("%u", frame);
 	if (frame >= _dialSrcs.size() / 2 && !_imageName2.empty()) {
 		_drawSurface.blitFrom(_image2, _dialSrcs[frame], _dialDest);
 	} else {
@@ -307,9 +337,10 @@ void SafeDialPuzzle::drawDialFrame(uint frame) {
 }
 
 void SafeDialPuzzle::pushSequence(uint id) {
-	if (!_useMoveArrows && id != 0) {
-		// When the puzzle is set to use rotation cursors, the ids in the correct sequence are in reverse order
-		id = (_dialSrcs.size() / (1 + _numInbetweens)) - id;
+	if (!_useMoveArrows && id != 0 && g_nancy->getGameType() < kGameTypeNancy12) {
+		// When the puzzle is set to use rotation cursors, the ids in the correct sequence are in reverse order.
+		// Nancy 12 stores the dial positions themselves.
+		id = numDialPositions() - id;
 	}
 
 	_playerSequence.push_back(id);

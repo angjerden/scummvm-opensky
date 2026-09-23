@@ -20,8 +20,9 @@
  */
 
 #include "m4/riddle/rooms/section6/room615.h"
-#include "m4/graphics/gr_series.h"
 #include "m4/riddle/vars.h"
+#include "m4/adv_r/adv_control.h"
+#include "m4/graphics/gr_series.h"
 
 namespace M4 {
 namespace Riddle {
@@ -422,7 +423,7 @@ void Room615::daemon() {
 		break;
 
 	case 120:
-		midi_play("love", 255, 0, -1, 949);
+		midi_play("love", 255, false, -1, 949);
 		_untie = TriggerMachineByHash(1, 1, 0, 0, 0, 0, 0, 0, 100, 0x400, false,
 			triggerMachineByHashCallback, "spleen");
 		sendWSMessage_10000(1, _untie, _loop5, 1, 1, 125, _loop5, 1, 1, 1);

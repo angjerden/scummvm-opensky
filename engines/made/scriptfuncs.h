@@ -29,10 +29,6 @@
 #include "common/debug.h"
 #include "common/system.h"
 
-namespace Audio {
-class PCSpeaker;
-}
-
 namespace Made {
 
 class MadeEngine;
@@ -54,6 +50,9 @@ public:
 	void setupExternalsTable();
 	const char* getFuncName(int index) { return _externalFuncNames[index]; }
 	int getCount() const { return _externalFuncs.size(); }
+
+private:
+	void playSound(SoundResource *soundRes, bool externalFile);
 	void stopSound();
 
 protected:
@@ -62,6 +61,8 @@ protected:
 	Audio::SoundHandle _voiceStreamHandle;
 	SoundResource* _soundResource;
 	bool _soundStarted;
+	bool _soundWasPlaying;
+	bool _soundExternalFile;
 	// The sound length in milliseconds for purpose of checking if the sound is
 	// still playing.
 	int _soundCheckLength;
@@ -69,12 +70,10 @@ protected:
 	uint8 _gameAudioVolume;
 
 	// PlayNote/StopNote and PlayTele/StopTele wave generators
-	Audio::SoundHandle _pcSpeakerHandle1, _pcSpeakerHandle2;
-	Audio::PCSpeaker *_pcSpeaker1, *_pcSpeaker2;
+	Audio::SoundHandle _sine1, _sine2;
 
 	Common::Array<const ExternalFunc *> _externalFuncs;
 	Common::Array<const char *> _externalFuncNames;
-	GenericResource *_musicRes;
 
 	int16 sfSystemCall(int16 argc, int16 *argv);
 	int16 sfInitGraf(int16 argc, int16 *argv);
@@ -178,7 +177,9 @@ protected:
 	int16 sfSetSoundVolume(int16 argc, int16 *argv);
 	int16 sfGetSynthType(int16 argc, int16 *argv);
 	int16 sfIsSlowSystem(int16 argc, int16 *argv);
-
+	int16 sfMovieCall(int16 argc, int16 *argv);
+	int16 sfCursorXY(int16 argc, int16 *argv);
+	int16 sfSoundFile(int16 argc, int16 *argv);
 };
 
 } // End of namespace Made

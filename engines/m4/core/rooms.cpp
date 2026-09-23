@@ -116,7 +116,7 @@ void Sections::m4SceneLoad() {
 	_G(kernel).going = kernel_load_room(MIN_PAL_ENTRY, MAX_PAL_ENTRY,
 		&_G(currentSceneDef), &_G(screenCodeBuff), &_G(game_bgBuff));
 	if (!_G(kernel).going)
-		error_show(FL, 'IMP!');	// this should never ever happen
+		error_show(FL, "kernel_load_room failed");	// this should never ever happen
 
 	get_ipl();
 
@@ -228,11 +228,11 @@ void Sections::m4EndScene() {
 
 	// Reload the walker and show scripts.
 	if (!LoadWSAssets("walker script", &_G(master_palette)[0]))
-		error_show(FL, 'FNF!', "walker script");
+		error_show(FL, "walker script");
 	if (!LoadWSAssets("show script", &_G(master_palette)[0]))
-		error_show(FL, 'FNF!', "show script");
+		error_show(FL, "show script");
 	if (!LoadWSAssets("stream script", &_G(master_palette)[0]))
-		error_show(FL, 'FNF', "stream script");
+		error_show(FL, "stream script");
 
 	g_vars->global_menu_system_init();
 }
@@ -255,26 +255,22 @@ void Sections::get_ipl() {
 	}
 
 	_G(inverse_pal) = new InvPal(filename.c_str());
-	if (!_G(inverse_pal))
-		error_show(FL, 'OOM!', "loading ipl: %s", filename.c_str());
 }
 
 void Sections::get_walker() {
 	term_message("Loading walker sprites");
-	if (!_GW().walk_load_walker_and_shadow_series())
-		error_show(FL, 'WLOD');
+	_GW().walk_load_walker_and_shadow_series();
 	ws_walk_init_system();
 }
 
 void Sections::game_control_cycle() {
-	int32 status;
-
 	while (_G(game).new_room == _G(game).room_id && _G(kernel).going && !_G(kernel).force_restart) {
 		krn_pal_game_task();
 
+		int32 status;
 		ScreenContext *screen = vmng_screen_find(_G(gameDrawBuff), &status);
 		if (!screen)
-			error_show(FL, 'BUF!');
+			error_show(FL, "no gameDrawBuff");
 
 		if (_G(player).ready_to_walk) {
 			if (_G(player).need_to_walk) {
@@ -331,6 +327,7 @@ void Sections::game_control_cycle() {
 		// Ensure the screen is updated
 		g_system->updateScreen();
 		g_system->delayMillis(10);
+		g_engine->updateSubtitleOverlay();
 
 		if (g_engine->shouldQuit())
 			_G(kernel).going = false;
@@ -368,7 +365,7 @@ void Sections::parse_player_command_now() {
 
 void Sections::pal_game_task() {
 	int32 status;
-	int delta = 0;
+	int delta;
 	Common::String line;
 
 	if (!player_commands_allowed())
@@ -378,7 +375,7 @@ void Sections::pal_game_task() {
 
 	if (!_G(kernel).pause) {
 		if (_G(toggle_cursor) != CURSCHANGE_NONE) {
-			CursorChange change = _G(toggle_cursor);
+			const CursorChange change = _G(toggle_cursor);
 			_G(toggle_cursor) = CURSCHANGE_NONE;
 			g_vars->getHotkeys()->toggle_through_cursors(change);
 		}
@@ -392,7 +389,7 @@ void Sections::pal_game_task() {
 		_G(game_bgBuff)->release();
 
 		if (!game_buff_ptr)
-			error_show(FL, 'BUF!');
+			error_show(FL, "no gameDrawBuff");
 
 		if _G(please_hyperwalk) {
 			_G(please_hyperwalk) = false;
@@ -429,6 +426,7 @@ void Sections::pal_game_task() {
 
 				_cameraShift_vert_Amount -= delta;
 			}
+			MoveScreenDelta(game_buff_ptr, 0, delta);
 		}
 	}
 

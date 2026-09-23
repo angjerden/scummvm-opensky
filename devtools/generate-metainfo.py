@@ -9,7 +9,7 @@ import xml.sax.saxutils
 
 METAINFO_OUTPUT_FILE = 'dists/org.scummvm.scummvm.metainfo.xml'
 METAINFO_XML_TEMPLATE = '''<?xml version="1.0" encoding="UTF-8"?>
-<!-- Copyright 2020-2025 The ScummVM Team -->
+<!-- Copyright 2020-2026 The ScummVM Team -->
 <component type="desktop-application">
   <id>org.scummvm.scummvm</id>
   <metadata_license>CC0-1.0</metadata_license>
@@ -157,12 +157,13 @@ def po_to_lang(po_file_name):
     primary_subtag = lang
 
     assert(len(primary_subtag) == 2)
-    assert(region_subtag is None or len(region_subtag) == 2)
-    assert(variant_subtag is None or 6 <= len(variant_subtag) <= 8)
 
     lang = primary_subtag.lower()
     if region_subtag:
-        lang += '-' + region_subtag.upper()
+        if len(region_subtag) == 2:
+            lang += '-' + region_subtag.upper()
+        else:
+            lang += '-' + region_subtag.capitalize()
     if variant_subtag:
         lang += '-' + variant_subtag.lower()
 

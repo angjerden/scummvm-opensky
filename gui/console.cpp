@@ -98,23 +98,22 @@ ConsoleDialog::~ConsoleDialog() {
 }
 
 void ConsoleDialog::init() {
-	const int screenW = g_system->getOverlayWidth();
-	const int screenH = g_system->getOverlayHeight();
+	const Common::Rect safeArea = g_system->getSafeOverlayArea();
 
 	_font = &g_gui.getFont(ThemeEngine::kFontStyleConsole);
 
 	_leftPadding = g_gui.xmlEval()->getVar("Globals.Console.Padding.Left", 0);
 	_rightPadding = g_gui.xmlEval()->getVar("Globals.Console.Padding.Right", 0);
-	_topPadding = g_gui.xmlEval()->getVar("Globals.Console.Padding.Top", 0);
+	_topPadding = MAX(g_gui.xmlEval()->getVar("Globals.Console.Padding.Top", 0), (int)safeArea.top);
 	_bottomPadding = g_gui.xmlEval()->getVar("Globals.Console.Padding.Bottom", 0);
 
 	// Calculate the real width/height (rounded to char/line multiples)
-	_w = (uint16)(_widthPercent * screenW);
-	_h = (uint16)((_heightPercent * screenH - 2) / kConsoleLineHeight);
+	_w = (uint16)(_widthPercent * safeArea.width());
+	_h = (uint16)((_heightPercent * safeArea.height() - 2) / kConsoleLineHeight);
 
 	_w = _w - _w / 20;
-	_h = _h * kConsoleLineHeight + 2;
-	_x = _w / 40;
+	_h = _h * kConsoleLineHeight + 2 + safeArea.top;
+	_x = MAX(_w / 40, (int)safeArea.left);
 
 	// Set scrollbar dimensions
 	int scrollBarWidth = g_gui.xmlEval()->getVar("Globals.Scrollbar.Width", 0);
@@ -168,14 +167,13 @@ void ConsoleDialog::open() {
 	// visible screen area, then shift it down in handleTickle() over a
 	// certain period of time.
 
-	const int screenW = g_system->getOverlayWidth();
-	const int screenH = g_system->getOverlayHeight();
+	const Common::Rect safeArea = g_system->getSafeOverlayArea();
 
 	// Calculate the real width/height (rounded to char/line multiples)
-	uint16 w = (uint16)(_widthPercent * screenW);
-	uint16 h = (uint16)((_heightPercent * screenH - 2) / kConsoleLineHeight);
+	uint16 w = (uint16)(_widthPercent * safeArea.width());
+	uint16 h = (uint16)((_heightPercent * safeArea.height() - 2) / kConsoleLineHeight);
 
-	h = h * kConsoleLineHeight + 2;
+	h = h * kConsoleLineHeight + 2 + safeArea.top;
 	w = w - w / 20;
 
 	if (_w != w || _h != h)
@@ -203,8 +201,8 @@ void ConsoleDialog::close() {
 	Dialog::close();
 }
 
-void ConsoleDialog::drawDialog(DrawLayer layerToDraw) {
-	Dialog::drawDialog(layerToDraw);
+void ConsoleDialog::drawDialog(DrawLayer layerToDraw, bool resetClipping) {
+	Dialog::drawDialog(layerToDraw, resetClipping);
 
 	for (int line = 0; line < _linesPerPage; line++)
 		drawLine(line);
@@ -901,8 +899,7 @@ void ConsoleDialog::handleMouseDown(int x, int y, int button, int clickCount) {
 	w = findWidget(x, y);
 
 	if (w) {
-		if (!(w->getFlags() & WIDGET_IGNORE_DRAG))
-			_dragWidget = w;
+		_dragWidget = w;
 
 		if (w != _focusedWidget && w->wantsFocus()) {
 			setFocusWidget(w);

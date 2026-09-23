@@ -160,7 +160,7 @@ Common::Error QDEngineEngine::run() {
 		sp.show();
 	}
 
-	//searchTagMap(QDSCR_GAME_TITLE, 207);
+	// searchTagMap(QDSCR_CAMERA_SMOOTH_SWITCH, 161);
 
 	_gameVersion = detectVersion(g_engine->getGameId());
 
@@ -288,6 +288,7 @@ Common::Error QDEngineEngine::run() {
 				} else if (event.kbd.ascii == 'g')
 					qdGameConfig::get_config().toggle_show_grid();
 #endif
+				grDispatcher::instance()->handle_char_input(event.kbd.keycode);
 				break;
 			default:
 				break;
@@ -426,7 +427,7 @@ void searchTagMap(int id, int targetVal) {
 }
 
 static int detectVersion(Common::String gameID) {
-	if (gameID == "karliknos") {
+	if (gameID == "karliknos" && g_engine->getLanguage() == Common::RU_RUS) {
 		return 20030919;		// QDSCR_GAME_TITLE = 182, 06b1cf45d (repo-vss)
 	} else if (gameID == "nupogodi3" && g_engine->getLanguage() == Common::RU_RUS) {
 		return 20031014;		// QDSCR_TEXT_DB = 184, d864cc279 (repo-vss)
@@ -434,6 +435,8 @@ static int detectVersion(Common::String gameID) {
 		return 20031014;		// QDSCR_TEXT_DB = 184, d864cc279 (repo-vss)
 	} else if (gameID == "nupogodi3" && g_engine->getLanguage() == Common::LT_LTU) {
 		return 20031206;		// QDSCR_TEXT_DB = 185, 6c43cda6bf
+	} else if (gameID == "karliknos" && g_engine->getLanguage() == Common::LT_LTU) {
+		return 20040308;		// QDSCR_CAMERA_SMOOTH_SWITCH = 161
 	} else if (gameID == "pilots3") {
 		return 20040519;		// QDSCR_GAME_TITLE = 203, b34ca47148
 	} else if (gameID == "rybalka") {
@@ -562,7 +565,7 @@ void scan_qda() {
 // Translates cp-1251..utf-8
 byte *transCyrillic(const Common::String &str) {
 	const byte *s = (const byte *)str.c_str();
-	static byte tmp[1024];
+	static byte tmp[10240];
 
 	static int trans[] = {
 		0xa0, 0xc2a0,
@@ -587,6 +590,9 @@ byte *transCyrillic(const Common::String &str) {
 	int i = 0;
 
 	for (const byte *p = s; *p; p++) {
+		if (i >= 10240 - 5)
+			break;
+
 		if (*p < 128) {
 			tmp[i++] = *p;
 		} else {
@@ -624,7 +630,10 @@ byte *transCyrillic(const Common::String &str) {
 		}
 	}
 
-	tmp[i] = 0;
+	if (i < 10240)
+		tmp[i] = 0;
+	else
+		tmp[10239] = 0;
 
 	return tmp;
 }

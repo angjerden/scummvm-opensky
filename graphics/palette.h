@@ -23,6 +23,10 @@
 #define GRAPHICS_PALETTE_H
 
 #include "common/hashmap.h"
+#include "common/types.h"
+
+#define PALETTE_6BIT_TO_8BIT(x) ((x) * 255 / 63)
+#define PALETTE_8BIT_TO_6BIT(x) ((x) * 63 / 255)
 
 namespace Graphics {
 
@@ -38,6 +42,10 @@ enum ColorDistanceMethod {
 constexpr int PALETTE_COUNT = 256;
 constexpr int PALETTE_SIZE = (256 * 3);
 
+extern const byte HGC_A_PALETTE[6];
+extern const byte HGC_G_PALETTE[6];
+
+
 /**
  * @brief Simple class for handling a palette data.
  *
@@ -48,9 +56,12 @@ constexpr int PALETTE_SIZE = (256 * 3);
  * (transparency) value. Then the second color starts, and so on. So memory
  * looks like this: R1-G1-B1-R2-G2-B2-R3-...
  */
+
+
 class Palette {
 	byte *_data;
 	uint16 _size;
+	DisposeAfterUse::Flag _disposeAfterUse;
 
 public:
 	static const uint16 npos = 0xFFFF;
@@ -60,15 +71,24 @@ public:
 	 *
 	 * @param size   the number of palette entries
 	 */
-	Palette(uint size);
+	Palette(uint size = 0);
 
 	/**
-	 * @brief Construct a new Palette object
+	 * @brief Construct a new Palette object with a copy of the palette data
 	 *
 	 * @param data   the palette data, in interleaved RGB format
 	 * @param size   the number of palette entries
 	 */
 	Palette(const byte *data, uint size);
+
+	/**
+	 * @brief Construct a new Palette object taking ownership of the palette data
+	 *
+	 * @param data   the palette data, in interleaved RGB format
+	 * @param size   the number of palette entries
+	 * @param disposeAfterUse    a flag indicating whether to dispose of the palette data
+	 */
+	Palette(byte *data, uint size, DisposeAfterUse::Flag disposeAfterUse);
 
 	Palette(const Palette &p);
 
@@ -77,7 +97,7 @@ public:
 	/**
 	 * Constructs a new palette containing the standarad EGA palette
 	 */
-	static Palette createEGAPalette();
+	static const Palette createEGAPalette();
 
 	Palette &operator=(const Palette &rhs);
 	bool operator==(const Palette &rhs) const { return equals(rhs); }

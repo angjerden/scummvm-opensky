@@ -26,6 +26,8 @@
 
 #include "common/type_traits.h"
 
+struct TimeDate;
+
 /**
  * @defgroup common_util Util
  * @ingroup common
@@ -81,7 +83,26 @@ template<typename T> inline T CLIP(T v, T amin, T amax)
 /**
  * Template method to swap the values of its two parameters.
  */
-template<typename T> inline void SWAP(T &a, T &b) { T tmp = a; a = b; b = tmp; }
+template<typename T> inline void SWAP(T &a, T &b);
+
+/** Function to rotate the 32-bit integer @p x left by @p r bits */
+static inline uint32 ROTATE_LEFT_32(const uint32 x, const uint32 r) {
+	return (x >> (32 - r)) | (x << r);
+}
+
+/** Function to rotate the 32-bit integer @p x right by @p bits */
+static inline uint32 ROTATE_RIGHT_32(const uint32 x, const uint32 r) {
+	return (x << (32 - r)) | (x >> r);
+}
+
+#if !defined(_MSC_VER) || _MSC_VER >= 1910
+/** Template method to return the number of arguments passed to it. */
+template<typename... A> constexpr size_t NUMARGS(A&&...)	{ return sizeof...(A); }
+#else
+/** Macro that returns the number of arguments passed to it. */
+using int_c_array = int[]; // MSVC 2015 doesn't like the template method above
+#define NUMARGS(...)	(sizeof(int_c_array{__VA_ARGS__})/sizeof(int))
+#endif
 
 #ifdef ARRAYSIZE
 #undef ARRAYSIZE
@@ -158,25 +179,25 @@ struct Pair {
 	T1 first;
 	T2 second;
 
-	Pair() {
+	constexpr Pair() {
 	}
 
-	Pair(const Pair &other) : first(other.first), second(other.second) {
+	constexpr Pair(const Pair &other) : first(other.first), second(other.second) {
 	}
 
-	Pair(Pair &&other) : first(Common::move(other.first)), second(Common::move(other.second)) {
+	constexpr Pair(Pair &&other) : first(Common::move(other.first)), second(Common::move(other.second)) {
 	}
 
-	Pair(const T1 &first_, const T2 &second_) : first(first_), second(second_) {
+	constexpr Pair(const T1 &first_, const T2 &second_) : first(first_), second(second_) {
 	}
 
-	Pair(T1 &&first_, T2 &&second_) : first(Common::move(first_)), second(Common::move(second_)) {
+	constexpr Pair(T1 &&first_, T2 &&second_) : first(Common::move(first_)), second(Common::move(second_)) {
 	}
 
-	Pair(T1 &&first_, const T2 &second_) : first(Common::move(first_)), second(second_) {
+	constexpr Pair(T1 &&first_, const T2 &second_) : first(Common::move(first_)), second(second_) {
 	}
 
-	Pair(const T1 &first_, T2 &&second_) : first(first_), second(Common::move(second_)) {
+	constexpr Pair(const T1 &first_, T2 &&second_) : first(first_), second(Common::move(second_)) {
 	}
 
 	Pair &operator=(const Pair &other) {
@@ -392,8 +413,57 @@ bool isBlank(int c);
  */
 Common::String getHumanReadableBytes(uint64 bytes, const char *&unitsOut);
 
+/**
+ * Utility functions for converting a TimeDate structure into an integer representation of the time, and vice versa.
+ * The integer representation is the number of seconds since the Unix epoch (1970-01-01 00:00:00 UTC).
+ */
+namespace DateTime {
+	/**
+	 * Convert a time value (number of seconds since the Unix epoch) to a TimeDate struct representing the corresponding date and time components.
+	 */
+	TimeDate int64ToTimeDate(int64 integer);
+
+	/**
+	 * Convert a TimeDate struct representing date and time components to a time value (number of seconds since the Unix epoch).
+	 */
+	int64_t dateTimeToInt64(const TimeDate &timeDate);
+
+	/**
+	 * Convert a time value (number of seconds since the Unix epoch) to a human-readable string format.
+	 */
+	Common::String formatTime(int64 integer);
+
+	/**
+	 * Get the current time as a time value (number of seconds since the Unix epoch).
+	 */
+	int64 getTime();
+}
+
+template<typename T, bool useMove = Common::is_move_constructible<T>::v && Common::is_move_assignable<T>::v>
+struct SWAP_helper {};
+
+template<typename T>
+struct SWAP_helper<T, true> {
+	static void swap(T &a, T &b) {
+		T tmp = Common::move(a);
+		a = Common::move(b);
+		b = Common::move(tmp);
+	}
+};
+
+template<typename T>
+struct SWAP_helper<T, false> {
+	static void swap(T &a, T &b) {
+		T tmp = a;
+		a = b;
+		b = tmp;
+	}
+};
+
 /** @} */
 
 } // End of namespace Common
+
+template<typename T> inline void SWAP(T &a, T &b) { Common::SWAP_helper<T>::swap(a, b); }
 
 #endif

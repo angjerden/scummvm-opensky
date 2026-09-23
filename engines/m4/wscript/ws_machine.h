@@ -65,6 +65,7 @@ enum {
 	ACTION_32 = 32,
 	ACTION_33 = 33,
 	ACTION_666 = 666,
+	HYPERWALK = 747,
 	ACTION_900 = 900,
 	ACTION_902 = 902
 };
@@ -158,7 +159,7 @@ struct machine {
 	uint32 myHash = 0;
 	uint32 machID = 0;
 	char *machName = nullptr;
-	MemHandle machHandle = 0;
+	MemHandle machHandle = nullptr;
 	int32 machInstrOffset = 0;
 	int32 stateTableOffset = 0;
 	int32 curState = 0;
@@ -167,7 +168,7 @@ struct machine {
 	Anim8 *myAnim8 = nullptr;
 	Anim8 *parentAnim8 = nullptr;
 	int32 dataHash = 0;
-	MemHandle dataHandle = 0;
+	MemHandle dataHandle = nullptr;
 	int32 dataOffset = 0;
 	int32 targetCount = 0;
 	struct machine *msgReplyXM = nullptr;
@@ -208,7 +209,6 @@ bool ws_Initialize(frac16 *theGlobals);
 void ws_Shutdown();
 void pauseEngines();
 void unpauseEngines();
-void addPauseTime(int32 myTime);
 
 void cycleEngines(Buffer *cleanBackground, int16 *depth_table, Buffer *screenCodes,
 	uint8 *myPalette, uint8 *ICT, bool updateVideo);

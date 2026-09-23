@@ -20,10 +20,11 @@
  */
 
 #include "m4/riddle/rooms/section4/room493.h"
+#include "m4/riddle/vars.h"
+#include "m4/adv_r/adv_control.h"
 #include "m4/graphics/gr_series.h"
 #include "m4/gui/gui_sys.h"
 #include "m4/platform/keys.h"
-#include "m4/riddle/vars.h"
 
 namespace M4 {
 namespace Riddle {
@@ -36,6 +37,7 @@ void Room493::preload() {
 }
 
 void Room493::init() {
+	interface_hide();
 	player_set_commands_allowed(false);
 	AddSystemHotkey(KEY_ESCAPE, escape_key_pressed);
 	RemoveSystemHotkey(303);
@@ -44,7 +46,7 @@ void Room493::init() {
 	_panning = 255;
 
 	if (_G(game).previous_room != 494) {
-		digi_preload("lostcity");
+		digi_preload("lostcity", 917);
 
 		if (_G(game).previous_room != 917) {
 			digi_preload("riptheme", 917);
@@ -79,7 +81,7 @@ void Room493::daemon() {
 		break;
 
 	case 90:
-		series_stream_break_on_frame(_credits, FRAMES[5] - 2, 100);
+		series_stream_break_on_frame(_credits, FRAMES[5] - 2, 110);
 		setTrigger(100);
 		break;
 
@@ -196,7 +198,7 @@ void Room493::escape_key_pressed(void *, void *) {
 	disable_player_commands_and_fade_init(910);
 }
 
-void Room493::setTrigger(int trigger) {
+void Room493::setTrigger(int16 trigger) {
 	series_set_frame_rate(_credits, 30000);
 	kernel_timing_trigger(900, trigger);
 }

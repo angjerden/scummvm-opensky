@@ -20,41 +20,32 @@
  */
 
 #define FORBIDDEN_SYMBOL_EXCEPTION_FILE // atari-graphics.h's unordered_set
+#define FORCE_TEXT_CONSOLE
 
 #include "atari-graphics.h"
 
 #include <mint/cookie.h>
 #include <mint/falcon.h>
-#include <mint/osbind.h>
 #include <mint/sysvars.h>
 
-#include "backends/platform/atari/atari-debug.h"
-#include "backends/platform/atari/dlmalloc.h"
 #include "backends/keymapper/action.h"
 #include "backends/keymapper/keymap.h"
 #include "common/config-manager.h"
-#include "common/str.h"
+#include "common/debug.h"
+#include "common/textconsole.h"
 #include "common/translation.h"
-#include "engines/engine.h"
-#include "graphics/blit.h"
 #include "gui/ThemeEngine.h"
 
-#include "atari-graphics-superblitter.h"
+#include "atari-surface.h"
 
 #define SCREEN_ACTIVE
-
-mspace g_mspace = nullptr;
-
-static const Graphics::PixelFormat PIXELFORMAT_CLUT8 = Graphics::PixelFormat::createFormatCLUT8();
-static const Graphics::PixelFormat PIXELFORMAT_RGB332 = Graphics::PixelFormat(1, 3, 3, 2, 0, 5, 2, 0, 0);
-static const Graphics::PixelFormat PIXELFORMAT_RGB121 = Graphics::PixelFormat(1, 1, 2, 1, 0, 3, 1, 0, 0);
 
 static void shrinkVidelVisibleArea() {
 	// Active VGA screen area consists of 960 half-lines, i.e. 480 raster lines.
 	// In case of 320x240, the number is still 480 but data is fetched
 	// only for 240 lines so it doesn't make a difference to us.
 #ifdef SCREEN_ACTIVE
-	if (hasSuperVidel()) {
+	if (g_hasSuperVidel) {
 		const int vOffset = ((480 - 400) / 2) * 2;	// *2 because of half-lines
 
 		// VDB = VBE = VDB + paddding/2
@@ -83,11 +74,11 @@ static int s_shakeYOffset;
 static int s_aspectRatioCorrectionYOffset;
 static bool s_shrinkVidelVisibleArea;
 static bool s_setScreenOffsets;
-static Graphics::Surface *s_screenSurf;
+static AtariSurface *s_screenSurf;
 
 static void VblHandler() {
 	// for easier querying
-	static Graphics::Surface *surf;
+	static AtariSurface *surf;
 
 	if (s_screenSurf)
 		surf = s_screenSurf;
@@ -172,17 +163,22 @@ static Palette s_oldPalette;
 void AtariGraphicsShutdown() {
 	Supexec(UninstallVblHandler);
 
+	AtariSurfaceDeinit();
+
+#ifdef SCREEN_ACTIVE
 	if (s_oldRez != -1) {
 		Setscreen(SCR_NOCHANGE, s_oldPhysbase, s_oldRez);
 
 		EsetPalette(0, s_oldPalette.entries, s_oldPalette.tt);
+
+		s_oldRez = -1;
 	} else if (s_oldMode != -1) {
 		static _RGB black[256];
 		VsetRGB(0, 256, black);
 
 		VsetScreen(SCR_NOCHANGE, s_oldPhysbase, SCR_NOCHANGE, SCR_NOCHANGE);
 
-		if (hasSuperVidel()) {
+		if (g_hasSuperVidel) {
 			// SuperVidel XBIOS does not restore those (unlike TOS/EmuTOS)
 			long ssp = Super(SUP_SET);
 			//*((volatile char *)0xFFFF8265) = 0;
@@ -194,12 +190,15 @@ void AtariGraphicsShutdown() {
 		VsetMode(s_oldMode);
 
 		VsetRGB(0, s_oldPalette.entries, s_oldPalette.falcon);
+
+		s_oldMode = -1;
 	}
+#endif
 }
 
 AtariGraphicsManager::AtariGraphicsManager()
 	: _pendingScreenChanges(this) {
-	atari_debug("AtariGraphicsManager()");
+	debug("AtariGraphicsManager()");
 
 	enum {
 		VDO_NO_ATARI_HW = 0xffff,
@@ -291,6 +290,10 @@ AtariGraphicsManager::AtariGraphicsManager()
 	}
 	s_oldPhysbase = Physbase();
 
+	AtariSurfaceInit();
+
+	allocateSurfaces();
+
 	if (!Supexec(InstallVblHandler)) {
 		error("VBL handler was not installed");
 	}
@@ -299,9 +302,15 @@ AtariGraphicsManager::AtariGraphicsManager()
 }
 
 AtariGraphicsManager::~AtariGraphicsManager() {
-	atari_debug("~AtariGraphicsManager()");
+	debug("~AtariGraphicsManager()");
 
 	g_system->getEventManager()->getEventDispatcher()->unregisterObserver(this);
+
+	// this must be done here, too otherwise freeSurfaces() could release a surface
+	// still accessed by the vbl handler
+	Supexec(UninstallVblHandler);
+
+	freeSurfaces();
 
 	AtariGraphicsShutdown();
 }
@@ -309,14 +318,14 @@ AtariGraphicsManager::~AtariGraphicsManager() {
 bool AtariGraphicsManager::hasFeature(OSystem::Feature f) const {
 	switch (f) {
 	case OSystem::Feature::kFeatureAspectRatioCorrection:
-		//atari_debug("hasFeature(kFeatureAspectRatioCorrection): %d", !_tt);
+		//debug("hasFeature(kFeatureAspectRatioCorrection): %d", !_tt);
 		return !_tt;
 	case OSystem::Feature::kFeatureCursorPalette:
 		// FIXME: pretend to have cursor palette at all times, this function
 		// can get (and it is) called any time, before and after showOverlay()
 		// (overlay cursor uses the cross if kFeatureCursorPalette returns false
 		// here too soon)
-		//atari_debug("hasFeature(kFeatureCursorPalette): %d", isOverlayVisible());
+		//debug("hasFeature(kFeatureCursorPalette): %d", isOverlayVisible());
 		//return isOverlayVisible();
 		return true;
 	default:
@@ -334,7 +343,7 @@ void AtariGraphicsManager::setFeatureState(OSystem::Feature f, bool enable) {
 
 	switch (f) {
 	case OSystem::Feature::kFeatureAspectRatioCorrection:
-		//atari_debug("setFeatureState(kFeatureAspectRatioCorrection): %d", enable);
+		//debug("setFeatureState(kFeatureAspectRatioCorrection): %d", enable);
 		if (_aspectRatioCorrection != enable) {
 			_aspectRatioCorrection = enable;
 
@@ -354,10 +363,10 @@ void AtariGraphicsManager::setFeatureState(OSystem::Feature f, bool enable) {
 bool AtariGraphicsManager::getFeatureState(OSystem::Feature f) const {
 	switch (f) {
 	case OSystem::Feature::kFeatureAspectRatioCorrection:
-		//atari_debug("getFeatureState(kFeatureAspectRatioCorrection): %d", _aspectRatioCorrection);
+		//debug("getFeatureState(kFeatureAspectRatioCorrection): %d", _aspectRatioCorrection);
 		return _aspectRatioCorrection;
 	case OSystem::Feature::kFeatureCursorPalette:
-		//atari_debug("getFeatureState(kFeatureCursorPalette): %d", isOverlayVisible());
+		//debug("getFeatureState(kFeatureCursorPalette): %d", isOverlayVisible());
 		//return isOverlayVisible();
 		return true;
 	default:
@@ -366,7 +375,7 @@ bool AtariGraphicsManager::getFeatureState(OSystem::Feature f) const {
 }
 
 bool AtariGraphicsManager::setGraphicsMode(int mode, uint flags) {
-	atari_debug("setGraphicsMode: %d, %d", mode, flags);
+	debug("setGraphicsMode: %d, %d", mode, flags);
 
 	_pendingState.mode = mode;
 
@@ -378,7 +387,7 @@ bool AtariGraphicsManager::setGraphicsMode(int mode, uint flags) {
 }
 
 void AtariGraphicsManager::initSize(uint width, uint height, const Graphics::PixelFormat *format) {
-	atari_debug("initSize: %d, %d, %d", width, height, format ? format->bytesPerPixel : 1);
+	debug("initSize: %d, %d, %d", width, height, format ? format->bytesPerPixel : 1);
 
 	_pendingState.width  = width;
 	_pendingState.height = height;
@@ -396,7 +405,7 @@ void AtariGraphicsManager::initSize(uint width, uint height, const Graphics::Pix
 }
 
 void AtariGraphicsManager::beginGFXTransaction() {
-	atari_debug("beginGFXTransaction");
+	debug("beginGFXTransaction");
 
 	_pendingState = GraphicsState();
 	_pendingState.inTransaction = true;
@@ -404,7 +413,7 @@ void AtariGraphicsManager::beginGFXTransaction() {
 }
 
 OSystem::TransactionError AtariGraphicsManager::endGFXTransaction() {
-	atari_debug("endGFXTransaction");
+	debug("endGFXTransaction");
 
 	_pendingState.inTransaction = false;
 	_ignoreCursorChanges = false;
@@ -422,20 +431,15 @@ OSystem::TransactionError AtariGraphicsManager::endGFXTransaction() {
 	}
 
 	if (_pendingState.width > 0 && _pendingState.height > 0) {
-		extern bool g_unalignedPitch;
-
 		if (_pendingState.width > getMaximumScreenWidth() || _pendingState.height > getMaximumScreenHeight()) {
 			error |= OSystem::TransactionError::kTransactionSizeChangeFailed;
 		} else if (((hasPendingGraphicsMode && _pendingState.mode == kDirectRendering)
 				|| (!hasPendingGraphicsMode && _currentState.mode == kDirectRendering))
-			&& (_pendingState.width % 16 != 0 || g_unalignedPitch)
-			&& !hasSuperVidel()) {
-			atari_warning("Engine surfaces not divisible by 16, aborting");
-			// engineDone is not called
-			g_unalignedPitch = false;
+			&& _pendingState.width % 16 != 0
+			&& !g_hasSuperVidel) {
+			warning("Engine surfaces not divisible by 16, aborting");
 			error |= OSystem::TransactionError::kTransactionSizeChangeFailed;
-		} else if (_overlayState == kOverlayIgnoredHide || _currentState.width != _pendingState.width || _currentState.height != _pendingState.height) {
-			// if kOverlayIgnoredHide and with valid w/h, force a video mode reset
+		} else if (_currentState.width != _pendingState.width || _currentState.height != _pendingState.height) {
 			hasPendingSize = true;
 		}
 	}
@@ -445,7 +449,7 @@ OSystem::TransactionError AtariGraphicsManager::endGFXTransaction() {
 		error |= OSystem::TransactionError::kTransactionFormatNotSupported;
 
 	if (error != OSystem::TransactionError::kTransactionSuccess) {
-		atari_warning("endGFXTransaction failed: %02x", error);
+		warning("endGFXTransaction failed: %02x", error);
 		_pendingScreenChanges.clearTransaction();
 		return static_cast<OSystem::TransactionError>(error);
 	}
@@ -462,7 +466,7 @@ OSystem::TransactionError AtariGraphicsManager::endGFXTransaction() {
 	if ((hasPendingGraphicsMode || hasPendingSize) && _currentState.isValid()) {
 		int c2pWidth = _currentState.width;
 
-		if (!hasSuperVidel()) {
+		if (!g_hasSuperVidel) {
 			// make sure that c2p width is always divisible by 16
 			c2pWidth = (c2pWidth + 15) & -16;
 		}
@@ -475,27 +479,34 @@ OSystem::TransactionError AtariGraphicsManager::endGFXTransaction() {
 		_chunkySurfaceOffsetted.init(_currentState.width, _currentState.height, c2pWidth,
 			_chunkySurface.getBasePtr(xOffset, 0), _currentState.format);
 
-		_screen[kFrontBuffer]->reset(c2pWidth, _currentState.height, 8, _chunkySurfaceOffsetted, xOffset, true);
+		_screen[kFrontBuffer]->reset(c2pWidth, _currentState.height, _chunkySurfaceOffsetted);
 		if (_currentState.mode > kSingleBuffering) {
-			_screen[kBackBuffer1]->reset(c2pWidth, _currentState.height, 8, _chunkySurfaceOffsetted, xOffset, true);
-			_screen[kBackBuffer2]->reset(c2pWidth, _currentState.height, 8, _chunkySurfaceOffsetted, xOffset, true);
+			_screen[kBackBuffer1]->reset(c2pWidth, _currentState.height, _chunkySurfaceOffsetted);
+			_screen[kBackBuffer2]->reset(c2pWidth, _currentState.height, _chunkySurfaceOffsetted);
+		}
+
+		{
+			Common::Event event = {};
+			event.type = Common::EVENT_MOUSEMOVE;
+			event.mouse = _screen[kFrontBuffer]->cursor.getPosition();
+			g_system->getEventManager()->pushEvent(event);
 		}
 
 		if (hasPendingSize)
 			_pendingScreenChanges.queueVideoMode();
 
-		_pendingScreenChanges.setScreenSurface(&_screen[kFrontBuffer]->surf);
+		_pendingScreenChanges.setScreenSurface(_screen[kFrontBuffer]->surf.get());
 
 		_palette.clear();
 		// TODO: maybe we could update real start/num values
 		_palette.entries = 256;
 		_pendingScreenChanges.queuePalette();
 
-		if (_overlayState == kOverlayIgnoredHide) {
+		if (_overlayState == kOverlayIgnoredHide)
 			_overlayState = kOverlayHidden;
-			_ignoreHideOverlay = false;
-			_pendingScreenChanges.queueAll();
-		}
+
+		_ignoreHideOverlay = false;
+		_pendingScreenChanges.queueAll();
 	} else {
 		// clear any queued transaction changes from feature flags (e.g. aspect ratio correction)
 		_pendingScreenChanges.clearTransaction();
@@ -510,7 +521,7 @@ OSystem::TransactionError AtariGraphicsManager::endGFXTransaction() {
 }
 
 void AtariGraphicsManager::setPalette(const byte *colors, uint start, uint num) {
-	//atari_debug("setPalette: %d, %d", start, num);
+	//debug("setPalette: %d, %d", start, num);
 
 	if (_tt) {
 		uint16 *pal = &_palette.tt[start];
@@ -534,7 +545,7 @@ void AtariGraphicsManager::setPalette(const byte *colors, uint start, uint num) 
 }
 
 void AtariGraphicsManager::grabPalette(byte *colors, uint start, uint num) const {
-	//atari_debug("grabPalette: %d, %d", start, num);
+	//debug("grabPalette: %d, %d", start, num);
 
 	if (_tt) {
 		const uint16 *pal = &_palette.tt[start];
@@ -556,7 +567,7 @@ void AtariGraphicsManager::grabPalette(byte *colors, uint start, uint num) const
 }
 
 void AtariGraphicsManager::copyRectToScreen(const void *buf, int pitch, int x, int y, int w, int h) {
-	//atari_debug("copyRectToScreen: %d, %d, %d(%d), %d", x, y, w, pitch, h);
+	//debug("copyRectToScreen: %d, %d, %d(%d), %d", x, y, w, pitch, h);
 
 	Graphics::Surface &dstSurface = *lockScreen();
 
@@ -567,25 +578,27 @@ void AtariGraphicsManager::copyRectToScreen(const void *buf, int pitch, int x, i
 		x, y, w, h,
 		directRendering);
 
-	copyRectToScreenInternal(
-		dstSurface,
-		buf, pitch, x, y, w, h,
-		_currentState.format,
-		directRendering);
+	if (directRendering && !g_hasSuperVidel) {
+		copyRectToAtariSurface(
+			*_screen[kFrontBuffer]->offsettedSurf,
+			(const byte *)buf, pitch, x, y, w, h);
+	} else {
+		dstSurface.copyRectToSurface(buf, pitch, x, y, w, h);
+	}
 }
 
 Graphics::Surface *AtariGraphicsManager::lockScreen() {
-	//atari_debug("lockScreen");
+	//debug("lockScreen");
 
 	return _currentState.mode == kDirectRendering
-		? _screen[kFrontBuffer]->offsettedSurf
+		? _screen[kFrontBuffer]->offsettedSurf->surfacePtr()
 		: &_chunkySurfaceOffsetted;
 }
 
 void AtariGraphicsManager::unlockScreen() {
 	const Graphics::Surface &dstSurface = *lockScreen();
 
-	//atari_debug("unlockScreen: %d x %d", dstSurface.w, dstSurface.h);
+	//debug("unlockScreen: %d x %d", dstSurface.w, dstSurface.h);
 
 	addDirtyRectToScreens(
 		dstSurface,
@@ -594,35 +607,35 @@ void AtariGraphicsManager::unlockScreen() {
 }
 
 void AtariGraphicsManager::fillScreen(uint32 col) {
-	atari_debug("fillScreen: %d", col);
+	//debug("fillScreen: %d", col);
 
-	Graphics::Surface *screen = lockScreen();
+	Graphics::Surface &dstSurface = *lockScreen();
 
-	screen->fillRect(Common::Rect(screen->w, screen->h), col);
+	addDirtyRectToScreens(
+		dstSurface,
+		0, 0, dstSurface.w, dstSurface.h,
+		_currentState.mode == kDirectRendering);
 
-	unlockScreen();
+	dstSurface.fillRect(Common::Rect(dstSurface.w, dstSurface.h), col);
 }
 
 void AtariGraphicsManager::fillScreen(const Common::Rect &r, uint32 col) {
-	//atari_debug("fillScreen: %dx%d %d", r.width(), r.height(), col);
+	//debug("fillScreen: %dx%d %d", r.width(), r.height(), col);
 
-	Graphics::Surface *screen = lockScreen();
+	Graphics::Surface &dstSurface = *lockScreen();
 
-	if (r.width() == 1 && r.height() == 1) {
-		// handle special case for e.g. Eco Quest's intro
-		byte *ptr = (byte *)screen->getBasePtr(r.left, r.top);
-		*ptr = col;
-	} else {
-		screen->fillRect(r, col);
-	}
+	addDirtyRectToScreens(
+		dstSurface,
+		r.left, r.top, r.width(), r.height(),
+		_currentState.mode == kDirectRendering);
 
-	unlockScreen();
+	dstSurface.fillRect(r, col);
 }
 
 void AtariGraphicsManager::updateScreen() {
-	//atari_debug("updateScreen");
+	//debug("updateScreen");
 
-	// avoid falling into the atari_debugger (screen may not not initialized yet)
+	// avoid falling into the debugger (screen may not not initialized yet)
 	Common::setErrorHandler(nullptr);
 
 	Screen *workScreen = nullptr;
@@ -645,13 +658,13 @@ void AtariGraphicsManager::updateScreen() {
 			srcSurface = &_chunkySurface;
 			break;
 		default:
-			atari_warning("Unknown graphics mode %d", _currentState.mode);
+			warning("Unknown graphics mode %d", _currentState.mode);
 		}
 	}
 
 	assert(workScreen);
 
-	bool screenUpdated = updateScreenInternal(workScreen, srcSurface ? *srcSurface : Graphics::Surface());
+	bool screenUpdated = updateScreenInternal(workScreen, srcSurface);
 
 #ifdef SCREEN_ACTIVE
 	// this assume that the screen surface is not going to be used yet
@@ -682,7 +695,7 @@ void AtariGraphicsManager::updateScreen() {
 		_screen[kBackBuffer2] = tmp;
 
 		// queue BACK_BUFFER2 with the most recent frame content
-		_pendingScreenChanges.setScreenSurface(&_screen[kBackBuffer2]->surf);
+		_pendingScreenChanges.setScreenSurface(_screen[kBackBuffer2]->surf.get());
 		// BACK_BUFFER1 is now current (work) buffer
 	}
 
@@ -694,7 +707,6 @@ void AtariGraphicsManager::updateScreen() {
 		s_screenSurf = _pendingScreenChanges.screenSurface();
 		_pendingScreenChanges.setScreenSurface(nullptr);
 	}
-
 	if (_pendingScreenChanges.aspectRatioCorrectionYOffset().second)
 		s_aspectRatioCorrectionYOffset = _pendingScreenChanges.aspectRatioCorrectionYOffset().first;
 	if (_pendingScreenChanges.screenOffsets().second)
@@ -704,11 +716,11 @@ void AtariGraphicsManager::updateScreen() {
 
 	set_sysvar_to_short(vblsem, 1);  // unlock vbl
 
-	//atari_debug("end of updateScreen");
+	//debug("end of updateScreen");
 }
 
 void AtariGraphicsManager::setShakePos(int shakeXOffset, int shakeYOffset) {
-	//atari_debug("setShakePos: %d, %d", shakeXOffset, shakeYOffset);
+	//debug("setShakePos: %d, %d", shakeXOffset, shakeYOffset);
 
 	if (_tt) {
 		// as TT can't horizontally shake anything, do it at least vertically
@@ -722,7 +734,7 @@ void AtariGraphicsManager::setShakePos(int shakeXOffset, int shakeYOffset) {
 }
 
 void AtariGraphicsManager::showOverlay(bool inGUI) {
-	atari_debug("showOverlay (state: %d, inGUI: %d)", _overlayState, inGUI);
+	debug("showOverlay (state: %d, inGUI: %d)", _overlayState, inGUI);
 
 	if (_overlayState == kOverlayVisible)
 		return;
@@ -736,14 +748,11 @@ void AtariGraphicsManager::showOverlay(bool inGUI) {
 		_screen[kFrontBuffer]->cursor.flushBackground(Common::Rect(), true);
 	}
 
-	_pendingScreenChanges.setScreenSurface(&_screen[kOverlayBuffer]->surf);
+	_pendingScreenChanges.setScreenSurface(_screen[kOverlayBuffer]->surf.get());
 
-	// do not cache dirtyRects and saved cursor rect
-	_screen[kOverlayBuffer]->reset(
-		getOverlayWidth(), getOverlayHeight(),
-		getBitsPerPixel(getOverlayFormat()),
-		*lockOverlay(), 0,
-		false);
+	// cursor is reset before calling showOverlay()
+
+	_screen[kOverlayBuffer]->reset(getOverlayWidth(), getOverlayHeight(), *lockOverlay());
 
 	_overlayState = kOverlayVisible;
 
@@ -755,7 +764,7 @@ void AtariGraphicsManager::showOverlay(bool inGUI) {
 }
 
 void AtariGraphicsManager::hideOverlay() {
-	atari_debug("hideOverlay (ignore: %d, state: %d)", _ignoreHideOverlay, _overlayState);
+	debug("hideOverlay (ignore: %d, state: %d)", _ignoreHideOverlay, _overlayState);
 
 	assert(_overlayState != kOverlayIgnoredHide);
 
@@ -770,7 +779,10 @@ void AtariGraphicsManager::hideOverlay() {
 	// BACK_BUFFER2 is intentional: regardless of the state before calling showOverlay(),
 	// this always contains the next desired frame buffer to show
 	_pendingScreenChanges.setScreenSurface(
-		&_screen[_currentState.mode == kTripleBuffering ? kBackBuffer2 : kFrontBuffer]->surf);
+		_screen[_currentState.mode == kTripleBuffering ? kBackBuffer2 : kFrontBuffer]->surf.get());
+
+	// reset cursor as its srcSurface has been just changed so wait for cursor surface to be updated
+	Cursor::setSurface(nullptr, 0, 0, 0, 0, 0);
 
 	_overlayState = kOverlayHidden;
 
@@ -793,7 +805,7 @@ void AtariGraphicsManager::clearOverlay() {
 	if (isOverlayDirectRendering())
 		return;
 
-	atari_debug("clearOverlay");
+	debug("clearOverlay");
 
 	if (!isOverlayVisible())
 		return;
@@ -871,7 +883,7 @@ void AtariGraphicsManager::clearOverlay() {
 }
 
 void AtariGraphicsManager::grabOverlay(Graphics::Surface &surface) const {
-	atari_debug("grabOverlay: %d(%d), %d", surface.w, surface.pitch, surface.h);
+	debug("grabOverlay: %d(%d), %d", surface.w, surface.pitch, surface.h);
 
 	if (isOverlayDirectRendering()) {
 		memset(surface.getPixels(), 0, surface.h * surface.pitch);
@@ -880,18 +892,16 @@ void AtariGraphicsManager::grabOverlay(Graphics::Surface &surface) const {
 		assert(surface.h >= _overlaySurface.h);
 		assert(surface.format.bytesPerPixel == _overlaySurface.format.bytesPerPixel);
 
-		const byte *src = (const byte *)_overlaySurface.getPixels();
-		byte *dst = (byte *)surface.getPixels();
-		Graphics::copyBlit(dst, src, surface.pitch,
-			_overlaySurface.pitch, _overlaySurface.w, _overlaySurface.h, _overlaySurface.format.bytesPerPixel);
+		surface.copyRectToSurface(_overlaySurface, 0, 0, Common::Rect(_overlaySurface.w, _overlaySurface.h));
 	}
 }
 
 void AtariGraphicsManager::copyRectToOverlay(const void *buf, int pitch, int x, int y, int w, int h) {
-	//atari_debug("copyRectToOverlay: %d, %d, %d(%d), %d", x, y, w, pitch, h);
+	//debug("copyRectToOverlay: %d, %d, %d(%d), %d", x, y, w, pitch, h);
 
 	Graphics::Surface &dstSurface = *lockOverlay();
 
+	// if true, SuperVidel is not present
 	const bool directRendering = isOverlayDirectRendering();
 
 	_screen[kOverlayBuffer]->addDirtyRect(
@@ -899,23 +909,25 @@ void AtariGraphicsManager::copyRectToOverlay(const void *buf, int pitch, int x, 
 		x, y, w, h,
 		directRendering);
 
-	copyRectToScreenInternal(
-		dstSurface,
-		buf, pitch, x, y, w, h,
-		getOverlayFormat(),
-		directRendering);
+	if (directRendering) {
+		copyRectToAtariSurface(
+			*_screen[kOverlayBuffer]->offsettedSurf,
+			(const byte *)buf, pitch, x, y, w, h);
+	} else {
+		dstSurface.copyRectToSurface(buf, pitch, x, y, w, h);
+	}
 }
 
 Graphics::Surface *AtariGraphicsManager::lockOverlay() {
-	//atari_debug("lockOverlay");
+	//debug("lockOverlay");
 
 	return isOverlayDirectRendering()
-	   ? _screen[kOverlayBuffer]->offsettedSurf
-	   : &_overlaySurface;
+		? _screen[kOverlayBuffer]->offsettedSurf->surfacePtr()
+		: &_overlaySurface;
 }
 
 bool AtariGraphicsManager::showMouse(bool visible) {
-	//atari_debug("showMouse: %d; ignored: %d", visible, _ignoreCursorChanges);
+	//debug("showMouse: %d; ignored: %d", visible, _ignoreCursorChanges);
 
 	if (_ignoreCursorChanges)
 		return visible;
@@ -940,7 +952,7 @@ bool AtariGraphicsManager::showMouse(bool visible) {
 }
 
 void AtariGraphicsManager::warpMouse(int x, int y) {
-	//atari_debug("warpMouse: %d, %d", x, y);
+	//debug("warpMouse: %d, %d", x, y);
 
 	if (isOverlayVisible()) {
 		_screen[kOverlayBuffer]->cursor.setPosition(x, y);
@@ -954,37 +966,41 @@ void AtariGraphicsManager::warpMouse(int x, int y) {
 }
 
 void AtariGraphicsManager::setMouseCursor(const void *buf, uint w, uint h, int hotspotX, int hotspotY, uint32 keycolor,
-										  bool dontScale, const Graphics::PixelFormat *format, const byte *mask) {
-	//atari_debug("setMouseCursor: %d, %d, %d, %d, %d, %d; ignored: %d",
+										  const Graphics::PixelFormat *format, const byte *mask, frac_t scaleX, frac_t scaleY) {
+	//debug("setMouseCursor: %d, %d, %d, %d, %d, %d; ignored: %d",
 	//	w, h, hotspotX, hotspotY, keycolor, format ? format->bytesPerPixel : 1, _ignoreCursorChanges);
 
 	if (_ignoreCursorChanges)
 		return;
 
 	if (mask)
-		atari_warning("AtariGraphicsManager::setMouseCursor: Masks are not supported");
+		warning("AtariGraphicsManager::setMouseCursor: Masks are not supported");
 
 	if (format)
 		assert(*format == PIXELFORMAT_CLUT8);
 
-	_screen[kOverlayBuffer]->cursor.setSurface(buf, (int)w, (int)h, hotspotX, hotspotY, keycolor);
-	_screen[kFrontBuffer]->cursor.setSurface(buf, (int)w, (int)h, hotspotX, hotspotY, keycolor);
+	Cursor::setSurface(buf, (int)w, (int)h, hotspotX, hotspotY, keycolor);
+
+	_screen[kOverlayBuffer]->cursor.setSurfaceChanged();
+	_screen[kFrontBuffer]->cursor.setSurfaceChanged();
 
 	if (_currentState.mode == kTripleBuffering) {
-		_screen[kBackBuffer1]->cursor.setSurface(buf, (int)w, (int)h, hotspotX, hotspotY, keycolor);
-		_screen[kBackBuffer2]->cursor.setSurface(buf, (int)w, (int)h, hotspotX, hotspotY, keycolor);
+		_screen[kBackBuffer1]->cursor.setSurfaceChanged();
+		_screen[kBackBuffer2]->cursor.setSurfaceChanged();
 	}
 }
 
 void AtariGraphicsManager::setCursorPalette(const byte *colors, uint start, uint num) {
-	atari_debug("setCursorPalette: %d, %d", start, num);
+	debug("setCursorPalette: %d, %d", start, num);
+
+	Cursor::setPalette(colors, start, num);
 
 	// cursor palette is supported only in the overlay
-	_screen[kOverlayBuffer]->cursor.setPalette(colors, start, num);
+	_screen[kOverlayBuffer]->cursor.setSurfaceChanged();
 }
 
 void AtariGraphicsManager::updateMousePosition(int deltaX, int deltaY) {
-	//atari_debug("updateMousePosition: %d, %d", deltaX, deltaY);
+	//debug("updateMousePosition: %d, %d", deltaX, deltaY);
 
 	if (isOverlayVisible()) {
 		_screen[kOverlayBuffer]->cursor.updatePosition(deltaX, deltaY);
@@ -1003,10 +1019,7 @@ bool AtariGraphicsManager::notifyEvent(const Common::Event &event) {
 		if (isOverlayVisible()) {
 			debug("Return to launcher from overlay");
 			// clear work screen: this is needed if *next* game shows an error upon startup
-			Graphics::Surface &surf = _currentState.mode == kDirectRendering
-				? *_screen[kFrontBuffer]->offsettedSurf
-				: _chunkySurfaceOffsetted;
-			surf.fillRect(Common::Rect(surf.w, surf.h), 0);
+			fillScreen(0);
 
 			_ignoreHideOverlay = true;
 			// gui manager would want to hide overlay, set game cursor etc
@@ -1053,15 +1066,13 @@ Common::Keymap *AtariGraphicsManager::getKeymap() const {
 	return keymap;
 }
 
-int AtariGraphicsManager::getBitsPerPixel(const Graphics::PixelFormat &format) const {
-	return format == PIXELFORMAT_RGB121 ? 4 : 8;
-}
-
 void AtariGraphicsManager::allocateSurfaces() {
 	for (int i : { kFrontBuffer, kBackBuffer1, kBackBuffer2 }) {
-		_screen[i] = new Screen(this, getMaximumScreenWidth(), getMaximumScreenHeight(), PIXELFORMAT_CLUT8, &_palette);
+		_screen[i] = new Screen(_tt, getMaximumScreenWidth(), getMaximumScreenHeight(), PIXELFORMAT_CLUT8, &_palette);
 	}
-	_screen[kOverlayBuffer] = new Screen(this, getOverlayWidth(), getOverlayHeight(), getOverlayFormat(), &_overlayPalette);
+	_screen[kOverlayBuffer] = new Screen(_tt, getOverlayWidth(), getOverlayHeight(), getOverlayFormat(), &_overlayPalette);
+	// initial position
+	_screen[kOverlayBuffer]->cursor.setPosition(getOverlayWidth() / 2, getOverlayHeight() / 2);
 
 	_chunkySurface.create(getMaximumScreenWidth(), getMaximumScreenHeight(), PIXELFORMAT_CLUT8);
 	_chunkySurfaceOffsetted = _chunkySurface;
@@ -1088,23 +1099,21 @@ void AtariGraphicsManager::addDirtyRectToScreens(const Graphics::Surface &dstSur
 	}
 }
 
-bool AtariGraphicsManager::updateScreenInternal(Screen *dstScreen, const Graphics::Surface &srcSurface) {
-	//atari_debug("updateScreenInternal");
+bool AtariGraphicsManager::updateScreenInternal(Screen *dstScreen, const Graphics::Surface *srcSurface) {
+	//debug("updateScreenInternal");
 
 	const Screen::DirtyRects &dirtyRects = dstScreen->dirtyRects;
-	Graphics::Surface *dstSurface        = dstScreen->offsettedSurf;
+	auto &dstSurface                     = *dstScreen->offsettedSurf;
 	Cursor &cursor                       = dstScreen->cursor;
-
-	const bool directRendering           = srcSurface.getPixels() == nullptr;
 
 	bool updated = false;
 
-	lockSuperBlitter();
+	LockSuperBlitter();
 
 	if (cursor.isChanged()) {
-		const Common::Rect cursorBackgroundRect = cursor.flushBackground(Common::Rect(), directRendering);
+		const Common::Rect cursorBackgroundRect = cursor.flushBackground(Common::Rect(), srcSurface == nullptr);
 		if (!cursorBackgroundRect.isEmpty()) {
-			copyRectToSurface(*dstSurface, srcSurface, cursorBackgroundRect.left, cursorBackgroundRect.top, cursorBackgroundRect);
+			dstSurface.copyRectToSurface(*srcSurface, cursorBackgroundRect.left, cursorBackgroundRect.top, cursorBackgroundRect);
 			updated |= true;
 		}
 	}
@@ -1114,17 +1123,14 @@ bool AtariGraphicsManager::updateScreenInternal(Screen *dstScreen, const Graphic
 
 	const bool drawCursor = cursor.isVisible() && (dstScreen->fullRedraw || cursor.isChanged());
 
-	if (!directRendering) {
+	if (srcSurface) {
 		for (auto it = dirtyRects.begin(); it != dirtyRects.end(); ++it) {
-			copyRectToSurface(*dstSurface, srcSurface, it->left, it->top, *it);
+			dstSurface.copyRectToSurface(*srcSurface, it->left, it->top, *it);
 		}
 		updated |= !dirtyRects.empty();
 	} else if (drawCursor) {
 		cursor.saveBackground();
 	}
-
-	// unlock here because cursor.draw() is a software blit
-	unlockSuperBlitter();
 
 	if (drawCursor) {
 		cursor.draw();
@@ -1133,26 +1139,17 @@ bool AtariGraphicsManager::updateScreenInternal(Screen *dstScreen, const Graphic
 
 	dstScreen->clearDirtyRects();
 
+	UnlockSuperBlitter();
+
 	return updated;
 }
 
-void AtariGraphicsManager::copyRectToScreenInternal(Graphics::Surface &dstSurface,
-													const void *buf, int pitch, int x, int y, int w, int h,
-													const Graphics::PixelFormat &format, bool directRendering) {
-	if (directRendering) {
-		const Common::Rect rect = alignRect(x, y, x + w, y + h);
+void AtariGraphicsManager::copyRectToAtariSurface(AtariSurface &dstSurface,
+												  const byte *buf, int pitch, int x, int y, int w, int h) {
+	const Common::Rect rect = AtariSurface::alignRect(x, y, x + w, y + h);
 
-		// TODO: mask the unaligned parts and copy the rest
-		Graphics::Surface srcSurface;
-		byte *srcBuf = (byte *)const_cast<void *>(buf);
-		srcBuf -= (x - rect.left);	// HACK: this assumes pointer to a complete buffer
-		srcSurface.init(rect.width(), rect.height(), pitch, srcBuf, format);
+	// TODO: mask the unaligned parts and copy the rest
+	buf -= (x - rect.left);	// HACK: this assumes pointer to a complete buffer
 
-		copyRectToSurface(
-			dstSurface, srcSurface,
-			rect.left, rect.top,
-			Common::Rect(rect.width(), rect.height()));
-	} else {
-		dstSurface.copyRectToSurface(buf, pitch, x, y, w, h);
-	}
+	dstSurface.copyRectToSurface(buf, pitch, rect.left, rect.top, rect.width(), rect.height());
 }

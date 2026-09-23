@@ -20,13 +20,23 @@
  */
 
 #include "m4/riddle/rooms/section8/room809.h"
-#include "m4/graphics/gr_series.h"
 #include "m4/riddle/riddle.h"
 #include "m4/riddle/vars.h"
+#include "m4/adv_r/adv_control.h"
+#include "m4/graphics/gr_series.h"
 
 namespace M4 {
 namespace Riddle {
 namespace Rooms {
+
+// The scene defines one "MEI CHEN" hotspot for each position Mei Chen can stop at.
+// They are told apart by their amount of trailing spaces, which matches the index
+// of the position in X_DESTS.
+static const char *const MEI_CHEN_HOTSPOTS[4] = {
+	"MEI CHEN", "MEI CHEN ", "MEI CHEN  ", "MEI CHEN   "
+};
+
+static const int32 X_DESTS[4] = { 160, 540, 960, 1282 };
 
 void Room809::preload() {
 	_G(player).walker_type = WALKER_ALT;
@@ -72,16 +82,22 @@ void Room809::init() {
 		series_unload(S8_SHADOW_DIRS1[3]);
 		series_unload(S8_SHADOW_DIRS1[4]);
 
-		hotspot_set_active(_G(currentSceneDef).hotspots, "MEI CHEN", false);
-		hotspot_set_active(_G(currentSceneDef).hotspots, "MEI CHEN ", false);
-		hotspot_set_active(_G(currentSceneDef).hotspots, "MEI CHEN  ", false);
-		hotspot_set_active(_G(currentSceneDef).hotspots, "MEI CHEN   ", false);
+		for (int i = 0; i < 4; ++i)
+			hotspot_set_active(_G(currentSceneDef).hotspots, MEI_CHEN_HOTSPOTS[i], false);
 
 		_mcTrekMach = triggerMachineByHash_3000(8, 4, *S8_SHADOW_DIRS2, *S8_SHADOW_DIRS1,
 			_mcPosX, 317, _mcFacing, Walker::player_walker_callback, "mc_trek");
 		setGlobals3(_mcHandsBehindBackSeries, 1, 17);
 		sendWSMessage_3840000(_mcTrekMach, 38);
-		_enableHotspotName = "MEI CHEN     ";
+
+		// The index isn't part of the savegame, recover it from Mei Chen's position
+		_field24_index = 0;
+		for (int i = 0; i < 4; ++i) {
+			if (X_DESTS[i] == _mcPosX)
+				_field24_index = i;
+		}
+
+		_enableHotspotName = MEI_CHEN_HOTSPOTS[_field24_index];
 		_byte1A1990[_field24_index] = 0;
 
 		kernel_timing_trigger(60, 36, "verify mc's position");
@@ -168,7 +184,7 @@ void Room809::parser() {
 			int32 destY;
 			player_update_info(_G(my_walker), &_G(player_info));
 			if (_G(player_info).x >= _G(player).click_x) {
-				destX = imath_min(145, _G(player).x + 20);
+				destX = imath_min(_G(player_info).x, _G(player).click_x + 20);
 				destX = imath_max(destX, 145);
 				if (_G(player).click_y < 315) {
 					if (_playerFacing < 0)
@@ -210,7 +226,7 @@ void Room809::parser() {
 
 	case 1: {
 		player_update_info();
-		if (_G(player_info).x < 1340 && -_G(game_buff_ptr)->x1 < 1259) {
+		if (_G(player_info).x >= 1340 && -_G(game_buff_ptr)->x1 < 1259) {
 			g_engine->camera_shift_xy(1259, 0);
 		}
 
@@ -567,7 +583,7 @@ void Room809::parser() {
 		break;
 
 	case 58:
-		_G(game).new_room = 810;
+		_G(game).setRoom(810);
 		break;
 
 	case 59:
@@ -613,7 +629,7 @@ void Room809::parser() {
 		break;
 
 	case 67:
-		_G(game).new_room = 808;
+		_G(game).setRoom(808);
 		break;
 
 	default:
@@ -917,7 +933,6 @@ void Room809::syncGame(Common::Serializer &s) {
 int32 Room809::getMcDestX(int32 xPos, bool facing) {
 	static const uint16 X_THRESHOLDS1[3] = { 540, 960, 1282 };
 	static const uint16 X_THRESHOLDS2[4] = { 0x7fff, 160, 540, 960 };
-	static const uint16 X_DESTS[5] = { 160, 540, 960, 1282 };
 	int32 index;
 
 	if (facing) {
@@ -934,12 +949,11 @@ int32 Room809::getMcDestX(int32 xPos, bool facing) {
 		}
 	}
 
-	hotspot_set_active(_G(currentSceneDef).hotspots, "MEI CHEN", false);
-	hotspot_set_active(_G(currentSceneDef).hotspots, "MEI CHEN ", false);
-	hotspot_set_active(_G(currentSceneDef).hotspots, "MEI CHEN  ", false);
-	hotspot_set_active(_G(currentSceneDef).hotspots, "MEI CHEN   ", false);
+	for (int i = 0; i < 4; ++i)
+		hotspot_set_active(_G(currentSceneDef).hotspots, MEI_CHEN_HOTSPOTS[i], false);
 
-	_enableHotspotName = "MEI CHEN     ";
+	// The hotspot of the position Mei Chen is heading to is activated by daemon() case 38
+	_enableHotspotName = MEI_CHEN_HOTSPOTS[index];
 	_byte1A1990[index] = 0;
 	_field24_index = index;
 	_mcPosX = X_DESTS[index];

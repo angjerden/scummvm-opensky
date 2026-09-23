@@ -20,8 +20,9 @@
  */
 
 #include "m4/riddle/rooms/section9/room996.h"
-#include "m4/graphics/gr_series.h"
 #include "m4/riddle/vars.h"
+#include "m4/adv_r/adv_control.h"
+#include "m4/graphics/gr_series.h"
 
 namespace M4 {
 namespace Riddle {
@@ -214,7 +215,7 @@ void Room996::parser() {
 		break;
 	case 2:
 		if (_G(kernel).trigger == -1) {
-			if (_flagArray[_moveValue] != 0 || _G(flags)[V047] || _G(flags)[V196] || _G(flags)[V201] || _G(flags)[V207] || _G(flags)[V208] || _G(flags)[V209])
+			if (_flagArray[_moveValue + 1] != 0 || _G(flags)[V047] || _G(flags)[V196] || _G(flags)[V201] || _G(flags)[V207] || _G(flags)[V208] || _G(flags)[V209])
 				hotspot_set_active(_G(currentSceneDef).hotspots, "forward", true);
 			else
 				hotspot_set_active(_G(currentSceneDef).hotspots, "forward", false);
@@ -237,7 +238,9 @@ void Room996::parser() {
 			kernel_timing_trigger(10, 1, nullptr);
 
 		} else if (_G(kernel).trigger == 1) {
-			if (_G(flags)[V285])
+			// Original is only checking against flag 285. The problem is that if it's missing, it's becoming incoherent after,
+			// so I added the other flags in the check to display the title when other things are displayed.
+			if (_G(flags)[V285] || _G(flags)[V286] || _G(flags)[V287] || _G(flags)[V288] || _G(flags)[V289])
 				_roomStates_ripTalker = series_show("996 TITLE JOURNAL TYPE", 256, 16, -1, -1, 0, 100, 0, 0);
 
 			if (_G(flags)[V286])

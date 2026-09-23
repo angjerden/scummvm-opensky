@@ -109,6 +109,7 @@ void unpack_data(unsigned char *unpacked_data, unsigned char *buf, unsigned int 
 	unsigned char *save_buf = NULL;
 	unsigned char *save_unp = NULL;
 	unsigned int cur_unpacked_data_size = 0x00;
+	unsigned int cur_index = 0x00;
 
 	save_buf = buf;
 	save_unp = unpacked_data;
@@ -141,16 +142,17 @@ void unpack_data(unsigned char *unpacked_data, unsigned char *buf, unsigned int 
 		if ((opcode & 1) == 1) {
 			break;
 		}
-		if (buf - save_buf >= packed_data_len) {
+		if ((unsigned int)(buf - save_buf) >= packed_data_len) {
 			break;
 		}
 	}
-	if (buf - save_buf < packed_data_len) {
-		if ((packed_data_len - (buf - save_buf)) > (*unpacked_data_size - (unpacked_data - save_unp))) {
+	cur_index = (unsigned int)(buf - save_buf);
+	if (cur_index < packed_data_len) {
+		if ((packed_data_len - cur_index) > (*unpacked_data_size - (unpacked_data - save_unp))) {
 			debug("Data left are too large!");
 		}
-		memcpy(unpacked_data, buf, packed_data_len - (buf - save_buf));
-		cur_unpacked_data_size += packed_data_len - (buf - save_buf);
+		memcpy(unpacked_data, buf, packed_data_len - cur_index);
+		cur_unpacked_data_size += packed_data_len - cur_index;
 	}
 	*unpacked_data_size = cur_unpacked_data_size;
 }
@@ -188,14 +190,15 @@ unsigned char *create_reloc_table(struct memstream *ms, struct dos_header *dh, s
 			if (msread(ms, &entry, sizeof(unsigned short)) != sizeof(unsigned short)) {
 				debug("msread failed");
 			}
-			if (reloc_position >= *reloc_table_size) {
-				debug("overflow");
+			// The relocation counts are read from the (untrusted) packed file,
+			// so their sum can exceed the header-derived table size. Stop before
+			// writing past the end of buf_reloc rather than overflowing it.
+			if (reloc_position + 2 * sizeof(unsigned short) > *reloc_table_size) {
+				debug("relocation table overflow, truncating");
+				break;
 			}
 			*(unsigned short*)(buf_reloc + reloc_position) = entry;
 			reloc_position += 2;
-			if (reloc_position >= *reloc_table_size) {
-				debug("overflow");
-			}
 			*(unsigned short*)(buf_reloc + reloc_position) = (i * 0x1000) & 0xFFFF;
 			reloc_position += 2;
 		}

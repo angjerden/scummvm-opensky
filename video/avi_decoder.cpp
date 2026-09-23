@@ -206,7 +206,9 @@ bool AVIDecoder::parseNextChunk() {
 		_fileStream->skip(16);
 		break;
 	case ID_STRH:
-		handleStreamHeader(size);
+		// e.g. unsupported stream types or codecs will return false
+		if (!handleStreamHeader(size))
+			return false;
 		break;
 	case ID_HDRL: // Header list.. what's it doing here? Probably ok to ignore?
 	case ID_STRD: // Extra stream info, safe to ignore
@@ -233,7 +235,9 @@ bool AVIDecoder::parseNextChunk() {
 		readOldIndex(size);
 		break;
 	default:
-		error("Unknown tag \'%s\' found", tag2str(tag));
+		warning("Unknown tag \'%s\' found", tag2str(tag));
+		skipChunk(size);
+		break;
 	}
 
 	return true;
@@ -273,17 +277,19 @@ void AVIDecoder::handleList(uint32 listSize) {
 		break;
 	}
 
-	while ((_fileStream->pos() - curPos) < listSize)
-		parseNextChunk();
+	while ((_fileStream->pos() - curPos) < listSize && parseNextChunk())
+		;
 }
 
-void AVIDecoder::handleStreamHeader(uint32 size) {
+bool AVIDecoder::handleStreamHeader(uint32 size) {
 	AVIStreamHeader sHeader;
 	sHeader.size = size;
 	sHeader.streamType = _fileStream->readUint32BE();
 
-	if (sHeader.streamType == ID_MIDS)
-		error("Unhandled MIDI/Text stream");
+	if (sHeader.streamType == ID_MIDS) {
+		warning("Unhandled MIDI/Text stream");
+		return false;
+	}
 
 	if (sHeader.streamType == ID_TXTS)
 		warning("Unsupported Text stream detected");
@@ -303,8 +309,10 @@ void AVIDecoder::handleStreamHeader(uint32 size) {
 
 	_fileStream->skip(sHeader.size - 48); // Skip over the remainder of the chunk (frame)
 
-	if (_fileStream->readUint32BE() != ID_STRF)
-		error("Could not find STRF tag");
+	if (_fileStream->readUint32BE() != ID_STRF) {
+		warning("Could not find STRF tag");
+		return false;
+	}
 
 	uint32 strfSize = _fileStream->readUint32LE();
 	uint32 startPos = _fileStream->pos();
@@ -348,8 +356,10 @@ void AVIDecoder::handleStreamHeader(uint32 size) {
 		AVIVideoTrack *track = new AVIVideoTrack(_header.totalFrames, sHeader, bmInfo, initialPalette, _videoCodecAccuracy);
 		if (track->isValid())
 			addTrack(track);
-		else
+		else {
 			delete track;
+			return false;
+		}
 	} else if (sHeader.streamType == ID_AUDS) {
 		PCMWaveFormat wvInfo;
 		wvInfo.tag = _fileStream->readUint16LE();
@@ -371,6 +381,7 @@ void AVIDecoder::handleStreamHeader(uint32 size) {
 
 	// Ensure that we're at the end of the chunk
 	_fileStream->seek(startPos + strfSize);
+	return true;
 }
 
 void AVIDecoder::addTrack(Track *track, bool isExternal) {
@@ -427,12 +438,14 @@ bool AVIDecoder::loadStream(Common::SeekableReadStream *stream) {
 
 	if (!stream->size()) {
 		debugC(8, kDebugLevelGVideo, "AVIDecoder::loadStream(): skipping empty stream");
+		delete stream;
 		return false;
 	}
 
 	uint32 riffTag = stream->readUint32BE();
 	if (riffTag != ID_RIFF) {
 		warning("Failed to find RIFF header");
+		delete stream;
 		return false;
 	}
 
@@ -441,6 +454,7 @@ bool AVIDecoder::loadStream(Common::SeekableReadStream *stream) {
 
 	if (riffType != ID_AVI) {
 		warning("RIFF not an AVI file");
+		delete stream;
 		return false;
 	}
 
@@ -451,8 +465,16 @@ bool AVIDecoder::loadStream(Common::SeekableReadStream *stream) {
 		;
 
 	if (_decodedHeader) {
-		// Ensure there's at least a supported video track
-		_decodedHeader = findNextVideoTrack() != nullptr;
+		// Ensure there's at least one supported media track. Some AVI files
+		// carry only audio data, which is still valid for MCI-style playback.
+		bool hasSupportedTrack = findNextVideoTrack() != nullptr;
+		for (TrackListIterator it = getTrackListBegin(); it != getTrackListEnd(); it++) {
+			if ((*it)->getTrackType() == Track::kTrackTypeVideo || (*it)->getTrackType() == Track::kTrackTypeAudio) {
+				hasSupportedTrack = true;
+				break;
+			}
+		}
+		_decodedHeader = hasSupportedTrack;
 	}
 
 	if (!_decodedHeader) {
@@ -524,7 +546,7 @@ void AVIDecoder::close() {
 
 void AVIDecoder::readNextPacket() {
 	// Shouldn't get this unless called on a non-open video
-	if (_videoTracks.empty())
+	if (_videoTracks.empty() && _audioTracks.empty())
 		return;
 
 	// Handle the video first
@@ -638,6 +660,9 @@ bool AVIDecoder::shouldQueueAudio(TrackStatus& status) {
 	// Sanity check:
 	if (status.track->getTrackType() != Track::kTrackTypeAudio)
 		return false;
+
+	if (_videoTracks.empty())
+		return true;
 
 	// If video is done, make sure that the rest of the audio is queued
 	// (I guess this is also really a sanity check)
@@ -912,8 +937,8 @@ void AVIDecoder::readOldIndex(uint32 size) {
 }
 
 void AVIDecoder::checkTruemotion1() {
-	// If we got here from loadStream(), we know the track is valid
-	assert(!_videoTracks.empty());
+	if (_videoTracks.empty())
+		return;
 
 	TrackStatus &status = _videoTracks[0];
 	AVIVideoTrack *track = (AVIVideoTrack *)status.track;
@@ -1060,7 +1085,8 @@ Image::Codec *AVIDecoder::AVIVideoTrack::createCodec() {
 	Image::Codec *codec = Image::createBitmapCodec(_bmInfo.compression, _vidsHeader.streamHandler, _bmInfo.width,
 									_bmInfo.height, _bmInfo.bitCount);
 
-	codec->setCodecAccuracy(_accuracy);
+	if (codec != nullptr)
+		codec->setCodecAccuracy(_accuracy);
 
 	return codec;
 }

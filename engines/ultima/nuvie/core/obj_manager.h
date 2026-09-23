@@ -22,7 +22,6 @@
 #ifndef NUVIE_CORE_OBJ_MANAGER_H
 #define NUVIE_CORE_OBJ_MANAGER_H
 
-#include "ultima/shared/std/containers.h"
 #include "ultima/nuvie/misc/iavl_tree.h"
 #include "ultima/nuvie/core/tile_manager.h"
 #include "ultima/nuvie/misc/u6_llist.h"
@@ -91,8 +90,8 @@ class ObjManager {
 
 	UseCode *usecode;
 
-	Std::list<Obj *> temp_obj_list;
-	Std::list<Obj *> tile_obj_list; // SE single instance 'map tile' objects
+	Common::List<Obj *> temp_obj_list;
+	Common::List<Obj *> tile_obj_list; // SE single instance 'map tile' objects
 	uint16 last_obj_blk_x, last_obj_blk_y;
 	uint8 last_obj_blk_z;
 

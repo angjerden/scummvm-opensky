@@ -24,7 +24,6 @@
 
 #include "ultima/shared/conf/xml_tree.h"
 #include "ultima/shared/conf/xml_node.h"
-#include "ultima/shared/std/containers.h"
 
 namespace Ultima {
 namespace Ultima4 {
@@ -116,7 +115,7 @@ public:
 
 	ConfigElement getElement(const Common::String &name) const;
 
-	static Std::vector<Common::String> getGames();
+	static Common::Array<Common::String> getGames();
 	static void setGame(const Common::String &name);
 };
 
@@ -146,7 +145,7 @@ public:
 	bool getBool(const Common::String &name) const;
 	int getEnum(const Common::String &name, const char *const enumValues[]) const;
 
-	Std::vector<ConfigElement> getChildren() const;
+	Common::Array<ConfigElement> getChildren() const;
 
 	const Shared::XMLNode *getNode() const {
 		return _node;

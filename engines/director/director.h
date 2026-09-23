@@ -58,6 +58,7 @@ class Cast;
 class Debugger;
 class DirectorSound;
 class Lingo;
+class LingoProfiler;
 class Movie;
 class Window;
 struct Picture;
@@ -90,16 +91,17 @@ enum {
 	kDebugConsole,
 	kDebugXObj,
 	kDebugLingoThe,
-	kDebugImGui,
 	kDebugPaused,
 	kDebugPauseOnLoad,
+	kDebugSaving,
+	kDebugPaths,
 };
 
 enum {
-	GF_DESKTOP = 1 << 0,
-	GF_640x480 = 1 << 1,
-	GF_32BPP   = 1 << 2,
-	GF_GAMMA   = 1 << 3,
+	GF_DESKTOP   = 1 << 0,
+	GF_640x480   = 1 << 1,
+	GF_TRUECOLOR = 1 << 2,
+	GF_GAMMA     = 1 << 3,
 };
 
 struct MovieReference {
@@ -168,6 +170,7 @@ public:
 	Common::Platform getPlatform() const;
 	Common::Language getLanguage() const;
 	uint32 getGameFlags() const;
+	bool isDemo() const;
 	Common::String getTargetName() { return _targetName; }
 	const char *getExtra();
 	Common::String getRawEXEName() const;
@@ -180,13 +183,14 @@ public:
 	Window *getCurrentWindow() const { return _currentWindow; }
 	Window *getOrCreateWindow(Common::String &name);
 	void forgetWindow(Window *window);
+	bool isWindowRegistered(Window *window) const;
 	void setCurrentWindow(Window *window);
 	Window *getCursorWindow() const { return _cursorWindow; }
 	void setCursorWindow(Window *window) { _cursorWindow = window; }
 	Movie *getCurrentMovie() const;
 	void setCurrentMovie(Movie *movie);
-	Archive *getMainArchive() const { return _mainArchive; }
-	void setMainArchive(Archive *archive) { _mainArchive = archive; }
+	Common::SharedPtr<Archive> getMainArchive() const { return _mainArchive; }
+	void setMainArchive(Common::SharedPtr<Archive> archive) { _mainArchive = archive; }
 	Common::String getCurrentPath() const;
 	Common::String getCurrentAbsolutePath();
 	Common::Path getStartupPath() const;
@@ -200,8 +204,8 @@ public:
 	void shiftPalette(int startIndex, int endIndex, bool reverse);
 	void syncPalette();
 	void clearPalettes();
-	PaletteV4 *getPalette(const CastMemberID &id);
-	bool hasPalette(const CastMemberID &id);
+	PaletteV4 *getPalette(CastMemberID id);
+	bool hasPalette(CastMemberID id);
 	void loadDefaultPalettes();
 
 	const Common::HashMap<CastMemberID, PaletteV4> &getLoadedPalettes() { return _loadedPalettes; }
@@ -229,7 +233,7 @@ public:
 	Common::CodePage getPlatformEncoding();
 
 	Archive *createArchive();
-	Archive *openArchive(const Common::Path &movie);
+	Common::SharedPtr<Archive> openArchive(const Common::Path &movie);
 	void addArchiveToOpenList(const Common::Path &path);
 	Archive *loadEXE(const Common::Path &movie);
 	Archive *loadEXEv3(Common::SeekableReadStream *stream);
@@ -243,12 +247,13 @@ public:
 
 	// events.cpp
 	bool pollEvent(Common::Event &event);
-	bool processEvents(bool captureClick = false, bool skipWindowManager = false);
+	bool processSysEvents(bool captureClick = false, bool skipWindowManager = false);
 	void processEventQUIT();
 	int getMacTicks();
 	Common::Array<Common::Event> _injectedEvents;
 
 	// game-quirks.cpp
+	bool lingoOpenWrapper(const char *target, Common::Platform platform, const Common::String &whichApplication, const Common::String &whichDocument);
 	void gameQuirks(const char *target, Common::Platform platform);
 	void loadSlowdownCooloff(uint32 delay = 2000);
 
@@ -266,19 +271,18 @@ public:
 	int _colorDepth;
 	Common::HashMap<int, int> _KeyCodes;
 	int _machineType;
-	bool _playbackPaused;
-	bool _skipFrameAdvance;
 	bool _centerStage;
 	char _dirSeparator;
 	bool _fixStageSize;
-	Archive *_mainArchive;
+	Common::SharedPtr<Archive> _mainArchive;
 	Common::Rect _fixStageRect;
 	Common::List<Common::String> _extraSearchPath;
+	bool _emulateMultiButtonMouse;
 
 	// Owner of all Archive objects.
-	Common::HashMap<Common::Path, Archive *, Common::Path::IgnoreCaseAndMac_Hash, Common::Path::IgnoreCaseAndMac_EqualTo> _allSeenResFiles;
+	Common::HashMap<Common::Path, Common::SharedPtr<Archive>, Common::Path::IgnoreCaseAndMac_Hash, Common::Path::IgnoreCaseAndMac_EqualTo> _allSeenResFiles;
 	// Handles to resource files that were opened by OpenResFile.
-	Common::HashMap<Common::Path, Archive *, Common::Path::IgnoreCaseAndMac_Hash, Common::Path::IgnoreCaseAndMac_EqualTo> _openResFiles;
+	Common::HashMap<Common::Path, Common::SharedPtr<Archive>, Common::Path::IgnoreCaseAndMac_Hash, Common::Path::IgnoreCaseAndMac_EqualTo> _openResFiles;
 	// List of all currently open resource files
 	Common::List<Common::Path> _allOpenResFiles;
 
@@ -290,18 +294,28 @@ protected:
 
 public:
 	const DirectorGameDescription *_gameDescription;
+	Common::HashMap<Common::String, Common::String> _cachedSaveFiles;
 	Common::FSNode _gameDataDir;
 	CastMemberID *_clipBoard;
 	uint32 _wmMode;
 	uint16 _wmWidth;
 	uint16 _wmHeight;
 	CastMemberID _lastPalette;
+	CastMemberID _lastPuppetPalette;
 
 	// used for quirks
 	byte _fpsLimit;
 	TimeDate _forceDate;
 	uint32 _loadSlowdownFactor;
 	uint32 _loadSlowdownCooldownTime;
+	int _fileIOType;
+	bool _vfwPaletteHack;
+
+	uint16 _key;
+	int _keyCode;
+	byte _keyFlags;
+
+	LingoProfiler *_lingoProfiler = nullptr;
 
 private:
 	byte _currentPalette[768];
@@ -351,6 +365,7 @@ struct DirectorPlotData {
 	Common::Point srcPoint;
 
 	Graphics::ManagedSurface *srf = nullptr;
+	Graphics::ManagedSurface *srfMask = nullptr;
 	MacShape *ms = nullptr;
 
 	SpriteType sprite = kInactiveSprite;
@@ -392,7 +407,8 @@ struct DirectorPlotData {
 	DirectorPlotData &operator=(const DirectorPlotData &);
 
 	~DirectorPlotData() {
-		delete ms;
+		if (ms)
+			delete ms;
 	}
 };
 

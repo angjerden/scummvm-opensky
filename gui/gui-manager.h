@@ -28,6 +28,7 @@
 #include "common/str.h"
 #include "common/list.h"
 #include "common/mutex.h"
+#include "common/printman.h"
 
 #include "gui/ThemeEngine.h"
 #include "gui/widget.h"
@@ -63,6 +64,7 @@ enum {
 class Dialog;
 class ThemeEval;
 class GuiObject;
+class Tooltip;
 
 #define g_gui	(GUI::GuiManager::instance())
 
@@ -122,9 +124,6 @@ public:
 	bool useRTL() const { return _useRTL; }
 	void setLanguageRTL();
 
-	void setDialogPaddings(int l, int r);
-	int getOverlayOffset() { return _topDialogRightPadding - _topDialogLeftPadding; }
-
 	const Graphics::Font &getFont(ThemeEngine::FontStyle style = ThemeEngine::kFontStyleBold) const { return *(_theme->getFont(style)); }
 	int getFontHeight(ThemeEngine::FontStyle style = ThemeEngine::kFontStyleBold) const { return _theme->getFontHeight(style); }
 	int getStringWidth(const Common::String &str, ThemeEngine::FontStyle style = ThemeEngine::kFontStyleBold) const { return _theme->getStringWidth(str, style); }
@@ -158,9 +157,15 @@ public:
 
 	Graphics::MacWindowManager *getWM();
 
+	// Defined in printing-dialog.cpp
+	void printImage(const Graphics::ManagedSurface &surf, bool defaultFitToPage, bool defaultCenter, PageOrientation defaultOrientation);
+	void printImage(const Graphics::ManagedSurface &surf);
+
 protected:
 	enum RedrawStatus {
 		kRedrawDisabled = 0,
+		kRedrawOpenTooltip,
+		kRedrawCloseTooltip,
 		kRedrawOpenDialog,
 		kRedrawCloseDialog,
 		kRedrawTopDialog,
@@ -184,9 +189,6 @@ protected:
 
 	bool		_useRTL;
 
-	int			_topDialogLeftPadding;
-	int			_topDialogRightPadding;
-
 	bool		_displayTopDialogOnly;
 
 	Common::Mutex _iconsMutex;
@@ -201,14 +203,17 @@ protected:
 		int16 x, y;	// Position of mouse when the click occurred
 		uint32 time;	// Time
 		int count;	// How often was it already pressed?
-	} _lastClick, _lastMousePosition, _globalMousePosition;
+	} _lastClick;
+	Common::Point _globalMousePosition;
+	uint32 _lastMouseMoveTime;
 
 	struct TooltipData {
-		TooltipData() : x(-1), y(-1) { time = 0; wdg = nullptr; }
+		TooltipData() : x(-1), y(-1), wdg(nullptr) { time = 0; }
 		uint32 time; // Time
 		Widget *wdg; // Widget that had its tooltip shown
 		int16 x, y;  // Position of mouse before tooltip was focused
 	} _lastTooltipShown;
+	Tooltip *_tooltip;
 
 	// mouse cursor state
 	uint32	_cursorAnimateCounter;
@@ -243,7 +248,8 @@ protected:
 	void screenChange();
 
 	void giveFocusToDialog(Dialog *dialog);
-	void setLastMousePos(int16 x, int16 y);
+
+	void emptyTrash(Dialog *const activeDialog);
 };
 
 } // End of namespace GUI

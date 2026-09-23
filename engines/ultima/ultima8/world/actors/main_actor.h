@@ -32,6 +32,7 @@ struct WeaponOverlayFrame;
 
 class MainActor : public Actor {
 	friend class Debugger;
+	friend class Ultima8Engine;
 public:
 	enum CruBatteryType {
 		NoBattery = 0,
@@ -110,10 +111,10 @@ public:
 
 	ProcId die(uint16 damageType, uint16 damagePts, Direction srcDir) override;
 
-	const Std::string &getName() const {
+	const Common::String &getName() const {
 		return _name;
 	}
-	void setName(const Std::string &name) {
+	void setName(const Common::String &name) {
 		_name = name;
 	}
 
@@ -198,7 +199,7 @@ protected:
 	CruBatteryType _cruBatteryType;
 	uint16 _activeInvItem;
 
-	Std::string _name;
+	Common::String _name;
 
 	//! Process for a shield zap animation sprite
 	uint16 _shieldSpriteProc;

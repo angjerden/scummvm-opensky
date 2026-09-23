@@ -343,7 +343,9 @@ void displayTree(FileTree *tree) {
 		return;
 	}
 
-	if (ImGui::TreeNode((void*)(intptr_t)(tree->id), tree->name.c_str())) {
+	static ImGuiTreeNodeFlags base_flags = ImGuiTreeNodeFlags_DrawLinesFull;
+
+	if (ImGui::TreeNodeEx((void*)(intptr_t)(tree->id), base_flags, tree->name.c_str())) {
 		for (auto &it : tree->children)
 			displayTree(it);
 
@@ -507,7 +509,7 @@ void onImGuiInit() {
 		0
 	};
 
-	io.FontDefault = ImGui::addTTFFontFromArchive("LiberationSans-Regular.ttf", 16.0f, nullptr, cyrillic_ranges);;
+	io.FontDefault = ImGui::addTTFFontFromArchive("LiberationSans-Regular.ttf", 16.0f, nullptr, cyrillic_ranges);
 
 	ImFontConfig icons_config;
 	icons_config.MergeMode = true;

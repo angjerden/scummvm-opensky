@@ -38,7 +38,6 @@
 #include "ultima/nuvie/script/script.h"
 #include "ultima/nuvie/core/events.h"
 #include "ultima/nuvie/actors/u6_actor.h"
-#include "ultima/shared/std/containers.h"
 
 namespace Ultima {
 namespace Nuvie {
@@ -1654,7 +1653,7 @@ void Actor::subtract_light(uint8 val) {
 //        light -= val;
 //    else
 //        light = 0;
-	for (vector<uint8>::iterator l = light_source.begin(); l != light_source.end(); l++) {
+	for (Common::Array<uint8>::iterator l = light_source.begin(); l != light_source.end(); l++) {
 		if (*l == val) {
 			light_source.erase(l);
 			break;

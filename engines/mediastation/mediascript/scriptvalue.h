@@ -22,26 +22,32 @@
 #ifndef MEDIASTATION_MEDIASCRIPT_SCRIPTVALUE_H
 #define MEDIASTATION_MEDIASCRIPT_SCRIPTVALUE_H
 
-#include "common/ptr.h"
 #include "common/str.h"
-#include "common/stream.h"
 
+#include "mediastation/datafile.h"
 #include "mediastation/mediascript/scriptconstants.h"
 #include "mediastation/mediascript/collection.h"
 
 namespace MediaStation {
 
-class Asset;
+class Actor;
 
 class ScriptValue {
 public:
-	ScriptValue() : _type(kScriptValueTypeEmpty) {}
-	ScriptValue(Common::SeekableReadStream *stream);
+	ScriptValue() : _type(kScriptValueTypeEmpty), _u{}, _collection(nullptr) {}
+	ScriptValue(ParameterReadStream *stream);
+	ScriptValue(const ScriptValue &other);
+	~ScriptValue();
 
 	ScriptValueType getType() const { return _type; }
 
+	void setToFloat(uint i);
+	void setToFloat(int i);
 	void setToFloat(double d);
 	double asFloat() const;
+	// Some transitions expect either a float or a time depending on engine version.
+	// To keep things simple, we have a method to try both.
+	double asFloatOrTime() const;
 
 	void setToBool(bool b);
 	bool asBool() const;
@@ -52,14 +58,14 @@ public:
 	void setToParamToken(uint paramToken);
 	uint asParamToken() const;
 
-	void setToAssetId(uint assetId);
-	uint asAssetId() const;
+	void setToActorId(uint actorId);
+	uint asActorId() const;
 
 	void setToString(const Common::String &string);
 	Common::String asString() const;
 
-	void setToCollection(Common::SharedPtr<Collection> collection);
-	Common::SharedPtr<Collection> asCollection() const;
+	void setToCollection(Collection *collection);
+	Collection *asCollection() const;
 
 	void setToFunctionId(uint functionId);
 	uint asFunctionId() const;
@@ -67,6 +73,9 @@ public:
 	void setToMethodId(BuiltInMethod methodId);
 	BuiltInMethod asMethodId() const;
 
+	Common::String getDebugString(bool includeDefaultName = true) const;
+
+	void operator=(const ScriptValue &other);
 	bool operator==(const ScriptValue &other) const;
 	bool operator!=(const ScriptValue &other) const;
 	bool operator<(const ScriptValue &other) const;
@@ -91,12 +100,14 @@ private:
 		double d = 0;
 		bool b;
 		uint paramToken;
-		uint assetId;
+		uint actorId;
 		uint functionId;
 		BuiltInMethod methodId;
 	} _u;
 	Common::String _string;
-	Common::SharedPtr<Collection> _collection;
+	Collection *_collection = nullptr;
+	void clearCollection();
+	void copyFrom(const ScriptValue &other);
 
 	static bool compare(Opcode op, const ScriptValue &left, const ScriptValue &right);
 	static bool compareEmptyValues(Opcode op);
@@ -104,12 +115,10 @@ private:
 	static bool compare(Opcode op, uint left, uint right);
 	static bool compare(Opcode op, bool left, bool right);
 	static bool compare(Opcode op, double left, double right);
-	static bool compare(Opcode op, Common::SharedPtr<Collection> left, Common::SharedPtr<Collection> right);
+	static bool compare(Opcode op, Collection *left, Collection *right);
 
 	static ScriptValue evalMathOperation(Opcode op, const ScriptValue &left, const ScriptValue &right);
 	static double binaryMathOperation(Opcode op, double left, double right);
-
-	void issueValueMismatchWarning(ScriptValueType actualType) const;
 };
 
 } // End of namespace MediaStation

@@ -23,7 +23,6 @@
 #define ULTIMA4_CONVERSATION_CONVERSATION_H
 
 #include "ultima/ultima4/core/utils.h"
-#include "ultima/shared/std/containers.h"
 
 namespace Ultima {
 namespace Ultima4 {
@@ -84,7 +83,7 @@ public:
 
 	void add(const ResponsePart &part);
 
-	virtual const Std::vector<ResponsePart> &getParts() const;
+	virtual const Common::Array<ResponsePart> &getParts() const;
 
 	operator Common::String() const;
 
@@ -93,7 +92,7 @@ public:
 
 private:
 	int _references;
-	Std::vector<ResponsePart> _parts;
+	Common::Array<ResponsePart> _parts;
 };
 
 /**
@@ -106,7 +105,7 @@ public:
 	DynamicResponse(Response * (*generator)(const DynamicResponse *), const Common::String &param = "");
 	virtual ~DynamicResponse();
 
-	const Std::vector<ResponsePart> &getParts() const override;
+	const Common::Array<ResponsePart> &getParts() const override;
 
 	const Common::String &getParam() const {
 		return _param;

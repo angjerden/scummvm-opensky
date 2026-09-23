@@ -23,19 +23,19 @@
 #include "avalanche/sound.h"
 
 #include "audio/softsynth/pcspk.h"
+#include "audio/mods/protracker.h"
 #include "common/config-manager.h"
 
 namespace Avalanche {
 
 SoundHandler::SoundHandler(AvalancheEngine *vm) : _vm(vm) {
 	_soundFl = true;
-	_speakerStream = new Audio::PCSpeaker(_vm->_mixer->getOutputRate());
-	_vm->_mixer->playStream(Audio::Mixer::kSFXSoundType, &_speakerHandle,
-						_speakerStream, -1, Audio::Mixer::kMaxChannelVolume, 0, DisposeAfterUse::YES, true);
+	_speaker = new Audio::PCSpeaker();
+	_speaker->init();
 }
 
 SoundHandler::~SoundHandler() {
-	_vm->_mixer->stopHandle(_speakerHandle);
+	delete _speaker;
 }
 
 /**
@@ -70,7 +70,7 @@ void SoundHandler::playNote(int freq, int length) {
 		return;
 
 	// Start a note playing (we will stop it when the timer expires).
-	_speakerStream->play(Audio::PCSpeaker::kWaveFormSquare, freq, length);
+	_speaker->play(Audio::PCSpeaker::kWaveFormSquare, freq, length);
 }
 
 void SoundHandler::click() {
@@ -83,6 +83,28 @@ void SoundHandler::blip() {
 	_vm->_mixer->stopAll();
 
 	playNote(177, 77);
+}
+
+void SoundHandler::playMod(const Common::Path &filename) {
+	if (!_soundFl)
+		return;
+
+	Common::File *file = new Common::File();
+	if (!file->open(filename)) {
+		warning("AVALANCHE: SoundHandler: Music file not found: %s", filename.toString(Common::Path::kNativeSeparator).c_str());
+		delete file;
+		return;
+	}
+
+	Audio::AudioStream *stream = Audio::makeProtrackerStream(file);
+	if (stream)
+		_vm->_mixer->playStream(Audio::Mixer::kMusicSoundType, nullptr, stream);
+	else
+		delete file;
+}
+
+void SoundHandler::stopMod() {
+	_vm->_mixer->stopAll();
 }
 
 } // End of namespace Avalanche

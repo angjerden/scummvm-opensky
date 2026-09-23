@@ -28,6 +28,8 @@
 #include "audio/decoders/raw.h"
 #include "graphics/surface.h"
 
+#include "backends/keymapper/keymapper.h"
+
 namespace Voyeur {
 
 // Number of audio frames to keep audio track topped up when playing back video
@@ -69,6 +71,7 @@ bool RL2Decoder::loadStream(Common::SeekableReadStream *stream) {
 	// Check RL2 magic number
 	if (!_header.isValid()) {
 		warning("RL2Decoder::loadStream(): attempted to load non-RL2 data (0x%08X)", _header._signature);
+		close();
 		return false;
 	}
 
@@ -466,6 +469,11 @@ void RL2Decoder::play(VoyeurEngine *vm, int resourceOffset,
 
 	PictureResource videoFrame(getRL2VideoTrack()->getBackSurface());
 	int picCtr = 0;
+
+	Common::Keymapper *keymapper = g_system->getEventManager()->getKeymapper();
+	keymapper->getKeymap("voyeur-default")->setEnabled(false);
+	keymapper->getKeymap("cutscene")->setEnabled(true);
+
 	while (!vm->shouldQuit() && !endOfVideo() && !vm->_eventsManager->_mouseClicked) {
 		if (hasDirtyPalette()) {
 			const byte *palette = getPalette();
@@ -495,6 +503,9 @@ void RL2Decoder::play(VoyeurEngine *vm, int resourceOffset,
 		vm->_eventsManager->getMouseInfo();
 		g_system->delayMillis(10);
 	}
+
+	keymapper->getKeymap("cutscene")->setEnabled(false);
+	keymapper->getKeymap("voyeur-default")->setEnabled(true);
 }
 
 } // End of namespace Voyeur

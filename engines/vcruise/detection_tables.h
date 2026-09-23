@@ -113,13 +113,13 @@ static const VCruiseGameDescription gameDescriptions[] = {
 		GID_REAH,
 		Common::DE_DEU,
 	},
-	{ // Reah: Face the Unknown, Russian 6 CD Version
+	{ // Reah: Face the Unknown, Fargus Russian 6 CD Version
 		{
 			"reah",
 			"Russian CD",
 			AD_ENTRY3s("Reah.exe", "c44224a888035c14e876cbc45519faca", 305664,
 					   "0170_b.wav", "4632023ed0bab3fc800abfa5ef65ceaf", 119850,
-					   "Speech01.txt", "734478c94944eab9c954c612c70efb9a", 72694),
+					   "Speech01.txt", "7ef54faa578564e022ace7627583cb24", 72694),
 			Common::RU_RUS,
 			Common::kPlatformWindows,
 			VCRUISE_GF_FORCE_LANGUAGE,
@@ -218,7 +218,8 @@ static const VCruiseGameDescription gameDescriptions[] = {
 		{
 			"schizm",
 			"English DVD",
-			AD_ENTRY1s("setup.pak", "eaaed2f6655342b4c320bdeb6f5ccfb9", 272655597),
+			AD_ENTRY2s("setup.pak", "eaaed2f6655342b4c320bdeb6f5ccfb9", 272655597,
+					   "setup.exe", "62f2ed1b1a6a4ed3e3298c7d6852a495", 63234),
 			Common::UNK_LANG,
 			Common::kPlatformWindows,
 			VCRUISE_GF_WANT_OGG_VORBIS | VCRUISE_GF_NEED_JPEG | VCRUISE_GF_GENTEE_PACKAGE | VCRUISE_GF_BUL_LANGUAGE,
@@ -226,6 +227,21 @@ static const VCruiseGameDescription gameDescriptions[] = {
 		},
 		GID_SCHIZM,
 		Common::EN_GRB,
+	},
+	{ // Schizm: Mysterious Journey, Japanese DVD Version, 12-language
+		{
+			"schizm",
+			"Japanese DVD",
+			AD_ENTRY2s("setup.pak", "eaaed2f6655342b4c320bdeb6f5ccfb9", 272655597,
+					   "setup.exe", "62f2ed1b1a6a4ed3e3298c7d6852a495", 66646),
+			Common::UNK_LANG,
+			Common::kPlatformWindows,
+			VCRUISE_GF_WANT_OGG_VORBIS | VCRUISE_GF_NEED_JPEG | VCRUISE_GF_GENTEE_PACKAGE | VCRUISE_GF_USE_SETUP_EXE
+				| VCRUISE_GF_BUL_LANGUAGE | VCRUISE_GF_JPN_LANGUAGE,
+			GUIO1(GAMEOPTION_FAST_VIDEO_DECODER)
+		},
+		GID_SCHIZM,
+		Common::JA_JPN,
 	},
 	{ // Schizm: Mysterious Journey, English DVD Version, unknown variant
 		{

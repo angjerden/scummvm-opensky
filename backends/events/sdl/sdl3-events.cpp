@@ -75,7 +75,7 @@ void SdlEventSource::loadGameControllerMappingFile() {
 SdlEventSource::SdlEventSource()
 	: EventSource(), _scrollLock(false), _joystick(nullptr), _lastScreenID(0), _graphicsManager(nullptr), _queuedFakeMouseMove(false),
 	  _lastHatPosition(SDL_HAT_CENTERED), _mouseX(0), _mouseY(0), _engineRunning(false)
-	  , _queuedFakeKeyUp(false), _fakeKeyUp(), _controller(nullptr) {
+	  , _queuedFakeKeyUp(false), _fakeKeyUp(), _queuedFakeMouseScroll(0), _fakeMouseScroll(), _controller(nullptr) {
 	int joystick_num = ConfMan.getInt("joystick_num");
 	if (joystick_num >= 0) {
 		// Initialize SDL joystick subsystem
@@ -359,7 +359,7 @@ void SdlEventSource::preprocessFingerDown(SDL_Event *event) {
 	// make sure each finger is not reported down multiple times
 	for (int i = 0; i < MAX_NUM_FINGERS; i++) {
 		if (_touchPanels[port]._finger[i].id == id) {
-			_touchPanels[port]._finger[i].id = -1;
+			_touchPanels[port]._finger[i].id = 0;
 		}
 	}
 
@@ -367,9 +367,9 @@ void SdlEventSource::preprocessFingerDown(SDL_Event *event) {
 	// or a long tap (drag)
 	// we also need the last coordinates for each finger to keep track of dragging
 	for (int i = 0; i < MAX_NUM_FINGERS; i++) {
-		if (_touchPanels[port]._finger[i].id == -1) {
+		if (_touchPanels[port]._finger[i].id == 0) {
 			_touchPanels[port]._finger[i].id = id;
-			_touchPanels[port]._finger[i].timeLastDown = event->tfinger.timestamp;
+			_touchPanels[port]._finger[i].timeLastDown = SDL_NS_TO_MS(event->tfinger.timestamp);
 			_touchPanels[port]._finger[i].lastDownX = event->tfinger.x;
 			_touchPanels[port]._finger[i].lastDownY = event->tfinger.y;
 			_touchPanels[port]._finger[i].lastX = x;
@@ -414,7 +414,7 @@ bool SdlEventSource::preprocessFingerUp(SDL_Event *event, Common::Event *ev) {
 	// find out how many fingers were down before this event
 	int numFingersDown = 0;
 	for (int i = 0; i < MAX_NUM_FINGERS; i++) {
-		if (_touchPanels[port]._finger[i].id >= 0) {
+		if (_touchPanels[port]._finger[i].id != 0) {
 			numFingersDown++;
 		}
 	}
@@ -424,9 +424,9 @@ bool SdlEventSource::preprocessFingerUp(SDL_Event *event, Common::Event *ev) {
 
 	for (int i = 0; i < MAX_NUM_FINGERS; i++) {
 		if (_touchPanels[port]._finger[i].id == id) {
-			_touchPanels[port]._finger[i].id = -1;
+			_touchPanels[port]._finger[i].id = 0;
 			if (!_touchPanels[port]._multiFingerDragging) {
-				if ((event->tfinger.timestamp - _touchPanels[port]._finger[i].timeLastDown) <= MAX_TAP_TIME && !_touchPanels[port]._tapMade) {
+				if ((SDL_NS_TO_MS(event->tfinger.timestamp) - _touchPanels[port]._finger[i].timeLastDown) <= MAX_TAP_TIME && !_touchPanels[port]._tapMade) {
 					// short (<MAX_TAP_TIME ms) tap is interpreted as right/left mouse click depending on # fingers already down
 					// but only if the finger hasn't moved since it was pressed down by more than MAX_TAP_MOTION_DISTANCE pixels
 					Common::Point touchscreenSize = getTouchscreenSize();
@@ -443,12 +443,12 @@ bool SdlEventSource::preprocessFingerUp(SDL_Event *event, Common::Event *ev) {
 							if (numFingersDown == 2) {
 								simulatedButton = SDL_BUTTON_RIGHT;
 								// need to raise the button later
-								_touchPanels[port]._simulatedClickStartTime[1] = event->tfinger.timestamp;
+								_touchPanels[port]._simulatedClickStartTime[1] = SDL_NS_TO_MS(event->tfinger.timestamp);
 								_touchPanels[port]._tapMade = true;
 							} else if (numFingersDown == 1) {
 								simulatedButton = SDL_BUTTON_LEFT;
 								// need to raise the button later
-								_touchPanels[port]._simulatedClickStartTime[0] = event->tfinger.timestamp;
+								_touchPanels[port]._simulatedClickStartTime[0] = SDL_NS_TO_MS(event->tfinger.timestamp);
 								if (!isTouchPortTouchpadMode(port)) {
 									convertTouchXYToGameXY(event->tfinger.x, event->tfinger.y, &x, &y);
 								}
@@ -497,7 +497,7 @@ void SdlEventSource::preprocessFingerMotion(SDL_Event *event) {
 	// find out how many fingers were down before this event
 	int numFingersDown = 0;
 	for (int i = 0; i < MAX_NUM_FINGERS; i++) {
-		if (_touchPanels[port]._finger[i].id >= 0) {
+		if (_touchPanels[port]._finger[i].id != 0) {
 			numFingersDown++;
 		}
 	}
@@ -544,8 +544,8 @@ void SdlEventSource::preprocessFingerMotion(SDL_Event *event) {
 				// only start a multi-finger drag if at least two fingers have been down long enough
 				int numFingersDownLong = 0;
 				for (int i = 0; i < MAX_NUM_FINGERS; i++) {
-					if (_touchPanels[port]._finger[i].id >= 0) {
-						if (event->tfinger.timestamp - _touchPanels[port]._finger[i].timeLastDown > MAX_TAP_TIME) {
+					if (_touchPanels[port]._finger[i].id != 0) {
+						if (SDL_NS_TO_MS(event->tfinger.timestamp) - _touchPanels[port]._finger[i].timeLastDown > MAX_TAP_TIME) {
 							numFingersDownLong++;
 						}
 					}
@@ -560,7 +560,7 @@ void SdlEventSource::preprocessFingerMotion(SDL_Event *event) {
 							if (_touchPanels[port]._finger[i].id == id) {
 								Uint32 earliestTime = _touchPanels[port]._finger[i].timeLastDown;
 								for (int j = 0; j < MAX_NUM_FINGERS; j++) {
-									if (_touchPanels[port]._finger[j].id >= 0 && (i != j) ) {
+									if (_touchPanels[port]._finger[j].id != 0 && (i != j) ) {
 										if (_touchPanels[port]._finger[j].timeLastDown < earliestTime) {
 											mouseDownX = _touchPanels[port]._finger[j].lastX;
 											mouseDownY = _touchPanels[port]._finger[j].lastY;
@@ -596,7 +596,7 @@ void SdlEventSource::preprocessFingerMotion(SDL_Event *event) {
 			for (int i = 0; i < MAX_NUM_FINGERS; i++) {
 				if (_touchPanels[port]._finger[i].id == id) {
 					for (int j = 0; j < MAX_NUM_FINGERS; j++) {
-						if (_touchPanels[port]._finger[j].id >= 0 && (i != j) ) {
+						if (_touchPanels[port]._finger[j].id != 0 && (i != j) ) {
 							if (_touchPanels[port]._finger[j].timeLastDown < _touchPanels[port]._finger[i].timeLastDown) {
 								updatePointer = false;
 							}
@@ -621,6 +621,13 @@ bool SdlEventSource::pollEvent(Common::Event &event) {
 	if (_queuedFakeKeyUp) {
 		event = _fakeKeyUp;
 		_queuedFakeKeyUp = false;
+		return true;
+	}
+
+	// In we still need to send scroll events for an event with a scroll amount > 1
+	if (_queuedFakeMouseScroll) {
+		event = _fakeMouseScroll;
+		--_queuedFakeMouseScroll;
 		return true;
 	}
 
@@ -671,7 +678,10 @@ bool SdlEventSource::pollEvent(Common::Event &event) {
 #if defined(USE_IMGUI)
 		ImGui_ImplSDL3_ProcessEvent(&ev);
 		ImGuiIO &io = ImGui::GetIO();
-		if (io.WantTextInput || io.WantCaptureMouse)
+		bool mouseEvent = ev.type == SDL_EVENT_MOUSE_MOTION || ev.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
+			ev.type == SDL_EVENT_MOUSE_BUTTON_UP || ev.type == SDL_EVENT_MOUSE_WHEEL;
+		bool textEvent = ev.type == SDL_EVENT_TEXT_INPUT;
+		if ((mouseEvent && io.WantCaptureMouse) || (textEvent && io.WantTextInput))
 			continue;
 #endif
 		if (dispatchSDLEvent(ev, event))
@@ -695,18 +705,25 @@ bool SdlEventSource::dispatchSDLEvent(SDL_Event &ev, Common::Event &event) {
 		return handleMouseButtonUp(ev, event);
 
 	case SDL_EVENT_MOUSE_WHEEL: {
+#if SDL_VERSION_ATLEAST(3, 2, 12)
+		Sint32 yDir = ev.wheel.integer_y;
+#else
+		// We only have the precise y available. Ir would be better to accumulate it
+		// until we get at least -1 or +1 so that we can handle slow scrolling with abs values < 1.
 		Sint32 yDir = ev.wheel.y;
-		// We want the mouse coordinates supplied with a mouse wheel event.
-		// However, SDL2 does not supply these, thus we use whatever we got
-		// last time.
-		if (!processMouseEvent(event, _mouseX, _mouseY)) {
+#endif
+		if (!processMouseEvent(event, ev.wheel.mouse_x, ev.wheel.mouse_y)) {
 			return false;
 		}
 		if (yDir < 0) {
 			event.type = Common::EVENT_WHEELDOWN;
+			_fakeMouseScroll = event;
+			_queuedFakeMouseScroll = -yDir - 1;
 			return true;
 		} else if (yDir > 0) {
 			event.type = Common::EVENT_WHEELUP;
+			_fakeMouseScroll = event;
+			_queuedFakeMouseScroll = yDir - 1;
 			return true;
 		} else {
 			return false;
@@ -733,6 +750,16 @@ bool SdlEventSource::dispatchSDLEvent(SDL_Event &ev, Common::Event &event) {
 
 		return _queuedFakeKeyUp;
 		}
+
+	case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+		if (_graphicsManager) {
+			uint32 windowID = SDL_GetWindowID(_graphicsManager->getWindow()->getSDLWindow());
+			if (windowID != ev.window.windowID)
+				return false;
+		}
+
+		event.type = Common::EVENT_QUIT;
+		return true;
 
 		case SDL_EVENT_WINDOW_EXPOSED:
 			if (_graphicsManager) {
@@ -884,18 +911,22 @@ bool SdlEventSource::handleKeyUp(SDL_Event &ev, Common::Event &event) {
 
 void SdlEventSource::openJoystick(int joystickIndex) {
 	int numJoysticks = 0;
-	SDL_GetJoysticks(&numJoysticks);
-	if (numJoysticks > joystickIndex) {
-		if (SDL_IsGamepad(joystickIndex)) {
-			_controller = SDL_OpenGamepad(joystickIndex);
+	auto joystickIds = SDL_GetJoysticks(&numJoysticks);
+	if (!joystickIds) {
+		warning("Failed to get connected joysticks: %s", SDL_GetError());
+	} else if (numJoysticks > joystickIndex) {
+		auto joystickId = joystickIds[joystickIndex];
+		if (SDL_IsGamepad(joystickId)) {
+			_controller = SDL_OpenGamepad(joystickId);
 			debug("Using game controller: %s", SDL_GetGamepadName(_controller));
 		} else {
-			_joystick = SDL_OpenJoystick(joystickIndex);
+			_joystick = SDL_OpenJoystick(joystickId);
 			debug("Using joystick: %s", SDL_GetJoystickName(_joystick));
 		}
 	} else {
 		debug(5, "Invalid joystick: %d", joystickIndex);
 	}
+	SDL_free(joystickIds);
 }
 
 void SdlEventSource::closeJoystick() {
@@ -913,7 +944,7 @@ bool SdlEventSource::handleJoystickAdded(const SDL_JoyDeviceEvent &device, Commo
 	debug(5, "SdlEventSource: Received joystick added event for index '%d'", device.which);
 
 	int joystick_num = ConfMan.getInt("joystick_num");
-	if (joystick_num != device.which) {
+	if (joystick_num != static_cast<int>(device.which)) {
 		return false;
 	}
 
@@ -1008,6 +1039,15 @@ bool SdlEventSource::isJoystickConnected() const {
 
 uint32 SdlEventSource::obtainUnicode(const SDL_KeyboardEvent &key) {
 	SDL_Event events[2];
+
+#if defined(USE_IMGUI)
+	// When ImGui is capturing text input, leave the SDL_EVENT_TEXT_INPUT event
+	// in the queue so its InputText widgets receive the character. We normally
+	// consume it here to fold the ASCII into ScummVM's own key event, but
+	// ScummVM's GUI is not the input target while an ImGui text field is active.
+	if (ImGui_ImplSDL3_Ready() && ImGui::GetIO().WantTextInput)
+		return 0;
+#endif
 
 	// Update the event queue here to give SDL a chance to insert TEXTINPUT
 	// events for KEYDOWN events. Otherwise we have a high chance that on

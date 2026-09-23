@@ -20,11 +20,12 @@
  */
 
 #include "m4/riddle/rooms/section5/room510.h"
-#include "m4/graphics/gr_series.h"
 #include "m4/riddle/vars.h"
+#include "m4/riddle/riddle.h"
+#include "m4/adv_r/adv_control.h"
 #include "m4/adv_r/adv_file.h"
 #include "m4/adv_r/other.h"
-#include "m4/riddle/riddle.h"
+#include "m4/graphics/gr_series.h"
 
 namespace M4 {
 namespace Riddle {
@@ -273,6 +274,7 @@ void Room510::parser() {
 			break;
 		case 3:
 			kernel_timing_trigger(1, 4);
+			player_set_commands_allowed(true);
 			break;
 		case 4:
 			series_unload(_ripLooksDown);
@@ -319,7 +321,7 @@ void Room510::parser() {
 			hotspot_set_active("NICHE", true);
 
 			if (inv_object_is_here("CRYSTAL SKULL")) {
-				kernel_examine_inventory_object("PING CRYSTAL SKULL", 5, 1, 330, 280, 2, nullptr, 2);
+				kernel_examine_inventory_object("PING CRYSTAL SKULL", _G(master_palette), 5, 1, 330, 280, 2, nullptr, 2);
 				inv_give_to_player("CRYSTAL SKULL");
 				terminateMachineAndNull(_skull);
 			}
@@ -383,7 +385,8 @@ void Room510::parser() {
 		case -1:
 			if (inv_object_is_here("WOODEN LADDER") && !_G(flags)[V169]) {
 				ws_walk(_G(my_walker), 395, 121, nullptr, 1, 5);
-			}
+			} else
+				return;
 			break;
 		case 1:
 			player_set_commands_allowed(false);
@@ -443,19 +446,19 @@ void Room510::parser() {
 
 			if (inv_object_is_here("GREEN VINE")) {
 				inv_give_to_player("GREEN VINE");
-				kernel_examine_inventory_object("PING GREEN VINE", 5, 1, 325, 200, 8);
+				kernel_examine_inventory_object("PING GREEN VINE", _G(master_palette), 5, 1, 325, 200, 8, nullptr, -1);
 			}
 			if (inv_object_is_here("BROWN VINE")) {
 				inv_give_to_player("BROWN VINE");
-				kernel_examine_inventory_object("PING BROWN VINE", 5, 1, 325, 200, 8);
+				kernel_examine_inventory_object("PING BROWN VINE", _G(master_palette), 5, 1, 325, 200, 8, nullptr, -1);
 			}
 			if (inv_object_is_here("ROPE")) {
 				inv_give_to_player("ROPE");
-				kernel_examine_inventory_object("PING ROPE", 5, 1, 325, 200, 8);
+				kernel_examine_inventory_object("PING ROPE", _G(master_palette), 5, 1, 325, 200, 8, nullptr, -1);
 			}
 			if (inv_object_is_here("VINES")) {
 				inv_give_to_player("VINES");
-				kernel_examine_inventory_object("PING VINES", 5, 1, 325, 200, 8);
+				kernel_examine_inventory_object("PING VINES", _G(master_palette), 5, 1, 325, 200, 8, nullptr, -1);
 			}
 			break;
 		case 7:
@@ -466,7 +469,7 @@ void Room510::parser() {
 		case 9:
 			terminateMachineAndNull(_ladder);
 			inv_give_to_player("WOODEN LADDER");
-			kernel_examine_inventory_object("PING WOODEN LADDER", 5, 1, 300, 80, 10, nullptr, 10);
+			kernel_examine_inventory_object("PING WOODEN LADDER", _G(master_palette), 5, 1, 300, 80, 10, nullptr, 10);
 			break;
 		case 10:
 			sendWSMessage_140000(11);
@@ -1044,19 +1047,19 @@ bool Room510::takeVinesRope() {
 	case 4:
 		if (player_said("GREEN VINE")) {
 			inv_give_to_player("GREEN VINE");
-			kernel_examine_inventory_object("PING GREEN VINE", 5, 1, 325, 200, 5, nullptr, 10);
+			kernel_examine_inventory_object("PING GREEN VINE", _G(master_palette), 5, 1, 325, 200, 5, nullptr, 10);
 		}
 		if (player_said("BROWN VINE")) {
 			inv_give_to_player("BROWN VINE");
-			kernel_examine_inventory_object("PING BROWN VINE", 5, 1, 325, 200, 5, nullptr, 10);
+			kernel_examine_inventory_object("PING BROWN VINE", _G(master_palette), 5, 1, 325, 200, 5, nullptr, 10);
 		}
 		if (player_said("VINES")) {
 			inv_give_to_player("VINES");
-			kernel_examine_inventory_object("PING VINES", 5, 1, 325, 200, 5, nullptr, 10);
+			kernel_examine_inventory_object("PING VINES", _G(master_palette), 5, 1, 325, 200, 5, nullptr, 10);
 		}
 		if (player_said("ROPE")) {
 			inv_give_to_player("ROPE");
-			kernel_examine_inventory_object("PING ROPE", 5, 1, 325, 200, 5, nullptr, 10);
+			kernel_examine_inventory_object("PING ROPE", _G(master_palette), 5, 1, 325, 200, 5, nullptr, 10);
 		}
 		break;
 

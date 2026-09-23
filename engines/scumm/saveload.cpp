@@ -42,6 +42,11 @@
 #include "scumm/he/sprite_he.h"
 #include "scumm/verbs.h"
 
+#ifdef ENABLE_SCUMM_7_8
+#include "scumm/insane/rebel1/rebel.h"
+#include "scumm/insane/rebel2/rebel.h"
+#endif
+
 #include "backends/audiocd/audiocd.h"
 
 #include "graphics/thumbnail.h"
@@ -76,6 +81,20 @@ struct SaveInfoSection {
 #pragma mark -
 
 Common::Error ScummEngine::loadGameState(int slot) {
+#ifdef ENABLE_SCUMM_7_8
+	if (_game.id == GID_REBEL1) {
+		InsaneRebel1 *rebel = (InsaneRebel1 *)((ScummEngine_v7 *)this)->getInsane();
+		if (rebel)
+			return rebel->loadGameState(slot);
+	}
+
+	if (_game.id == GID_REBEL2) {
+		InsaneRebel2 *rebel = (InsaneRebel2 *)((ScummEngine_v7 *)this)->getInsane();
+		if (rebel)
+			return rebel->loadGameState(slot);
+	}
+#endif
+
 	requestLoad(slot);
 	return Common::kNoError;
 }
@@ -83,6 +102,11 @@ Common::Error ScummEngine::loadGameState(int slot) {
 bool ScummEngine::canLoadGameStateCurrently(Common::U32String *msg) {
 	if (!_setupIsComplete)
 		return false;
+
+#ifdef ENABLE_SCUMM_7_8
+	if (_game.id == GID_REBEL1 || _game.id == GID_REBEL2)
+		return true;
+#endif
 
 	// FIXME: For now always allow loading in V0-V3 games
 	// FIXME: Actually, we might wish to support loading in more places.
@@ -132,13 +156,25 @@ bool ScummEngine::canLoadGameStateCurrently(Common::U32String *msg) {
 		}
 
 		// Also deny persistence operations while the script opening the save menu is running...
-		isOriginalMenuActive = _currentRoom == saveRoom || (_currentScript != 0xFF && vm.slot[_currentScript].number == saveMenuScript);
+		isOriginalMenuActive = _currentRoom == saveRoom || currentScriptSlotIs(saveMenuScript);
 	}
 
 	return (VAR_MAINMENU_KEY == 0xFF || VAR(VAR_MAINMENU_KEY) != 0) && !isOriginalMenuActive;
 }
 
 Common::Error ScummEngine::saveGameState(int slot, const Common::String &desc, bool isAutosave) {
+#ifdef ENABLE_SCUMM_7_8
+	if (_game.id == GID_REBEL1) {
+		InsaneRebel1 *rebel = (InsaneRebel1 *)((ScummEngine_v7 *)this)->getInsane();
+		if (rebel)
+			return rebel->saveGameState(slot, desc, isAutosave);
+	}
+
+	// RA2 writes the active pilot itself, and pilot slots must stay contiguous.
+	if (_game.id == GID_REBEL2)
+		return Common::kNoError;
+#endif
+
 	requestSave(slot, desc);
 	return Common::kNoError;
 }
@@ -146,6 +182,19 @@ Common::Error ScummEngine::saveGameState(int slot, const Common::String &desc, b
 bool ScummEngine::canSaveGameStateCurrently(Common::U32String *msg) {
 	if (!_setupIsComplete)
 		return false;
+
+#ifdef ENABLE_SCUMM_7_8
+	if (_game.id == GID_REBEL1)
+		return true;
+
+	// No save interface: progress is written as levels are completed.
+	if (_game.id == GID_REBEL2) {
+		if (msg)
+			*msg = _("This game does not support saving from the menu. Progress is saved automatically when a level is completed");
+
+		return false;
+	}
+#endif
 
 	// Disallow saving in v0-v3 games when a 'prequel' to a cutscene is shown.
 	// This is a blank screen with text, and while this is shown, saving should
@@ -207,7 +256,7 @@ bool ScummEngine::canSaveGameStateCurrently(Common::U32String *msg) {
 		}
 
 		// Also deny persistence operations while the script opening the save menu is running...
-		isOriginalMenuActive = _currentRoom == saveRoom || (_currentScript != 0xFF && vm.slot[_currentScript].number == saveMenuScript);
+		isOriginalMenuActive = _currentRoom == saveRoom || currentScriptSlotIs(saveMenuScript);
 	}
 
 	// SCUMM v4+ doesn't allow saving in room 0 or if
@@ -2113,7 +2162,7 @@ void ScummEngine::saveLoadWithSerializer(Common::Serializer &s) {
 			static const char wmsg2[] = "%d bytes, savegame has %d bytes";
 			// For SegaCD, we don't need a warning, since nothing can glitch there. We have to compensate
 			// for the fact that there are old savegames that have an unused imuse state inside of them.
-			// But fixing that will not lead to glitches or other surprises. 
+			// But fixing that will not lead to glitches or other surprises.
 			if (_game.platform == Common::kPlatformSegaCD) {
 				Common::String msg = s.err() ? Common::String::format(wmsg1, sndDataBlockSize) : Common::String::format(wmsg2, (int)(now - before), sndDataBlockSize);
 				warning("Savegame sound data mismatch (sound engine tried to read %s). \r\nAdjusting file read position. Sound might start up with glitches...", msg.c_str());
@@ -2374,8 +2423,6 @@ void ScummEngine_v100he::saveLoadWithSerializer(Common::Serializer &s) {
 #endif
 
 void ScummEngine::loadResourceOLD(Common::Serializer &ser, ResType type, ResId idx) {
-	uint32 size;
-
 	if (type == rtSound && ser.getVersion() >= VER(23)) {
 		// Save/load only a list of resource numbers that need to be reloaded.
 		uint16 tmp;
@@ -2383,6 +2430,7 @@ void ScummEngine::loadResourceOLD(Common::Serializer &ser, ResType type, ResId i
 		if (tmp)
 			ensureResourceLoaded(rtSound, idx);
 	} else if (_res->_types[type]._mode == kDynamicResTypeMode) {
+		uint32 size = 0;
 		ser.syncAsUint32LE(size);
 		if (size) {
 			_res->createResource(type, idx, size);
@@ -2426,7 +2474,7 @@ void ScummEngine::saveResource(Common::Serializer &ser, ResType type, ResId idx)
 void ScummEngine::loadResource(Common::Serializer &ser, ResType type, ResId idx) {
 	if (_game.heversion >= 60 && ser.getVersion() <= VER(65) &&
 		((type == rtSound && idx == 1) || (type == rtSpoolBuffer))) {
-		uint32 size;
+		uint32 size = 0;
 		ser.syncAsUint32LE(size);
 		assert(size);
 		_res->createResource(type, idx, size);
@@ -2438,7 +2486,7 @@ void ScummEngine::loadResource(Common::Serializer &ser, ResType type, ResId idx)
 
 		ensureResourceLoaded(rtSound, idx);
 	} else if (_res->_types[type]._mode == kDynamicResTypeMode) {
-		uint32 size;
+		uint32 size = 0;
 		ser.syncAsUint32LE(size);
 		assert(size);
 		byte *ptr = _res->createResource(type, idx, size);

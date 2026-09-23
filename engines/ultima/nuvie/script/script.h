@@ -24,8 +24,7 @@
 
 #include "common/lua/lua.h"
 
-#include "ultima/shared/std/string.h"
-#include "ultima/shared/std/containers.h"
+#include "common/str.h"
 #include "ultima/nuvie/gui/gui.h"
 #include "ultima/nuvie/misc/u6_misc.h"
 #include "ultima/nuvie/usecode/usecode.h"

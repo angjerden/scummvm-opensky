@@ -108,13 +108,25 @@ public:
 
 	/**
 	 * Write a string to the surface
-	 * @param s			String to display
-	 * @param clipRect	Window bounds to display string within
-	 * @returns			Any string remainder that couldn't be displayed
+	 * @param s				String to display
+	 * @param clipRect		Window bounds to display string within
+	 * @param ttsVoiceText	Whether to voice the string with TTS
+	 * @param ttsMessage	Message for TTS, which will be built
+	 * @returns				Any string remainder that couldn't be displayed
 	 * @remarks		Note that bounds is just used for wrapping purposes. Unless
 	 *		justification is set, the message will be written at _writePos
 	 */
-	const char *writeString(const Common::String &s, const Common::Rect &clipRect);
+	const char *writeString(const Common::String &s, const Common::Rect &clipRect, bool ttsVoiceText = true, Common::String *ttsMessage = nullptr);
+
+	/**
+	 * Returns the tail of a plain text string, dropping as many leading
+	 * characters as necessary for the rendered text to be narrower than
+	 * the given pixel width, and so display without wrapping
+	 * @param s			String to fit; measuring stops at any control code
+	 * @param maxWidth	Pixel width the rendered string must stay below
+	 * @returns			Pointer within s to the portion that fits
+	 */
+	const char *fitToWidth(const char *s, int maxWidth);
 	bool isSpace(char c);
 	/**
 	 * Write a charcter to the window

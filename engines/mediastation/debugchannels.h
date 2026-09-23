@@ -32,11 +32,15 @@ namespace MediaStation {
 // TODO: Finish comments that describe the various debug levels.
 enum DebugChannels {
 	kDebugGraphics = 1,
+	kDebugCamera,
 	kDebugPath,
 	kDebugScan,
+	kDebugText,
 	kDebugScript,
 	kDebugEvents,
-	kDebugLoading
+	kDebugLoading,
+	kDebugSpriteMovie,
+	kDebugMinigame,
 };
 
 } // End of namespace MediaStation

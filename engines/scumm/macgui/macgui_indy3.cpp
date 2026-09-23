@@ -107,9 +107,20 @@ void MacIndy3Gui::Widget::markScreenAsDirty(Common::Rect r) const {
 }
 
 byte MacIndy3Gui::Widget::translateChar(byte c) const {
-	if (c == '^')
+	// Remap SCUMM-specific characters to Mac OS Roman. I have verified
+	// that these are actually used. If we find others, or if there are
+	// fan translations, that can be dealt with later.
+
+	switch (c) {
+	case 0x10: // Left half of TM glyph
+		return 0xAA;
+	case 0x11: // Right half of TM glyph. Don't draw at all.
+		return 0x00;
+	case 0x5E: // ...
 		return 0xC9;
-	return c;
+	default:
+		return c;
+	}
 }
 
 void MacIndy3Gui::Widget::fill(Common::Rect r) {
@@ -325,12 +336,15 @@ void MacIndy3Gui::Button::draw() {
 
 		for (uint i = 0; i < _text.size() && x < _bounds.right; i++) {
 			byte c = translateChar(_text[i]);
-			if (x >= _bounds.left) {
-				if (_enabled)
-					outlineFont->drawChar(_surface, c, x, y, kBlack);
-				boldFont->drawChar(_surface, c, x + 1, y, color);
+
+			if (c) {
+				if (x >= _bounds.left) {
+					if (_enabled)
+						outlineFont->drawChar(_surface, c, x, y, kBlack);
+					boldFont->drawChar(_surface, c, x + 1, y, color);
+				}
+				x += boldFont->getCharWidth(c);
 			}
-			x += boldFont->getCharWidth(c);
 		}
 	}
 }
@@ -679,8 +693,10 @@ void MacIndy3Gui::Inventory::Slot::draw() {
 		for (uint i = 0; i < _name.size() && x < _bounds.right; i++) {
 			byte c = translateChar(_name[i]);
 
-			font->drawChar(_surface, c, x, y, fg);
-			x += font->getCharWidth(c);
+			if (c) {
+				font->drawChar(_surface, c, x, y, fg);
+				x += font->getCharWidth(c);
+			}
 		}
 	}
 }
@@ -689,9 +705,6 @@ void MacIndy3Gui::Inventory::Slot::draw() {
 // Inventory::ScrollBar is the slider which shows if the inventory contains
 // more objects than are visible on screen.
 // ---------------------------------------------------------------------------
-
-// NB: This class makes several references to ARRAYSIZE(_slots), but accessing
-//     members of the enclosing class like that should be ok in C++11.
 
 MacIndy3Gui::Inventory::ScrollBar::ScrollBar(int x, int y, int width, int height) : MacIndy3Gui::Widget(x, y, width, height) {
 }
@@ -715,7 +728,7 @@ bool MacIndy3Gui::Inventory::ScrollBar::handleEvent(Common::Event &event) {
 		if (event.mouse.y <= pos + 4)
 			_invOffset = 0;
 		else if (event.mouse.y >= pos + 6)
-			_invOffset = _invCount - ARRAYSIZE(_slots);
+			_invOffset = _invCount - INDY3_INVENTORY_SLOT_SIZE;
 
 		_gui->setInventoryScrollOffset(_invOffset);
 		setRedraw(true);
@@ -728,7 +741,7 @@ void MacIndy3Gui::Inventory::ScrollBar::setInventoryParameters(int invCount, int
 	if (invOffset != _invOffset)
 		setRedraw(true);
 
-	if (invCount != _invCount && _invCount >= ARRAYSIZE(_slots))
+	if (invCount != _invCount && _invCount >= INDY3_INVENTORY_SLOT_SIZE)
 		setRedraw(true);
 
 	_invCount = invCount;
@@ -737,7 +750,7 @@ void MacIndy3Gui::Inventory::ScrollBar::setInventoryParameters(int invCount, int
 
 void MacIndy3Gui::Inventory::ScrollBar::scroll(ScrollDirection dir) {
 	int newOffset = _invOffset;
-	int maxOffset = _invCount - ARRAYSIZE(_slots);
+	int maxOffset = _invCount - INDY3_INVENTORY_SLOT_SIZE;
 
 	if (dir == kScrollUp)
 		newOffset--;
@@ -763,7 +776,7 @@ int MacIndy3Gui::Inventory::ScrollBar::getHandlePosition() {
 	// Hopefully this matches the original scroll handle position.
 
 	int maxPos = _bounds.height() - 8;
-	int maxOffset = _invCount - ARRAYSIZE(_slots);
+	int maxOffset = _invCount - INDY3_INVENTORY_SLOT_SIZE;
 
 	if (_invOffset >= maxOffset)
 		return maxPos;

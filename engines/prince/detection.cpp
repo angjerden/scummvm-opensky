@@ -45,7 +45,7 @@ static const PrinceGameDescription gameDescriptions[] = {
 			Common::DE_DEU,
 			Common::kPlatformWindows,
 			ADGF_USEEXTRAASTITLE | ADGF_DROPPLATFORM,
-			GUIO1(GUIO_NONE)
+			GUIO2(GAMEOPTION_TTS_OBJECTS, GAMEOPTION_TTS_MISSING_VOICE)
 		},
 		kPrinceDataDE
 	},
@@ -57,7 +57,7 @@ static const PrinceGameDescription gameDescriptions[] = {
 			Common::PL_POL,
 			Common::kPlatformWindows,
 			ADGF_USEEXTRAASTITLE | ADGF_DROPPLATFORM,
-			GUIO1(GUIO_NONE)
+			GUIO2(GAMEOPTION_TTS_OBJECTS, GAMEOPTION_TTS_MISSING_VOICE)
 		},
 		kPrinceDataPL
 	},
@@ -69,7 +69,7 @@ static const PrinceGameDescription gameDescriptions[] = {
 			Common::RU_RUS,
 			Common::kPlatformWindows,
 			GF_EXTRACTED | ADGF_DROPPLATFORM,
-			GUIO1(GUIO_NONE)
+			GUIO2(GAMEOPTION_TTS_OBJECTS, GAMEOPTION_TTS_MISSING_VOICE)
 		},
 		kPrinceDataDE
 	},
@@ -81,7 +81,7 @@ static const PrinceGameDescription gameDescriptions[] = {
 			Common::RU_RUS,
 			Common::kPlatformWindows,
 			GF_NOVOICES | ADGF_DROPPLATFORM,
-			GUIO1(GUIO_NONE)
+			GUIO2(GAMEOPTION_TTS_OBJECTS, GAMEOPTION_TTS_SPEECH)
 		},
 		kPrinceDataDE
 	},
@@ -93,7 +93,7 @@ static const PrinceGameDescription gameDescriptions[] = {
 			Common::RU_RUS,
 			Common::kPlatformWindows,
 			GF_RUSPROJEDITION | ADGF_USEEXTRAASTITLE | ADGF_DROPPLATFORM,
-			GUIO1(GUIO_NONE)
+			GUIO2(GAMEOPTION_TTS_OBJECTS, GAMEOPTION_TTS_MISSING_VOICE)
 		},
 		kPrinceDataDE
 	},
@@ -106,7 +106,7 @@ static const PrinceGameDescription gameDescriptions[] = {
 			Common::EN_ANY,
 			Common::kPlatformWindows,
 			GF_TRANSLATED | ADGF_DROPPLATFORM,
-			GUIO1(GUIO_NONE)
+			GUIO2(GAMEOPTION_TTS_OBJECTS, GAMEOPTION_TTS_SPEECH)
 		},
 		kPrinceDataDE
 	},
@@ -119,7 +119,7 @@ static const PrinceGameDescription gameDescriptions[] = {
 			Common::EN_ANY,
 			Common::kPlatformWindows,
 			GF_TRANSLATED | ADGF_DROPPLATFORM,
-			GUIO1(GUIO_NONE)
+			GUIO2(GAMEOPTION_TTS_OBJECTS, GAMEOPTION_TTS_SPEECH)
 		},
 		kPrinceDataPL
 	},
@@ -133,7 +133,7 @@ static const PrinceGameDescription gameDescriptions[] = {
 			Common::ES_ESP,
 			Common::kPlatformWindows,
 			GF_TRANSLATED | ADGF_DROPPLATFORM,
-			GUIO1(GUIO_NONE)
+			GUIO2(GAMEOPTION_TTS_OBJECTS, GAMEOPTION_TTS_SPEECH)
 		},
 		kPrinceDataDE
 	},
@@ -147,7 +147,21 @@ static const PrinceGameDescription gameDescriptions[] = {
 			Common::ES_ESP,
 			Common::kPlatformWindows,
 			GF_TRANSLATED | ADGF_DROPPLATFORM,
-			GUIO1(GUIO_NONE)
+			GUIO2(GAMEOPTION_TTS_OBJECTS, GAMEOPTION_TTS_SPEECH)
+		},
+		kPrinceDataPL
+	},
+	{
+		{
+			"prince",
+			"w/translation",
+			AD_ENTRY3s("databank.ptc", "48ec9806bda9d152acbea8ce31c93c49", 3435298,
+					   "FONT1.RAW", "2d9c697eda8de12fefbac449521d4edd", 33904,
+					   "prince_translation.dat", nullptr, AD_NO_SIZE),
+			Common::HE_ISR,
+			Common::kPlatformWindows,
+			GF_TRANSLATED | ADGF_DROPPLATFORM,
+			GUIO2(GAMEOPTION_TTS_OBJECTS, GAMEOPTION_TTS_SPEECH)
 		},
 		kPrinceDataPL
 	},

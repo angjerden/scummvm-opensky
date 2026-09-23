@@ -668,7 +668,7 @@ void EMISound::initMusicTable() {
 		_musicTable = initMusicTableDemo("Music/FullMonkeyMap.imt");
 		_musicPrefix = "Music/";
 	} else if (g_grim->getGamePlatform() == Common::kPlatformPS2) {
-		STATIC_ASSERT(ARRAYSIZE(emiPS2MusicTable) == 126, emiPS2MusicTable_bad_size);
+		static_assert(ARRAYSIZE(emiPS2MusicTable) == 126, "emiPS2MusicTable bad size");
 		_numMusicStates = 126;
 		_musicTable = new MusicEntry[126];
 		for (int i = 0; i < 126; ++i) {
@@ -826,7 +826,7 @@ void EMISound::pause(bool paused) {
 	}
 
 	for (TrackMap::iterator it = _preloadedTrackMap.begin(); it != _preloadedTrackMap.end(); ++it) {
-		SoundTrack *track = (*it)._value;
+		SoundTrack *track = it->_value;
 		if (!track->isPlaying() || paused == track->isPaused())
 			continue;
 
@@ -1086,7 +1086,7 @@ void EMISound::updateSoundPositions() {
 	}
 
 	for (TrackMap::iterator it = _preloadedTrackMap.begin(); it != _preloadedTrackMap.end(); ++it) {
-		SoundTrack *track = (*it)._value;
+		SoundTrack *track = it->_value;
 		track->updatePosition();
 	}
 }

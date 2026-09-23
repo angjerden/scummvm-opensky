@@ -22,7 +22,6 @@
 #ifndef NUVIE_CORE_CONVERSE_SPEECH_H
 #define NUVIE_CORE_CONVERSE_SPEECH_H
 
-#include "ultima/shared/std/containers.h"
 #include "audio/mixer.h"
 
 namespace Ultima {
@@ -42,7 +41,7 @@ class ConverseSpeech {
 	// game system objects from nuvie
 	const Configuration *config;
 	Audio::SoundHandle handle;
-	Std::list<TownsSound> list;
+	Common::List<TownsSound> list;
 
 public:
 	ConverseSpeech();

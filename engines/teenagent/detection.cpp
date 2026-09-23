@@ -26,6 +26,7 @@
 
 #include "engines/advancedDetector.h"
 #include "teenagent/teenagent.h"
+#include "teenagent/detection.h"
 
 static const DebugChannelDef debugFlagList[] = {
 	{TeenAgent::kDebugActor, "Actor", "Enable Actor Debug"},
@@ -67,7 +68,7 @@ static const ADGameDescription teenAgentGameDescriptions[] = {
 		Common::EN_ANY,
 		Common::kPlatformDOS,
 		ADGF_NO_FLAGS,
-		GUIO2(GUIO_NOSPEECH, GUIO_NOMIDI)
+		GUIO4(GUIO_NOSPEECH, GUIO_NOMIDI, GAMEOPTION_TTS_OBJECTS, GAMEOPTION_TTS_SPEECH)
 	},
 	{
 		"teenagent",
@@ -88,7 +89,7 @@ static const ADGameDescription teenAgentGameDescriptions[] = {
 		Common::EN_ANY,
 		Common::kPlatformDOS,
 		ADGF_NO_FLAGS,
-		GUIO2(GUIO_NOSPEECH, GUIO_NOMIDI)
+		GUIO4(GUIO_NOSPEECH, GUIO_NOMIDI, GAMEOPTION_TTS_OBJECTS, GAMEOPTION_TTS_SPEECH)
 	},
 	{ // Russian fan translation
 		"teenagent",
@@ -110,7 +111,7 @@ static const ADGameDescription teenAgentGameDescriptions[] = {
 		Common::RU_RUS,
 		Common::kPlatformDOS,
 		ADGF_NO_FLAGS,
-		GUIO2(GUIO_NOSPEECH, GUIO_NOMIDI)
+		GUIO4(GUIO_NOSPEECH, GUIO_NOMIDI, GAMEOPTION_TTS_OBJECTS, GAMEOPTION_TTS_SPEECH)
 	},
 	{ // Czech Floppy
 		"teenagent",
@@ -131,7 +132,7 @@ static const ADGameDescription teenAgentGameDescriptions[] = {
 		Common::CS_CZE,
 		Common::kPlatformDOS,
 		ADGF_NO_FLAGS,
-		GUIO2(GUIO_NOSPEECH, GUIO_NOMIDI)
+		GUIO4(GUIO_NOSPEECH, GUIO_NOMIDI, GAMEOPTION_TTS_OBJECTS, GAMEOPTION_TTS_SPEECH)
 	},
 	{ // Polish CD
 		"teenagent",
@@ -152,7 +153,7 @@ static const ADGameDescription teenAgentGameDescriptions[] = {
 		Common::PL_POL,
 		Common::kPlatformDOS,
 		ADGF_CD,
-		GUIO1(GUIO_NOMIDI)
+		GUIO2(GUIO_NOMIDI, GAMEOPTION_TTS_OBJECTS)
 	},
 	{ // Polish Floppy
 		"teenagent",
@@ -173,7 +174,7 @@ static const ADGameDescription teenAgentGameDescriptions[] = {
 		Common::PL_POL,
 		Common::kPlatformDOS,
 		ADGF_NO_FLAGS,
-		GUIO1(GUIO_NOMIDI)
+		GUIO2(GUIO_NOMIDI, GAMEOPTION_TTS_OBJECTS)
 	},
 	{ // Demo
 		"teenagent",
@@ -194,7 +195,7 @@ static const ADGameDescription teenAgentGameDescriptions[] = {
 		Common::EN_ANY,
 		Common::kPlatformDOS,
 		ADGF_DEMO,
-		GUIO2(GUIO_NOSPEECH, GUIO_NOMIDI)
+		GUIO4(GUIO_NOSPEECH, GUIO_NOMIDI, GAMEOPTION_TTS_OBJECTS, GAMEOPTION_TTS_SPEECH)
 	},
 	{ // Demo alt
 		"teenagent",
@@ -215,7 +216,7 @@ static const ADGameDescription teenAgentGameDescriptions[] = {
 		Common::EN_ANY,
 		Common::kPlatformDOS,
 		ADGF_DEMO,
-		GUIO2(GUIO_NOSPEECH, GUIO_NOMIDI)
+		GUIO4(GUIO_NOSPEECH, GUIO_NOMIDI, GAMEOPTION_TTS_OBJECTS, GAMEOPTION_TTS_SPEECH)
 	},
 
 	AD_TABLE_END_MARKER,

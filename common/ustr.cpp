@@ -76,39 +76,23 @@ U32String &U32String::operator=(const char *str) {
 }
 
 U32String &U32String::operator=(value_type c) {
-	assign(c);
+	assign(1, c);
 	return *this;
 }
 
 U32String &U32String::operator+=(const value_type *str) {
-	assignAppend(str);
+	append(str);
 	return *this;
 }
 
 U32String &U32String::operator+=(const U32String &str) {
-	assignAppend(str);
+	append(str);
 	return *this;
 }
 
 U32String &U32String::operator+=(value_type c) {
-	assignAppend(c);
+	push_back(c);
 	return *this;
-}
-
-bool U32String::operator==(const String &x) const {
-	return equalsC(x.c_str());
-}
-
-bool U32String::operator==(const char *x) const {
-	return equalsC(x);
-}
-
-bool U32String::operator!=(const String &x) const {
-	return !equalsC(x.c_str());
-}
-
-bool U32String::operator!=(const char *x) const {
-	return !equalsC(x);
 }
 
 U32String operator+(const U32String &x, const U32String &y) {

@@ -38,15 +38,9 @@ namespace UI {
 
 InventoryBox::InventoryBox() :
 		RenderObject(6),
-		_scrollbar(nullptr),
 		_scrollbarPos(0),
 		_highlightedHotspot(-1),
 		_inventoryData(nullptr) {}
-
-InventoryBox::~InventoryBox() {
-	_fullInventorySurface.free();
-	_iconsSurface.free(); delete _scrollbar;
-}
 
 void InventoryBox::init() {
 	auto *bootSummary = GetEngineData(BSUM);
@@ -75,10 +69,10 @@ void InventoryBox::init() {
 
 	RenderObject::init();
 
-	_scrollbar = new Scrollbar(	9,
+	_scrollbar.reset(new Scrollbar(	9,
 								_inventoryData->scrollbarSrcBounds,
 								_inventoryData->scrollbarDefaultPos,
-								_inventoryData->scrollbarMaxScroll - _inventoryData->scrollbarDefaultPos.y);
+								_inventoryData->scrollbarMaxScroll - _inventoryData->scrollbarDefaultPos.y));
 	_scrollbar->init();
 	_curtains.init();
 }
@@ -104,6 +98,17 @@ void InventoryBox::handleInput(NancyInput &input) {
 	}
 
 	if (_order.size()) {
+		// The mouse wheel scrolls a whole page of items at a time, both over the
+		// item grid and over the scrollbar itself
+		const uint numPages = (_order.size() - 1) / 4 + 1;
+		Common::Rect wheelArea = _screenPosition;
+		wheelArea.extend(_scrollbar->getTrackRect());
+
+		float scrollPos = _scrollbar->getPos();
+		if (scrollWithMouseWheel(input, wheelArea, scrollPos, 1.0f / (float)numPages)) {
+			_scrollbar->setPosition(scrollPos);
+		}
+
 		_scrollbar->handleInput(input);
 	}
 
@@ -130,7 +135,6 @@ void InventoryBox::handleInput(NancyInput &input) {
 					if (!disabled) {
 						// Item is not disabled
 						NancySceneState.removeItemFromInventory(itemID, item.keepItem != kInvItemNewSceneView);
-						_highlightedHotspot = -1;
 						hoveredHotspot = -1;
 
 						if (item.keepItem == kInvItemNewSceneView) {
@@ -193,6 +197,8 @@ void InventoryBox::removeItem(const int16 itemID) {
 }
 
 void InventoryBox::onReorder() {
+	// Every slot gets redrawn without highlighting below
+	_highlightedHotspot = -1;
 	onScrollbarMove();
 
 	_fullInventorySurface.clear();
@@ -244,6 +250,12 @@ void InventoryBox::onScrollbarMove() {
 	Common::Rect sourceRect = _screenPosition;
 	sourceRect.moveTo(0, curPage * (sourceRect.height() - 1));
 	_drawSurface.create(_fullInventorySurface, sourceRect);
+
+	// The hotspots are about to point at different items
+	if (_highlightedHotspot != -1) {
+		drawItemInSlot(_itemHotspots[_highlightedHotspot].itemID, _itemHotspots[_highlightedHotspot].itemOrder, false);
+		_highlightedHotspot = -1;
+	}
 
 	setHotspots(curPage);
 

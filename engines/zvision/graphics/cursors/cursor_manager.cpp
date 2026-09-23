@@ -20,15 +20,11 @@
  */
 
 #include "common/scummsys.h"
-
-#include "zvision/graphics/cursors/cursor_manager.h"
-
-#include "zvision/zvision.h"
-
 #include "common/system.h"
-
-#include "graphics/pixelformat.h"
 #include "graphics/cursorman.h"
+#include "graphics/pixelformat.h"
+#include "zvision/zvision.h"
+#include "zvision/graphics/cursors/cursor_manager.h"
 
 namespace ZVision {
 
@@ -110,7 +106,7 @@ void CursorManager::initialize() {
 }
 
 void CursorManager::changeCursor(const ZorkCursor &cursor) {
-	CursorMan.replaceCursor(cursor.getSurface(), cursor.getWidth(), cursor.getHeight(), cursor.getHotspotX(), cursor.getHotspotY(), cursor.getKeyColor(), false, &_pixelFormat);
+	CursorMan.replaceCursor(cursor.getSurface(), cursor.getWidth(), cursor.getHeight(), cursor.getHotspotX(), cursor.getHotspotY(), cursor.getKeyColor(), &_pixelFormat);
 }
 
 void CursorManager::cursorDown(bool pushed) {

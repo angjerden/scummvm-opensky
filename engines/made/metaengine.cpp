@@ -43,6 +43,32 @@ static const ADExtraGuiOptionsMap optionsList[] = {
 			0
 		}
 	},
+
+#ifdef USE_TTS
+	{
+		GAMEOPTION_TTS,
+		{
+			_s("Enable Text to Speech"),
+			_s("Use TTS to read text in the game (if TTS is available)"),
+			"tts_enabled",
+			false,
+			0,
+			0
+		}
+	},
+#endif
+	{
+		GAMEOPTION_WINDOWS_CURSORS,
+		{
+			_s("Use Windows cursors"),
+			_s("If selected, the game will use Windows mouse cursors bundled in the original .exe file. Otherwise, it will use lower resolution cursors from the data files."),
+			"windows_cursors",
+			true,
+			0,
+			0
+		}
+	},
+
 	AD_EXTRA_GUI_OPTIONS_TERMINATOR
 };
 
@@ -58,8 +84,16 @@ Common::Platform MadeEngine::getPlatform() const {
 	return _gameDescription->desc.platform;
 }
 
-uint16 MadeEngine::getVersion() const {
+uint8 MadeEngine::getVersion() const {
 	return _gameDescription->version;
+}
+
+uint8 MadeEngine::getSubVersion() const {
+	return _gameDescription->subVersion;
+}
+
+Common::Language MadeEngine::getLanguage() const {
+	return _gameDescription->desc.language;
 }
 
 } // End of namespace Made
@@ -104,14 +138,14 @@ Common::KeymapArray MadeMetaEngine::initKeymaps(const char *target) const {
 
 	Action *act;
 
-	act = new Action(kStandardActionLeftClick, _("Left Click"));
+	act = new Action(kStandardActionLeftClick, _("Left click"));
 	act->setLeftClickEvent();
 	act->addDefaultInputMapping("MOUSE_LEFT");
 	act->addDefaultInputMapping("JOY_A");
 	act->addDefaultInputMapping("KP_PLUS");
 	engineKeyMap->addAction(act);
 
-	act = new Action(kStandardActionRightClick, _("Right Click"));
+	act = new Action(kStandardActionRightClick, _("Right click"));
 	act->setRightClickEvent();
 	act->addDefaultInputMapping("MOUSE_RIGHT");
 	act->addDefaultInputMapping("JOY_B");

@@ -22,6 +22,9 @@
 #ifndef ENGINES_ENGINE_H
 #define ENGINES_ENGINE_H
 
+#include "common/array.h"
+#include "common/error.h"
+#include "common/rect.h"
 #include "common/scummsys.h"
 #include "common/str.h"
 #include "common/language.h"
@@ -39,6 +42,7 @@ class Mixer;
 }
 namespace Common {
 class Error;
+class FSDirectory;
 class EventManager;
 class SaveFileManager;
 class TimerManager;
@@ -49,6 +53,9 @@ class WriteStream;
 namespace GUI {
 class Debugger;
 class Dialog;
+}
+namespace Graphics {
+struct HotspotInfo;
 }
 
 /**
@@ -102,22 +109,20 @@ class Engine;
 */
 class PauseToken {
 public:
-	PauseToken();
+	constexpr PauseToken() : _engine(nullptr) {}
 	/**
 	 * Construct a pause token.
 	 */
 	PauseToken(const PauseToken &);
-#if __cplusplus >= 201103L
 	PauseToken(PauseToken &&);
-#endif
 	~PauseToken();
+
 	/**
 	 * Assign the pause token.
 	 */
 	void operator=(const PauseToken &);
-#if __cplusplus >= 201103L
 	void operator=(PauseToken &&);
-#endif
+
 	/**
 	* Manually release the PauseToken.
 	*
@@ -132,7 +137,7 @@ public:
 	bool isActive() const { return _engine != nullptr; }
 
 private:
-	PauseToken(Engine *);
+	constexpr PauseToken(Engine *engine) : _engine(engine) {}
 
 	Engine *_engine;
 	/**
@@ -182,6 +187,25 @@ protected:
 
 	int32 _activeEnhancements = kEnhGameBreakingBugFixes;
 
+	/**
+	 * Flag for whether hotspots should be displayed
+	 */
+	bool _showHotspots;
+
+	/**
+	 * Flag to force one redraw after hotspots are shown (e.g. after button press
+	 * re-enables the overlay), so engines that cache dirty state don't skip the
+	 * first render after the overlay was hidden.
+	 */
+	bool _hotspotForceRedraw;
+
+	/**
+	 * Mouse cursor visibility from before hotspots were shown. While hotspots
+	 * are displayed the cursor is hidden (otherwise it leaves trails over the
+	 * overlay), and this remembers the state to restore afterwards.
+	 */
+	bool _hotspotPrevCursorVisible;
+
 private:
 	/**
 	 * The associated metaengine
@@ -201,6 +225,11 @@ private:
 	 * The time when the pause was started.
 	 */
 	uint32 _pauseStartTime;
+
+	/**
+	 * The screen change ID when the pause was started
+	 */
+	int _pauseScreenChangeID;
 
 	/**
 	 * The time when the engine was started.
@@ -382,7 +411,7 @@ public:
 	 */
 	virtual bool hasFeature(EngineFeature f) const { return false; }
 
-	bool enhancementEnabled(int32 cls);
+	bool enhancementEnabled(int32 cls) const;
 
 	/**
 	 * Notify the engine that the sound settings in the config manager might have
@@ -504,10 +533,47 @@ protected:
 	 */
 	virtual void pauseEngineIntern(bool pause);
 
+	/**
+	 * Get information about all hotspots that should be displayed.
+	 *
+	 * Engines should override this method to populate the hotspots array
+	 * with hotspot information in game screen coordinates.
+	 *
+	 * @param hotspots Array to be filled with hotspot information
+	 */
+	virtual void getHotspotPositions(Common::Array<Graphics::HotspotInfo> &hotspots);
+
+	/**
+	 * Draw hotspot markers on the screen using the overlay.
+	 *
+	 * Default implementation calls getHotspotPositions() and draws semi-transparent
+	 * circles, automatically converting from game coordinates to overlay coordinates.
+	 */
+	virtual void drawHotspots();
+
+	/**
+	 * Returns whether hotspot markers need to be re-rendered this frame.
+	 *
+	 * The default implementation always returns true. Engines may override
+	 * this to return false when hotspot positions have not changed (e.g. no
+	 * object state change, no screen pan), avoiding an unnecessary overlay
+	 * redraw.
+	 *
+	 * @return true if hotspots should be re-rendered, false to skip
+	 */
+	virtual bool hotspotDirty() const;
+
 	 /** @} */
 
 
 public:
+
+	/**
+	 * Set whether hotspots should be displayed.
+	 *
+	 * @param show true to show hotspots, false to hide them
+	 */
+	virtual void showHotspots(bool show);
 
 	/**
 	 * Request the engine to quit.
@@ -585,6 +651,30 @@ public:
 	 * @return True if the user chooses to start anyway, false otherwise.
 	 */
 	static bool warnUserAboutUnsupportedGame(Common::String msg = Common::String());
+
+	/**
+	 * Display a warning to the user that the game contains an add-not which is not
+	 * fully supported.
+	 *
+	 * @param addOnName The name of the add-on.
+	 *
+	 * @return True if the user chooses to start anyway, false otherwise.
+	 */
+	static bool warnUserAboutUnsupportedAddOn(Common::String addOnName);
+
+	/**
+	 * Display a warning to the user that the game is in testing mode.
+	 */
+	static void warnUserAboutTestingMode();
+
+	/**
+	 * Display an error message to the user that the game is an add-on than cannot be
+	 * run independently.
+	 *
+	 * @param addOnName The name of the add-on.
+	 * @param gameId    The ID of the base game that this add-on requires.
+	 */
+	static void errorAddingAddOnWithoutBaseGame(Common::String addOnName, Common::String gameId);
 
 	/**
 	 * Display an error message to the user that the game is not supported.
@@ -665,6 +755,27 @@ public:
 	virtual int getAutosaveSlot() const {
 		return 0;
 	}
+
+	/**
+	 * Can the game type currently being played have add-ons?
+	 */
+	virtual	bool gameTypeHasAddOns() const;
+
+	/**
+	 * To discard some directories we know have no chance to be add-ons
+	 */
+	virtual bool dirCanBeGameAddOn(const Common::FSDirectory &dir) const;
+
+	/**
+	 * To display a warning if a directory likely to be an add-on does not match anything
+	 */
+	virtual bool dirMustBeGameAddOn(const Common::FSDirectory &dir) const;
+
+	/**
+	 * Update the add-ons targets associated with a base game (silently, unless some unsupported version is detected).
+	 */
+	Common::ErrorCode updateAddOns(const MetaEngine *metaEngine) const;
+
 
 protected:
 	/**

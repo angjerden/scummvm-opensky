@@ -27,6 +27,8 @@ namespace Agi {
 #define DICTIONARY_RESULT_UNKNOWN -1
 #define DICTIONARY_RESULT_IGNORE   0
 
+#define EXTENDED_DICTIONARY_FILENAME "words.tok.extended"
+
 struct WordEntry {
 	uint16 id;
 	Common::String word;
@@ -40,13 +42,15 @@ public:
 private:
 	AgiEngine *_vm;
 
-	// Dictionary
-	// 158 = 255 - 'a' ; that's allows us to support extended character set, and does no harm for regular English games
-	Common::Array<WordEntry *> _dictionaryWords[158];
+	// Dictionary of words in WORDS.TOK or WORDS.TOK.EXTENDED.
+	// key:   first character of the word
+	// value: words in the order they appear
+	Common::HashMap<byte, Common::Array<WordEntry>> _dictionary;
 
 	WordEntry _egoWords[MAX_WORDS];
 	uint16  _egoWordCount;
 
+	bool _hasExtendedCharacters; // true on WORDS.TOK.EXTENDED
 public:
 	uint16 getEgoWordCount() const;
 	const char *getEgoWord(int16 wordNr) const;

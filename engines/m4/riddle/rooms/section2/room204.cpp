@@ -21,23 +21,32 @@
 
 #include "m4/riddle/rooms/section2/room204.h"
 #include "m4/riddle/rooms/section2/section2.h"
+#include "m4/riddle/riddle.h"
+#include "m4/riddle/vars.h"
+#include "m4/adv_r/adv_control.h"
 #include "m4/graphics/gr_series.h"
 #include "m4/gui/gui_vmng.h"
 #include "m4/gui/gui_vmng_screen.h"
-#include "m4/riddle/riddle.h"
-#include "m4/riddle/vars.h"
 
 namespace M4 {
 namespace Riddle {
 namespace Rooms {
 
-const int16 ROOM204_NORMAL_DIRS[] = {
-	200, -1, -1};
-const int16 ROOM204_SHADOW_DIRS[6] = {
-	210, -1, -1};
-static const char *ROOM204_NORMAL_NAMES[5] = { "priest walker" };
-static const char *ROOM204_SHADOW_NAMES[5] = { "kuangs shadow 2" };
+const int16 ROOM204_NORMAL_DIRS[] = { 200, -1};
+const int16 ROOM204_SHADOW_DIRS[] = { 210, -1};
+static const char *ROOM204_NORMAL_NAMES[] = { "priest walker" };
+static const char *ROOM204_SHADOW_NAMES[] = { "kuangs shadow 2" };
 
+static const char *const SAID[][2] = {
+	{"ZHENMU SHOU FIGURINE", "204r27"},
+	{"BRONZE LANTERN", "204r07"},
+	{"PAGODA", "204r08"},
+	{"GIANT URN", "204r09"},
+	{"ACOLYTE", "204r12"},
+	{"YOUNG PRIEST", "204r13"},
+	{"FOO DOG", "204r28"},
+	{nullptr, nullptr}
+};
 
 void Room204::preload() {
 	_G(player).walker_type = WALKER_ALT;
@@ -272,6 +281,15 @@ void Room204::parser() {
 			}
 		}
 
+		if (lookFl && player_said("LI SAO TABLETS")) {
+			player_update_info(_G(my_walker), &_G(player_info));
+			if (_G(player_info).x > 1500) {
+				_meiMachineFlag = false;
+				_fieldE4_walkerDestX = 1576;
+				moveAndLookFl = true;
+			}
+		}
+
 		if (lookFl && player_said("SHIH CHING TABLETS")) {
 			player_update_info(_G(my_walker), &_G(player_info));
 			if (_G(player_info).x > 1400) {
@@ -355,6 +373,7 @@ void Room204::parser() {
 				_fieldE0_x = 555;
 				deleteMeiCheiHotspot();
 				addMovingMeiHotspot();
+				player_set_commands_allowed(true);
 				break;
 
 			default:
@@ -607,11 +626,11 @@ void Room204::parser() {
 		goto done;
 	}
 
-	if (lookFl && player_said("ZHENMU SHOU FIGURINE")) {
+	if (lookFl && _G(walker).ripley_said(SAID)) {
 		goto done;
 	}
 
-	if (lookFl && player_said("SILVER BUTTERFLY") && inv_player_has("SILVER BUTTERFLY")) {
+	if (lookFl && player_said("SILVER BUTTERFLY") && inv_object_is_here("SILVER BUTTERFLY")) {
 		switch (_G(kernel).trigger) {
 		case -1:
 		case 666:
@@ -981,7 +1000,7 @@ void Room204::parser() {
 				_G(flags)[V089] = 1;
 				_G(flags)[kTabletsCartoon] = 1;
 			}
-			warning("Room204 Parser : sendWSMessage_multi(nullptr)");
+			sketchInJournal(nullptr);
 		}
 	} else if (lookFl && !inv_player_has(_G(player).noun) && !player_said("MEI CHEN"))
 		digi_play("204R06", 1, 255, -1, -1);
@@ -1018,7 +1037,7 @@ void Room204::daemon() {
 
 	case 12:
 		interface_show();
-		_G(game).new_room = 205;
+		_G(game).setRoom(205);
 		break;
 
 	case 15:
@@ -2207,7 +2226,7 @@ void Room204::daemon() {
 
 	case 629:
 	case 711:
-		_G(game).new_room = 203;
+		_G(game).setRoom(203);
 		break;
 
 	case 630:
@@ -2410,15 +2429,16 @@ void Room204::daemon() {
 	case 675:
 		player_set_commands_allowed(false);
 		digi_preload("950_s34", -1);
-		midi_play("RIPTHEM1", 180, 0, -1, 949);
+		midi_play("RIPTHEM1", 180, false, -1, 949);
 		_204pu99Series = series_load("204PU99", -1, nullptr);
 		_ripSketchingInNotebookPos2Series = series_load("RIP SKETCHING IN NOTEBOOK POS 2", -1, nullptr);
 		setGlobals1(_ripSketchingInNotebookPos2Series, 1, 17, 17, 17, 0, 18, 39, 39, 39, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 		sendWSMessage_110000(_G(my_walker), 676);
 		break;
 
-	case 676:
+	case 676: // ripleay adds empty translation table in journal
 		sendWSMessage_120000(_G(my_walker), 677);
+		_G(flags)[V285] = 1;
 		digi_play("950_s34", 2, 200, -1, -1);
 		break;
 

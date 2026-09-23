@@ -7,11 +7,11 @@ DEPS_SUBMODULES             := libretro-deps libretro-common
 
 DEPS_FOLDER_libretro-deps   := libretro-deps
 DEPS_URL_libretro-deps      := https://github.com/libretro/libretro-deps
-DEPS_COMMIT_libretro-deps   := abf5246b016569759e7d1b0ea91bb98c2e34d160
+DEPS_COMMIT_libretro-deps   := bab7d258c451c0e7cba4b6a79f1b062c13efff38
 
 DEPS_FOLDER_libretro-common := libretro-common
 DEPS_URL_libretro-common    := https://github.com/libretro/libretro-common
-DEPS_COMMIT_libretro-common := 70ed90c42ddea828f53dd1b984c6443ddb39dbd6
+DEPS_COMMIT_libretro-common := 879c8d507b0b52e77e27d759239c2b5df1e26dfd
 
 submodule_test  = $(if $(shell result=$$($(SCRIPTS_PATH)/configure_submodules.sh $(DEPS_URL_$(1)) $(DEPS_COMMIT_$(1)) $(DEPS_PATH) $(DEBUG_ALLOW_DIRTY_SUBMODULES) $(DEPS_FOLDER_$(1))) ; { [ -z $$result ] || [ ! $$result = 0 ] ; } && printf error),$(1))
 $(info Configuring submodules...)
@@ -45,6 +45,10 @@ OBJS_DEPS += $(DEPS_PATH)/$(DEPS_FOLDER_libretro-common)/file/file_path_io.o \
 	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-common)/time/rtime.o \
 	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-common)/streams/file_stream.o \
 	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-common)/features/features_cpu.o
+
+ifeq ($(USE_LIBRETRO_SAF),1)
+OBJS_DEPS += $(DEPS_PATH)/$(DEPS_FOLDER_libretro-common)/vfs/vfs_implementation_saf.o
+endif
 
 
 ifeq ($(USE_LIBCO), 1)
@@ -210,16 +214,16 @@ this_lib_header := zlib.h
 this_lib_flags := -lz
 include $(ROOT_PATH)/sharedlib_test.mk
 ifneq ($(this_lib_available), yes)
+INCLUDES += -I$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libz
 OBJS_DEPS += $(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libz/deflate.o \
 	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libz/gzlib.o \
 	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libz/uncompr.o \
 	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libz/zutil.o \
 	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libz/inffast.o \
 	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libz/gzread.o \
-	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libz/crc32.o \
+	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libz/libz-crc32.o \
 	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libz/gzwrite.o \
 	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libz/inflate.o \
-	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libz/infback.o \
 	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libz/inftrees.o \
 	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libz/trees.o \
 	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libz/gzclose.o \
@@ -581,6 +585,81 @@ endif
 endif
 
 ######################################################################
+# libmpeg2 settings
+######################################################################
+
+ifeq ($(USE_MPEG2), 1)
+DEFINES += -DUSE_MPEG2
+this_lib_subpath :=
+this_lib_header  := mpeg2dec/mpeg2.h
+this_lib_flags   := -lmpeg2
+include $(ROOT_PATH)/sharedlib_test.mk
+ifneq ($(this_lib_available), yes)
+INCLUDES += \
+	-I$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libmpeg2/include \
+	-I$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libmpeg2/include/mpeg2dec \
+	-I$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libmpeg2/libmpeg2
+OBJS_DEPS += \
+	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libmpeg2/libmpeg2/alloc.o \
+	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libmpeg2/libmpeg2/header.o \
+	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libmpeg2/libmpeg2/decode.o \
+	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libmpeg2/libmpeg2/slice.o \
+	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libmpeg2/libmpeg2/motion_comp.o \
+	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libmpeg2/libmpeg2/idct.o \
+	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libmpeg2/libmpeg2/cpu_accel.o \
+	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libmpeg2/libmpeg2/cpu_state.o
+
+# --- Optional accelerations --------------
+# x86/x64 -> MMX
+ifneq ($(findstring x86,$(platform))$(findstring x64,$(platform)),)
+OBJS_DEPS += \
+	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libmpeg2/libmpeg2/motion_comp_mmx.o \
+	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libmpeg2/libmpeg2/idct_mmx.o
+endif
+
+# PowerPC (PS3/PSL1GHT) -> AltiVec/VMX
+ifneq ($(findstring ps3,$(platform))$(findstring psl1ght,$(platform)),)
+OBJS_DEPS += \
+	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libmpeg2/libmpeg2/motion_comp_altivec.o \
+	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libmpeg2/libmpeg2/idct_altivec.o
+endif
+
+# ARM families (rpi*, libnx, ios/tvos, vita, ctr, miyoo/miyoomini)
+ifneq ($(findstring rpi,$(platform))$(findstring armv7,$(platform))$(findstring armv8,$(platform))$(findstring libnx,$(platform))$(findstring ios,$(platform))$(findstring tvos,$(platform))$(findstring vita,$(platform))$(findstring ctr,$(platform))$(findstring miyoo,$(platform))$(findstring miyoomini,$(platform)),)
+OBJS_DEPS += \
+	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/libmpeg2/libmpeg2/motion_comp_arm.o
+endif
+endif
+endif
+
+######################################################################
+# giflib settings
+######################################################################
+
+ifeq ($(USE_GIF), 1)
+DEFINES += -DUSE_GIF
+this_lib_subpath :=
+this_lib_header  := gif_lib.h
+this_lib_flags   := -lgif
+include $(ROOT_PATH)/sharedlib_test.mk
+ifneq ($(this_lib_available), yes)
+INCLUDES += \
+  -I$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/giflib
+OBJS_DEPS += \
+	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/giflib/dgif_lib.o \
+	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/giflib/egif_lib.o \
+	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/giflib/gifalloc.o \
+	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/giflib/gif_err.o \
+	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/giflib/gif_hash.o \
+	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/giflib/quantize.o \
+	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/giflib/gif_font.o \
+	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/giflib/openbsd-reallocarray.o \
+	$(DEPS_PATH)/$(DEPS_FOLDER_libretro-deps)/giflib/qprintf.o
+
+endif
+endif
+
+######################################################################
 # libcurl settings
 ######################################################################
 
@@ -598,7 +677,8 @@ ifeq ($(this_lib_available), yes)
 	LDFLAGS += $(this_lib_flags)
 	INCLUDES += $(sharedlibs_this_lib_includes)
 	USE_LIBCURL := 1
-	DEFINES += -DUSE_CLOUD -DUSE_LIBCURL
+	USE_HTTP := 1
+	DEFINES += -DUSE_CLOUD -DUSE_LIBCURL -DUSE_HTTP
 else
 $(info System libcurl not available, dropping cloud feature.)
 endif

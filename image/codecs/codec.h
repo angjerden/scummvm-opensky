@@ -124,9 +124,9 @@ public:
 	virtual void setCodecAccuracy(CodecAccuracy accuracy) {}
 
 	/**
-	 * Create a dither table, as used by QuickTime codecs.
+	 * Get the preferred default pixel format for use with YUV codecs
 	 */
-	static byte *createQuickTimeDitherTable(const byte *palette, uint colorCount);
+	static Graphics::PixelFormat getDefaultYUVFormat();
 };
 
 /**

@@ -56,12 +56,12 @@ void Window::testFontScaling() {
 
 	Graphics::ManagedSurface surface;
 
-	surface.create(w, h, _wm->_pixelformat);
-	surface.clear(_wm->_colorWhite);
+	surface.create(w, h, _vm->_wm->_pixelformat);
+	surface.clear(_vm->_wm->_colorWhite);
 
 	Graphics::MacFont origFont(Graphics::kMacFontNewYork, 18);
 
-	const Graphics::MacFONTFont *font1 = (const Graphics::MacFONTFont *)_wm->_fontMan->getFont(origFont);
+	const Graphics::MacFONTFont *font1 = (const Graphics::MacFONTFont *)_vm->_wm->_fontMan->getFont(origFont);
 
 	Graphics::MacFONTFont::testBlit(font1, &surface, 0xff, x, y + 200, 500);
 
@@ -97,6 +97,8 @@ void Window::testFontScaling() {
 				for (y = y1; y < y1 + 6; y++)
 					if (_wm->_pixelformat.bytesPerPixel == 1)
 						*((byte *)surface.getBasePtr(x, y)) = _vm->transformColor(i * 16 + j);
+					else if (_wm->_pixelformat.bytesPerPixel == 2)
+						*((uint16 *)surface.getBasePtr(x, y)) = _vm->transformColor(i * 16 + j);
 					else
 						*((uint32 *)surface.getBasePtr(x, y)) = _vm->transformColor(i * 16 + j);
 		}
@@ -193,7 +195,7 @@ Common::HashMap<Common::String, Movie *> *Window::scanMovies(const Common::Path 
 			}
 
 			warning("name: %s", i->getName().c_str());
-			Archive *arc = _vm->openArchive(i->getPathInArchive());
+			Common::SharedPtr<Archive> arc = _vm->openArchive(i->getPathInArchive());
 			Movie *m = new Movie(this);
 			m->setArchive(arc);
 			nameMap->setVal(m->getMacName(), m);
@@ -214,7 +216,7 @@ void Window::enqueueAllMovies() {
 	}
 
 	for (Common::FSList::const_iterator file = files.begin(); file != files.end(); ++file)
-		_movieQueue.push_back((*file).getName());
+		_movieQueue.push_back(file->getName());
 
 	Common::sort(_movieQueue.begin(), _movieQueue.end());
 
@@ -324,7 +326,7 @@ void Window::runTests() {
 
 	initGraphics(640, 480);
 
-	Archive *mainArchive = new RIFXArchive();
+	Common::SharedPtr<Archive> mainArchive(new RIFXArchive());
 	g_director->setMainArchive(mainArchive);
 	g_director->_allSeenResFiles.setVal("test.dir", mainArchive);
 	if (!mainArchive->openStream(stream, 0)) {

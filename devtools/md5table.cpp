@@ -84,6 +84,7 @@ static const StringMap platformMap[] = {
 	{ "Mac",		"kPlatformMacintosh" },
 	{ "NES",		"kPlatformNES" },
 	{ "PC-Engine",		"kPlatformPCEngine" },
+	{ "PSX",		"kPlatformPSX" },
 	{ "SEGA",		"kPlatformSegaCD" },
 	{ "Windows",		"kPlatformWindows" },
 	{ "Wii",		"kPlatformWii" },
@@ -116,6 +117,7 @@ static const StringMap langMap[] = {
 	{ "nl",		"NL_NLD" },
 	{ "nb",		"NB_NOR" },
 	{ "pl",		"PL_POL" },
+	{ "ca",		"CA_ESP" },
 
 	{ "All",	"UNK_LANG" },
 	{ "All?",	"UNK_LANG" },

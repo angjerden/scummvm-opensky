@@ -46,6 +46,7 @@ class Cast;
 class ScriptContext;
 class DirectorEngine;
 class Frame;
+class Window;
 class LingoCompiler;
 struct Breakpoint;
 
@@ -154,6 +155,7 @@ struct Datum {	/* interpreter stack type */
 	Datum(double val);
 	Datum(const Common::String &val);
 	Datum(AbstractObject *val);
+	Datum(CastMember *val);
 	Datum(const CastMemberID &val);
 	Datum(const Common::Point &point);
 	Datum(const Common::Rect &rect);
@@ -176,6 +178,7 @@ struct Datum {	/* interpreter stack type */
 	bool isCastRef() const;
 	bool isArray() const;
 	bool isNumeric() const;
+	bool isVoid() const { return type == VOID; }
 
 	const char *type2str(bool ilk = false) const;
 
@@ -241,6 +244,7 @@ typedef void (*XLibOpenerFunc)(ObjectType, const Common::Path &);
 typedef void (*XLibCloserFunc)(ObjectType);
 typedef Common::HashMap<Common::String, XLibOpenerFunc, Common::IgnoreCase_Hash, Common::IgnoreCase_EqualTo> XLibOpenerFuncHash;
 typedef Common::HashMap<Common::String, XLibCloserFunc, Common::IgnoreCase_Hash, Common::IgnoreCase_EqualTo> XLibCloserFuncHash;
+typedef Common::HashMap<Common::String, int, Common::IgnoreCase_Hash, Common::IgnoreCase_EqualTo> XLibTypeHash;
 typedef Common::HashMap<Common::String, ObjectType, Common::IgnoreCase_Hash, Common::IgnoreCase_EqualTo> OpenXLibsHash;
 typedef Common::HashMap<Common::String, AbstractObject *, Common::IgnoreCase_Hash, Common::IgnoreCase_EqualTo> OpenXLibsStateHash;
 
@@ -259,6 +263,7 @@ struct CFrame {	/* proc/func call stack frame */
 	Datum			defaultRetVal;		/* default return value */
 	int				paramCount;			/* original number of arguments submitted */
 	Common::Array<Datum> paramList;		/* original argument list */
+	Window			*retWindow = nullptr;	/* window to restore on return */
 };
 
 struct LingoEvent {
@@ -270,8 +275,10 @@ struct LingoEvent {
 	uint16 channelId;
 	CastMemberID scriptId;
 	Common::Point mousePos;
+	int behaviorIndex;
+	AbstractObject *scriptInstance;
 
-	LingoEvent (LEvent e, int ei, ScriptType st, bool pass, CastMemberID si = CastMemberID(), Common::Point mp = Common::Point(-1, -1)) {
+	LingoEvent(LEvent e, int ei, ScriptType st, bool pass, CastMemberID si = CastMemberID(), Common::Point mp = Common::Point(-1, -1), int bi = -1) {
 		event = e;
 		eventId = ei;
 		eventHandlerSourceType = kNoneHandler;
@@ -280,17 +287,27 @@ struct LingoEvent {
 		channelId = 0;
 		scriptId = si;
 		mousePos = mp;
+		behaviorIndex = bi;
+		scriptInstance = nullptr;
+
+		debugC(7, kDebugEvents, "LingoEvent: event=%s, eventId=%d, scriptType=%d, passByDefault=%d, scriptId=(%d,%d), mousePos=(%d,%d), behaviorIndex=%d",
+			leventType2str(event), eventId, scriptType, passByDefault, scriptId.member, scriptId.castLib, mousePos.x, mousePos.y, behaviorIndex);
 	}
 
-	LingoEvent (LEvent e, int ei, EventHandlerSourceType ehst, bool pass, Common::Point mp = Common::Point(-1, -1)) {
+	LingoEvent(LEvent e, int ei, EventHandlerSourceType ehst, bool pass, Common::Point mp = Common::Point(-1, -1), uint16 ci = 0, int bi = -1) {
 		event = e;
 		eventId = ei;
 		eventHandlerSourceType = ehst;
 		scriptType = kNoneScript;
 		passByDefault = pass;
-		channelId = 0;
+		channelId = ci;
 		scriptId = CastMemberID();
 		mousePos = mp;
+		behaviorIndex = bi;
+		scriptInstance = nullptr;
+
+		debugC(7, kDebugEvents, "LingoEvent: event=%s, eventId=%d, eventHandlerSourceType=%s, passByDefault=%d, channelId=%d, mousePos=(%d,%d), behaviorIndex=%d",
+			leventType2str(event), eventId, eventHandlerSourceType2str(eventHandlerSourceType), passByDefault, channelId, mousePos.x, mousePos.y, behaviorIndex);
 	}
 };
 
@@ -336,6 +353,7 @@ struct LingoState {
 	DatumHash *localVars = nullptr;			// current local variables
 	Datum me;								// current me object
 	StackData stack;
+	int currentChannelId = 0;
 
 	~LingoState();
 };
@@ -398,7 +416,7 @@ public:
 	// lingo-events.cpp
 private:
 	void initEventHandlerTypes();
-	bool processEvent(LEvent event, ScriptType st, CastMemberID scriptId, int channelId = -1);
+	bool processEvent(LEvent event, ScriptType st, CastMemberID scriptId, int channelId = -1, AbstractObject *obj = nullptr);
 
 public:
 	ScriptType event2script(LEvent ev);
@@ -411,6 +429,7 @@ public:
 	void switchStateFromWindow();
 	void freezeState();
 	void freezePlayState();
+	void requeuePlayState();
 	void pushContext(const Symbol funcSym, bool allowRetVal, Datum defaultRetVal, int paramCount, int nargs);
 	void popContext(bool aborting = false);
 	void cleanLocalVars();
@@ -477,6 +496,7 @@ public:
 	int _traceLoad; // internal Director verbosity level
 	bool _updateMovieEnabled;
 	bool _romanLingo;
+	Common::String _soundDevice;
 
 	Datum getTheEntity(int entity, Datum &id, int field);
 	void setTheEntity(int entity, Datum &id, int field, Datum &d);
@@ -504,8 +524,6 @@ public:
 	LingoCompiler *_compiler;
 	LingoState *_state;
 
-	int _currentChannelId;
-
 	bool _freezeState;
 	bool _freezePlay;
 	bool _playDone;
@@ -525,10 +543,13 @@ public:
 	SymbolHash _methods;
 	XLibOpenerFuncHash _xlibOpeners;
 	XLibCloserFuncHash _xlibClosers;
+	XLibTypeHash _xlibTypes;
 
 	OpenXLibsHash _openXLibs;
 	OpenXLibsStateHash _openXLibsState;
 	Common::StringArray _openXtras;
+	Common::Array<Datum> _openXtraObjects;
+	OpenXLibsStateHash _openXtrasState;
 
 	Common::String _floatPrecisionFormat;
 
@@ -571,7 +592,7 @@ public:
 
 public:
 	void executeImmediateScripts(Frame *frame);
-	void executePerFrameHook(int frame, int subframe);
+	void executePerFrameHook(int frame, int subframe, bool stepFrame = true);
 
 	// lingo-utils.cpp
 private:

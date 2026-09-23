@@ -295,6 +295,9 @@ Common::KeyState ScummEngine::showBannerAndPause(int bannerId, int32 waitTime, c
 	// will stay on screen until an input has been received or until the time-out.
 	Common::KeyState ks = Common::KEYCODE_INVALID;
 	bool leftBtnPressed = false, rightBtnPressed = false;
+#ifdef USE_TTS
+	sayText(bannerMsg);
+#endif
 	if (waitTime) {
 		waitForBannerInput(waitTime, ks, leftBtnPressed, rightBtnPressed);
 		clearBanner();
@@ -326,6 +329,32 @@ Common::KeyState ScummEngine::showBannerAndPause(int bannerId, int32 waitTime, c
 		_screenTop = oldScreenTop;
 
 	return ks;
+}
+
+bool ScummEngine::showBannerAndPauseForTextInput(int bannerId, const char *prompt, Common::String &input, uint maxLength) {
+	const Common::String promptString(prompt);
+
+	input.clear();
+
+	while (true) {
+		const Common::String bannerText = promptString + input;
+		Common::KeyState ks = showBannerAndPause(bannerId, -1, "%s", bannerText.c_str());
+
+		if (ks.keycode == Common::KEYCODE_ESCAPE)
+			return false;
+
+		if (ks.keycode == Common::KEYCODE_RETURN)
+			return !input.empty();
+
+		if (ks.keycode == Common::KEYCODE_BACKSPACE || ks.keycode == Common::KEYCODE_DELETE) {
+			if (!input.empty())
+				input.deleteLastChar();
+			continue;
+		}
+
+		if (ks.ascii >= 32 && ks.ascii < 127 && input.size() < maxLength)
+			input += (char)ks.ascii;
+	}
 }
 
 Common::KeyState ScummEngine::printMessageAndPause(const char *msg, int color, int32 waitTime, bool drawOnSentenceLine) {
@@ -534,6 +563,10 @@ Common::KeyState ScummEngine::showOldStyleBannerAndPause(const char *msg, int co
 		updateDirtyScreen(kBannerVirtScreen);
 	}
 
+#ifdef USE_TTS
+	sayText(bannerMsg);
+#endif
+
 	// Wait until the engine receives a new Keyboard or Mouse input,
 	// unless we have specified a positive waitTime: in that case, the banner
 	// will stay on screen until an input has been received or until the time-out.
@@ -549,6 +582,7 @@ Common::KeyState ScummEngine::showOldStyleBannerAndPause(const char *msg, int co
 			_virtscr[kBannerVirtScreen].setDirtyRange(0, _virtscr[kBannerVirtScreen].h);
 			updateDirtyScreen(kBannerVirtScreen);
 			_virtscr[kMainVirtScreen].setDirtyRange(startingPointY - _virtscr[kMainVirtScreen].topline, startingPointY - _virtscr[kMainVirtScreen].topline + _virtscr[kBannerVirtScreen].h);
+			updateDirtyScreen(kMainVirtScreen);
 		}
 	}
 
@@ -1325,7 +1359,7 @@ void ScummEngine_v7::toggleVoiceMode() {
 void ScummEngine_v7::handleLoadDuringSmush() {
 	// Notify the SMUSH player that we want to load a game...
 	_saveLoadFlag = 2;
-	_saveLoadSlot = _mainMenuSavegameLabel - 1 + _curDisplayedSaveSlotPage * 9;
+	_saveLoadSlot = _mainMenuSavegameLabel + _curDisplayedSaveSlotPage * 9;
 
 	// Force screen to black to avoid glitches...
 	VirtScreen *vs = &_virtscr[kMainVirtScreen];
@@ -1952,9 +1986,15 @@ void ScummEngine::drawDraftsInventory() {
 			// Draw the titles of the drafts...
 			if (draft & 0x2000) {
 				drawGUIText(names[i + 1], nullptr, xPos - textOffset, yConstant - 40 + textHeight * heightMultiplier, titleColor, false);
+#ifdef USE_TTS
+				sayText(names[i + 1]);
+#endif
 			} else {
 				// Draw "Unknown:" as the title of the draft
 				drawGUIText(names[17], nullptr, xPos - textOffset, yConstant - 40 + textHeight * heightMultiplier, titleColor, false);
+#ifdef USE_TTS
+				sayText(names[17]);
+#endif
 			}
 
 			notesWidth = getGUIStringWidth(notesBuf);
@@ -1978,6 +2018,9 @@ void ScummEngine::drawDraftsInventory() {
 			// Draw the notes of the draft... notice how we are subtracting
 			// notesWidth: we are forcing the text aligning on the left.
 			drawGUIText(notesBuf, nullptr, xPos - notesWidth + 127 + textOffset, yConstant - 40 + textHeight * heightMultiplier, notesColor, false);
+#ifdef USE_TTS
+			sayText(notesBuf);
+#endif
 		} else {
 			// Hebrew language, let's swap the layout!
 
@@ -1994,6 +2037,9 @@ void ScummEngine::drawDraftsInventory() {
 			// Draw the notes of the drafts...
 			drawGUIText(notesBuf, nullptr, xPos - textOffset, yConstant - 40 + textHeight * heightMultiplier, notesColor, false);
 			namesWidth = getGUIStringWidth(names[i + 1]);
+#ifdef USE_TTS
+			sayText(notesBuf);
+#endif
 
 			// Text position adjustments for the titles...
 			// (Objective: Leave three pixels to the right)
@@ -2007,10 +2053,16 @@ void ScummEngine::drawDraftsInventory() {
 			if (draft & 0x2000) {
 				namesWidth = getGUIStringWidth(names[i + 1]);
 				drawGUIText(names[i + 1], nullptr, xPos - namesWidth + 127 + textOffset, yConstant - 40 + textHeight * heightMultiplier, titleColor, false);
+#ifdef USE_TTS
+				sayText(names[i + 1]);
+#endif
 			} else {
 				// Draw "Unknown:" as the title of the draft
 				namesWidth = getGUIStringWidth(names[17]);
 				drawGUIText(names[17], nullptr, xPos - namesWidth + 127 + textOffset, yConstant - 40 + textHeight * heightMultiplier, titleColor, false);
+#ifdef USE_TTS
+				sayText(names[17]);
+#endif
 			}
 		}
 	}
@@ -2182,6 +2234,10 @@ void ScummEngine::queryRestart() {
 			case GID_LOOM:
 				fadeOutType = _game.version == 4 ? 134 : -1;
 				break;
+			case GID_MONKEY_EGA:
+			case GID_MONKEY_VGA:
+				fadeOutType = 128;
+				break;
 			case GID_MONKEY:
 			case GID_MONKEY2:
 			case GID_INDY4:
@@ -2192,9 +2248,6 @@ void ScummEngine::queryRestart() {
 			case GID_FT:
 			case GID_DIG:
 				fadeOutType = -1;
-				break;
-			case GID_MONKEY_EGA:
-				fadeOutType = 128;
 				break;
 			default:
 				fadeOutType = 129;
@@ -2900,6 +2953,13 @@ bool ScummEngine::executeMainMenuOperation(int op, int mouseX, int mouseY, bool 
 				formattedString = Common::String::format(saveScreenTitle, _savegameNames[_mainMenuSavegameLabel - 1].substr(labelSkip).c_str());
 
 				if (_savegameNames[_mainMenuSavegameLabel - 1].size() == labelSkip) {
+					if (_game.version == 4 && _game.id != GID_LOOM) {
+						convertMessageToString((const byte *)getGUIString(gsGameNotLoaded), (byte *)saveScreenTitle, sizeof(saveScreenTitle));
+						drawMainMenuTitle(saveScreenTitle);		
+						ScummEngine::drawDirtyScreenParts();
+						_system->updateScreen();
+						waitForTimer(300);
+					}
 					drawMainMenuControls();
 					ScummEngine::drawDirtyScreenParts();
 					break;
@@ -4250,10 +4310,13 @@ void ScummEngine::drawMainMenuControls() {
 
 		// Savegame names
 		for (int i = GUI_CTRL_FIRST_SG; i <= GUI_CTRL_LAST_SG; i++) {
-			if ((_game.version == 4 && _game.id != GID_LOOM) && _mainMenuSavegameLabel == 0 && i == 1)
+			if ((_game.version == 4 && _game.id != GID_LOOM) && _mainMenuSavegameLabel == 0 && i == 1) {
 				drawInternalGUIControl(i, 1);
-			else
+				if (_menuPage == GUI_PAGE_LOAD)
+					_mainMenuSavegameLabel = 1;
+			} else {
 				drawInternalGUIControl(i, 0);
+			}
 		}
 
 		if (_game.version > 4 || (_game.version == 4 && _game.id == GID_LOOM)) {
@@ -4427,28 +4490,54 @@ void ScummEngine::updateMainMenuControls() {
 		if (_game.id == GID_FT) {
 			convertMessageToString((const byte *)getGUIString(gsSpooledMusic), (byte *)msg, sizeof(msg));
 			drawGUIText(msg, nullptr, 29, yCntr - calculatedHeight - yOffset + 19, textColor, false);
+#ifdef USE_TTS
+			_internalGUIControls[GUI_CTRL_SPOOLED_MUSIC_CHECKBOX].alternateTTSLabel = (const char *)msg;
+			_internalGUIControls[GUI_CTRL_SPOOLED_MUSIC_CHECKBOX].alternateTTSLabel += ": " + _internalGUIControls[GUI_CTRL_SPOOLED_MUSIC_CHECKBOX].label;
+#endif
 
 			convertMessageToString((const byte *)getGUIString(gsMusic), (byte *)msg, sizeof(msg));
 			drawGUIText(msg, nullptr, 29, yCntr - calculatedHeight - yOffset + 33, textColor, false);
+#ifdef USE_TTS
+			_internalGUIControls[GUI_CTRL_MUSIC_SLIDER].alternateTTSLabel = (const char *)msg;
+#endif
 
 			convertMessageToString((const byte *)getGUIString(gsVoice), (byte *)msg, sizeof(msg));
 			drawGUIText(msg, nullptr, 29, yCntr - calculatedHeight - yOffset + 47, textColor, false);
+#ifdef USE_TTS
+			_internalGUIControls[GUI_CTRL_SFX_SLIDER].alternateTTSLabel = (const char *)msg;
+#endif
 		} else {
 			convertMessageToString((const byte *)getGUIString(gsMusic), (byte *)msg, sizeof(msg));
 			drawGUIText(msg, nullptr, 29, yCntr - calculatedHeight - yOffset + 25, textColor, false);
+#ifdef USE_TTS
+			_internalGUIControls[GUI_CTRL_MUSIC_SLIDER].alternateTTSLabel = (const char *)msg;
+#endif
 
 			convertMessageToString((const byte *)getGUIString(gsVoice), (byte *)msg, sizeof(msg));
 			drawGUIText(msg, nullptr, 29, yCntr - calculatedHeight - yOffset + 43, textColor, false);
+#ifdef USE_TTS
+			_internalGUIControls[GUI_CTRL_SPEECH_SLIDER].alternateTTSLabel = (const char *)msg;
+#endif
 		}
 
 		convertMessageToString((const byte *)getGUIString(gsSfx), (byte *)msg, sizeof(msg));
 		drawGUIText(msg, nullptr, 29, yCntr - calculatedHeight - yOffset + 61, textColor, false);
+#ifdef USE_TTS
+		_internalGUIControls[GUI_CTRL_SFX_SLIDER].alternateTTSLabel = (const char *)msg;
+#endif
 
 		convertMessageToString((const byte *)getGUIString(gsDisplayText), (byte *)msg, sizeof(msg));
 		drawGUIText(msg, nullptr, 29, yCntr - calculatedHeight - yOffset + 88, textColor, false);
+#ifdef USE_TTS
+		_internalGUIControls[GUI_CTRL_DISPLAY_TEXT_CHECKBOX].alternateTTSLabel = (const char *)msg;
+		_internalGUIControls[GUI_CTRL_DISPLAY_TEXT_CHECKBOX].alternateTTSLabel += ": " + _internalGUIControls[GUI_CTRL_DISPLAY_TEXT_CHECKBOX].label;
+#endif
 
 		convertMessageToString((const byte *)getGUIString(gsTextSpeed), (byte *)msg, sizeof(msg));
 		drawGUIText(msg, nullptr, 29, yCntr - calculatedHeight - yOffset + 102, textColor, false);
+#ifdef USE_TTS
+		_internalGUIControls[GUI_CTRL_TEXT_SPEED_SLIDER].alternateTTSLabel = (const char *)msg;
+#endif
 
 		drawLine(23, yCntr - calculatedHeight - yOffset + 77, 204, yCntr - calculatedHeight - yOffset + 77, getBannerColor(17));
 		drawLine(23, yCntr - calculatedHeight - yOffset + 78, 204, yCntr - calculatedHeight - yOffset + 78, getBannerColor(4));
@@ -4462,18 +4551,34 @@ void ScummEngine::updateMainMenuControls() {
 	} else {
 		convertMessageToString((const byte *)getGUIString(gsMusic), (byte *)msg, sizeof(msg));
 		drawGUIText(msg, nullptr, 33, yConstantV6 - 36, textColor, false);
+#ifdef USE_TTS
+		_internalGUIControls[GUI_CTRL_MUSIC_SLIDER].alternateTTSLabel = (const char *)msg;
+#endif
 
 		convertMessageToString((const byte *)getGUIString(gsVoice), (byte *)msg, sizeof(msg));
 		drawGUIText(msg, nullptr, 33, yConstantV6 - 22, textColor, false);
+#ifdef USE_TTS
+		_internalGUIControls[GUI_CTRL_SPEECH_SLIDER].alternateTTSLabel = (const char *)msg;
+#endif
 
 		convertMessageToString((const byte *)getGUIString(gsSfx), (byte *)msg, sizeof(msg));
 		drawGUIText(msg, nullptr, 33, yConstantV6 - 8, textColor, false);
+#ifdef USE_TTS
+		_internalGUIControls[GUI_CTRL_SFX_SLIDER].alternateTTSLabel = (const char *)msg;
+#endif
 
 		convertMessageToString((const byte *)getGUIString(gsDisplayText), (byte *)msg, sizeof(msg));
 		drawGUIText(msg, nullptr, 33, yConstantV6 + 19, textColor, false);
+#ifdef USE_TTS
+		_internalGUIControls[GUI_CTRL_DISPLAY_TEXT_CHECKBOX].alternateTTSLabel = (const char *)msg;
+		_internalGUIControls[GUI_CTRL_DISPLAY_TEXT_CHECKBOX].alternateTTSLabel += ": " + _internalGUIControls[GUI_CTRL_DISPLAY_TEXT_CHECKBOX].label;
+#endif
 
 		convertMessageToString((const byte *)getGUIString(gsTextSpeed), (byte *)msg, sizeof(msg));
 		drawGUIText(msg, nullptr, 33, yConstantV6 + 34, textColor, false);
+#ifdef USE_TTS
+		_internalGUIControls[GUI_CTRL_TEXT_SPEED_SLIDER].alternateTTSLabel = (const char *)msg;
+#endif
 
 		drawLine(27, yConstantV6 + 8,  201, yConstantV6 + 8,  getBannerColor(17));
 		drawLine(27, yConstantV6 + 9,  201, yConstantV6 + 9,  getBannerColor(4));
@@ -4503,6 +4608,9 @@ void ScummEngine::updateMainMenuControlsSegaCD() {
 
 		convertMessageToString((const byte *)getGUIString(gsTextSpeed), (byte *)msg, sizeof(msg));
 		drawGUIText(msg, nullptr, isJap ? 118 : 167, yConstant, getBannerColor(2), false);
+#ifdef USE_TTS
+		_internalGUIControls[GUI_CTRL_TEXT_SPEED_SLIDER].alternateTTSLabel = (const char *)msg;
+#endif
 
 		convertMessageToString((const byte *)getGUIString(gsSlowFast), (byte *)msg, sizeof(msg));
 		drawGUIText(msg, nullptr, isJap ? 151 : 158, yConstant + 37, getBannerColor(2), false);
@@ -4586,6 +4694,9 @@ void ScummEngine::drawMainMenuTitle(const char *title) {
 		drawGUIText(title, nullptr, 160, yConstantV6 - 56, stringColor, true);
 	}
 
+#ifdef USE_TTS
+	sayText(title, Common::TextToSpeechManager::INTERRUPT);
+#endif
 	ScummEngine::drawDirtyScreenParts();
 	_system->updateScreen();
 }

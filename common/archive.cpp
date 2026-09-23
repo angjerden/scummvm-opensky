@@ -123,13 +123,38 @@ SeekableReadStream *Archive::createReadStreamForMemberAltStream(const Path &path
 	return nullptr;
 }
 
+static Common::Error dumpStream(Common::SeekableReadStream *stream, const Common::Path &destPath, const Common::Path &filePath, Common::String ext) {
+	uint32 len = stream->size();
+	byte *data = (byte *)malloc(stream->size());
+
+	stream->read(data, len);
+
+	Common::DumpFile out;
+	Common::Path outPath = destPath.join(filePath).append(ext);
+
+	if (!out.open(outPath, true)) {
+		return Common::Error(Common::kCreatingFileFailed, "Cannot open/create dump file " + outPath.toString(Common::Path::kNativeSeparator));
+	} else {
+		uint32 writtenBytes = out.write(data, len);
+		if (writtenBytes < len) {
+			// Not all data was written
+			out.close();
+			delete stream;
+			free(data);
+			return Common::Error(Common::kWritingFailed, "Not enough storage space! Please free up some storage and try again");
+		}
+		out.flush();
+		out.close();
+	}
+	free(data);
+
+	return Common::kNoError;
+}
+
 Common::Error Archive::dumpArchive(const Path &destPath) {
 	Common::ArchiveMemberList files;
 
 	listMembers(files);
-
-	byte *data = nullptr;
-	uint dataSize = 0;
 
 	for (auto &f : files) {
 		Common::Path filePath = f->getPathInArchive().punycodeEncode();
@@ -140,36 +165,35 @@ Common::Error Archive::dumpArchive(const Path &destPath) {
 
 		Common::SeekableReadStream *stream = f->createReadStream();
 
-		uint32 len = stream->size();
-		if (dataSize < len) {
-			free(data);
-			data = (byte *)malloc(stream->size());
-			dataSize = stream->size();
+		if (stream) {
+			Common::Error err = dumpStream(stream, destPath, filePath, "");
+			delete stream;
+
+			if (err.getCode() != Common::kNoError)
+				return err;
 		}
 
-		stream->read(data, len);
+		stream = f->createReadStreamForAltStream(Common::AltStreamType::MacFinderInfo);
 
-		Common::DumpFile out;
-		Common::Path outPath = destPath.join(filePath);
-		if (!out.open(outPath, true)) {
-			return Common::Error(Common::kCreatingFileFailed, "Cannot open/create dump file " + outPath.toString(Common::Path::kNativeSeparator));
-		} else {
-			uint32 writtenBytes = out.write(data, len);
-			if (writtenBytes < len) {
-				// Not all data was written
-				out.close();
-				delete stream;
-				free(data);
-				return Common::Error(Common::kWritingFailed, "Not enough storage space! Please free up some storage and try again");
-			}
-			out.flush();
-			out.close();
+		if (stream) {
+			Common::Error err = dumpStream(stream, destPath, filePath, ".finfo");
+			delete stream;
+
+			if (err.getCode() != Common::kNoError)
+				return err;
 		}
 
-		delete stream;
+		stream = f->createReadStreamForAltStream(Common::AltStreamType::MacResourceFork);
+
+		if (stream) {
+			Common::Error err = dumpStream(stream, destPath, filePath, ".rsrc");
+			delete stream;
+
+			if (err.getCode() != Common::kNoError)
+				return err;
+		}
 	}
 
-	free(data);
 	return Common::kNoError;
 }
 
@@ -341,7 +365,7 @@ void SearchSet::insert(const Node &node) {
 }
 
 void SearchSet::add(const String &name, Archive *archive, int priority, bool autoFree) {
-	if (find(name) == _list.end()) {
+	if (_ignoreClashes || (find(name) == _list.end())) {
 		Node node(priority, name, archive, autoFree);
 		insert(node);
 	} else {
@@ -358,8 +382,14 @@ void SearchSet::addDirectory(const String &name, const Path &directory, int prio
 }
 
 void SearchSet::addDirectory(const String &name, const FSNode &dir, int priority, int depth, bool flat) {
-	if (!dir.exists() || !dir.isDirectory())
+	if (!dir.exists()) {
+		warning("SearchSet::addDirectory: %s does not exist.", name.c_str());
 		return;
+	}
+	if (!dir.isDirectory()) {
+		warning("SearchSet::addDirectory: %s is not a directory.", name.c_str());
+		return;
+	}
 
 	add(name, new FSDirectory(dir, depth, flat, _ignoreClashes), priority);
 }
@@ -626,13 +656,6 @@ void SearchManager::clear() {
 	// so that archives added by client code are searched first.
 	if (g_system)
 		g_system->addSysArchivesToSearchSet(*this, -1);
-
-#ifndef __ANDROID__
-	// Add the current dir as a very last resort.
-	// See also bug #3984.
-	// But don't do this for Android platform, since it may lead to crashes
-	addDirectory(".", ".", -2);
-#endif
 }
 
 DECLARE_SINGLETON(SearchManager);

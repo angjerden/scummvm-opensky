@@ -13,6 +13,9 @@ endif
 ifdef ENABLE_DARKSEED
 DIST_FILES_LIST += dists/engine-data/darkseed.dat
 endif
+ifdef ENABLE_EEM
+DIST_FILES_LIST += dists/engine-data/eem.dat
+endif
 ifdef ENABLE_DRASCULA
 DIST_FILES_LIST += dists/engine-data/drascula.dat
 endif
@@ -46,6 +49,9 @@ DIST_FILES_LIST += dists/engine-data/neverhood.dat
 endif
 ifdef ENABLE_PRINCE
 DIST_FILES_LIST += dists/engine-data/prince_translation.dat
+endif
+ifdef ENABLE_MACS2
+DIST_FILES_LIST += dists/engine-data/macs2_translation.dat
 endif
 ifdef ENABLE_QUEEN
 DIST_FILES_LIST += dists/engine-data/queen.tbl
@@ -83,6 +89,9 @@ DIST_FILES_LIST += dists/engine-data/freescape.dat
 endif
 ifdef USE_FREETYPE2
 DIST_FILES_LIST += dists/engine-data/fonts.dat
+endif
+ifdef USE_IMGUI
+DIST_FILES_LIST += dists/engine-data/fonts-imgui.dat
 endif
 ifdef ENABLE_GRIM
 DIST_FILES_LIST += dists/engine-data/grim-patch.lab

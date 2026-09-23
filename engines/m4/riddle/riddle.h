@@ -47,7 +47,6 @@ private:
 	Rooms::Section7 _section7;
 	Rooms::Section8 _section8;
 	Rooms::Section9 _section9;
-	GUI::MessageLog _messageLog;
 	int _ripAction = 0;
 	int _savedFacing = 0;
 
@@ -65,7 +64,9 @@ private:
 	void splitItems(const char *item1, const char *item2);
 
 	void showMessageLog(int trigger);
+	void hide_message_log_dialog();
 	void lookAtInventoryItem();
+	bool canLoadGameStateCurrently(Common::U32String *msg) override;
 
 protected:
 	/**
@@ -81,6 +82,8 @@ protected:
 public:
 	RiddleEngine(OSystem *syst, const M4GameDescription *gameDesc);
 	~RiddleEngine() override {}
+
+	void initializePath(const Common::FSNode &gamePath) override;
 
 	/**
 	 * Show the engine information

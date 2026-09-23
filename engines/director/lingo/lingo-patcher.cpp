@@ -170,6 +170,9 @@ struct ScriptPatch {
 			191, "set the castnum of sprite 19 to the number of cast \"Description\"", "updateStage"},
 	{"jman", "", kPlatformWindows, "MMM:Shared Cast B&W", kMovieScript, 323, DEFAULT_CAST_LIB,
 			192, "updateStage", "set the trails of sprite 19 to 0"},
+	// FIXME: the Lingo parser treats ".5" as "5"
+	{"jman", "v1.2", kPlatformMacintosh, "Support Files:Mars ESG 07", kMovieScript, 129, DEFAULT_CAST_LIB,
+			169, "LoopIt .5", ""},
 
 
 	{"snh", "Hybrid release", kPlatformWindows, "SNHstart", kMovieScript, 0, DEFAULT_CAST_LIB,
@@ -321,6 +324,29 @@ end \r\
 ";
 
 /*
+ * The Virtual Nightclub codebase is a large mass of spaghetti.
+ * All VNC/VNC.EXE is meant to do is play the Thumb Candy logo,
+ * then kick over to VNC2/_VNC.DXR which boots the game.
+ *
+ * However, VNC/VNC.EXE contains an internal copy of the SHARED.DXR similar
+ * to the main game in VNC2/SHARED.DXR. The game handles pretty much
+ * everything with an event loop in "idle", which (amongst other things)
+ * assumes if certain stuff hasn't been initialised, the game has been
+ * restarted and it should try and init -some- things (but not call init(),
+ * which inits everything).
+ *
+ * This doesn't really work, as several of the subsystems don't have checks for
+ * e.g. "mmxobj", a global object used for controlling the custom movie player.
+ * As such, running the game in strict mode will crash on startup.
+ * Instead of divining the exact order of operations which narrowly avoids a crash,
+ * we can say "idle" isn't needed for the intro and nop it out.
+ */
+const char *const vncFixIntro = " \
+on idle \r\
+end \r\
+";
+
+/*
  * Virtual Nightclub will try and list all the files from all 26 drive letters
  * to determine which has the CD. This works, but takes forever.
  */
@@ -443,6 +469,104 @@ on exitFrame\r\
   go(1, \"C:\\PG_WORLD\\A_IN01\")\r\
 ";
 
+/*
+ * Mission Code: Millennium has some drive detection code which prevents the game from loading
+ * if it detects DESTINA.MLD is present "on the hard disk". Provide the same code without that check.
+ */
+const char *const mcmillenniumDriveDetectionFix = "\
+on initPaths\r\
+  global PD, theCDPath, theHDPath, theVCAudioPath, theNotePath, proxPath\r\
+  if the machineType = 256 then\r\
+    set PD to \"\\\"\r\
+  else\r\
+    set PD to \":\"\r\
+  end if\r\
+  if the machineType = 256 then\r\
+    set theCDPath to getAt(the searchPaths, 2)\r\
+  else\r\
+    if checkFileExists(the pathName & \"DESTINA.MLD\") = 1 then\r\
+      set theCDPath to the pathName\r\
+    else\
+      set theCDPath to \"Millennium:\"\r\
+    end if\r\
+  end if\r\
+  set theHDPath to the pathName\r\
+  set theVCAudioPath to theCDPath & \"AUDIO\" & PD & \"VIDCOM\" & PD\r\
+  set theNotePath to the pathName\r\
+  set proxPath to theCDPath & \"prox\" & PD\r\
+end\r\
+";
+
+/*
+ * Mission Code: Millennium has a bizarre method of checking the dimensions of the screen by
+ * measuring the stage position of a 512x384 movie and seeing if it matches 640x480.
+ * Even when forcing desktop mode this doesn't match up exactly, so patch it out.
+ */
+const char *const mcmillenniumResDetectionFix = "\
+on getRes\r\
+end\r\
+";
+
+/*
+ * GORD@K has a complicated CD detection method which includes writing a temp file to the CD
+ * drive. Since this always works, we have to stub out the entire method.
+ */
+const char *const gordakDetectionFix = "\
+on checkFiles\r\
+   go to movie \"gordak\\intro.dxr\"\r\
+end\r\
+";
+
+/*
+ * Math Heads checks if the program is running from the "HDFiles" folder, infers
+ * that to be on the CD, then bails. This method sets up the path for the game, so we need to
+ * remove the check/abort.
+ */
+const char *const getaheadmathDiskFix = "\
+on readHDPath me\r\
+  set channelsFolder to the pathName\r\
+  setPath(me, #Channels, channelsFolder)\r\
+  set HDPath to channelsFolder\r\
+  set theOldDelim to the itemDelimiter\r\
+  set the itemDelimiter to gColon\r\
+  set lastColon to the number of items in HDPath\r\
+  delete item (lastColon - 1) of HDPath\r\
+  if macOS() then\r\
+    set hardDiskVolume to item 1 of HDPath\r\
+  else\r\
+    set hardDiskVolume to char 1 of HDPath & \":\\\"\r\
+  end if\r\
+  set lastItem to the number of items in HDPath\r\
+  set folderName to item (lastItem - 1) of HDPath\r\
+  set the itemDelimiter to theOldDelim\r\
+  setPath(me, #HD, HDPath)\r\
+end\r\
+";
+
+/*
+ * Journeyman Project has inventory scroll buttons which repeat while the mouse button
+ * is held down. On fast systems (i.e. us) this is quite unpleasant to use.
+ */
+const char *const jmanInventory = "\
+macro InventoryArrowsClicked\r\
+  if the castnum of sprite 9 = the number of cast \"MsgBoxGraphic\" then\r\
+    CloseMessageBox\r\
+  end if\r\
+  ScrollIt\r\
+  set the castnum of sprite 13 to the number of cast \"InventoryArrows\"\r\
+  updateStage\r\
+";
+
+/*
+ * Noir: A Shadowy Thriller checks a file to determine if CD 1 or 2 is inserted.
+ * We assume all the files are in the same path.
+ */
+const char *const noirCDCheck = "\
+on hCorrectCD lNeedCD 	\r\
+   return 1 \r\
+end \r\
+";
+
 struct ScriptHandlerPatch {
 	const char *gameId;
 	const char *extra;
@@ -467,6 +591,7 @@ struct ScriptHandlerPatch {
 	{"kyoto", nullptr, kPlatformWindows, "ck_data\\rokudou\\shared.dxr", kMovieScript, 846, DEFAULT_CAST_LIB, &kyotoTextEntryFix},
 	{"vnc", nullptr, kPlatformWindows, "VNC\\VNC.EXE", kMovieScript, 57, DEFAULT_CAST_LIB, &vncSkipDetection},
 	{"vnc", nullptr, kPlatformWindows, "VNC2\\SHARED.DXR", kMovieScript, 1248, DEFAULT_CAST_LIB, &vncEnableCheats},
+	{"vnc", nullptr, kPlatformWindows, "VNC\\Shared.DXR", kMovieScript, 1562, DEFAULT_CAST_LIB, &vncFixIntro},
 	{"amber", nullptr, kPlatformWindows, "AMBER_F\\AMBER_JB.EXE", kMovieScript, 7, DEFAULT_CAST_LIB, &amberDriveDetectionFix},
 	{"frankenstein", nullptr, kPlatformWindows, "FRANKIE.EXE", kScoreScript, 21, DEFAULT_CAST_LIB, &frankensteinSwapFix},
 	{"gadgetpaf", nullptr, kPlatformWindows, "GADGET\\DISKCNG.DIR", kScoreScript, 2, DEFAULT_CAST_LIB, &gadgetPafDetectionFixAlert},
@@ -481,6 +606,14 @@ struct ScriptHandlerPatch {
 	{"gadgetpaf", nullptr, kPlatformWindows, "GADGET\\GADGET.EXE", kScoreScript, 9, DEFAULT_CAST_LIB, &gadgetPafDetectionFix9},
 	{"pinkgear", nullptr, kPlatformWindows, "GOTOPINK.EXE", kMovieScript, 4, DEFAULT_CAST_LIB, &pinkGearDriveDetectionFix1},
 	{"pinkgear", nullptr, kPlatformWindows, "GOTOPINK.EXE", kScoreScript, 6, DEFAULT_CAST_LIB, &pinkGearDriveDetectionFix2},
+	{"mcmillennium", nullptr, kPlatformWindows, "PC\\MILL.EXE", kMovieScript, 15, DEFAULT_CAST_LIB, &mcmillenniumResDetectionFix},
+	{"mcmillennium", nullptr, kPlatformMacintosh, "Mission Code Millennium:Mission Code Millennium", kMovieScript, 15, DEFAULT_CAST_LIB, &mcmillenniumResDetectionFix},
+	{"mcmillennium", nullptr, kPlatformWindows, "PC\\SHARED.DXR", kMovieScript, 1013, DEFAULT_CAST_LIB, &mcmillenniumDriveDetectionFix},
+	{"mcmillennium", nullptr, kPlatformMacintosh, "Mission Code Millennium:SHARED.Dxr", kMovieScript, 1013, DEFAULT_CAST_LIB, &mcmillenniumDriveDetectionFix},
+	{"gordak", nullptr, kPlatformWindows, "GORDAKCD.EXE", kMovieScript, 2, DEFAULT_CAST_LIB, &gordakDetectionFix},
+	{"getaheadmath", nullptr, kPlatformWindows, "HDFILES\\CHANNELS\\BASE.CST", kParentScript, 69, 2, &getaheadmathDiskFix},
+	{"jman", "v1.2", kPlatformMacintosh, "Support Files:Mars ESG Upper 03", kMovieScript, 322, DEFAULT_CAST_LIB, &jmanInventory},
+	{"noir", nullptr, kPlatformWindows, "SHARED.CST", kMovieScript, 9, 2, &noirCDCheck},
 	{nullptr, nullptr, kPlatformUnknown, nullptr, kNoneScript, 0, 0, nullptr},
 
 };

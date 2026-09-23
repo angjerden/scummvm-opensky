@@ -207,7 +207,7 @@ void tglColorMask(TGLboolean r, TGLboolean g, TGLboolean b, TGLboolean a) {
 	p[1].i = r == TGL_TRUE ? 1 : 0;
 	p[2].i = g == TGL_TRUE ? 1 : 0;
 	p[3].i = b == TGL_TRUE ? 1 : 0;
-	p[4].i = a == TGL_TRUE ? 1 : 0;;
+	p[4].i = a == TGL_TRUE ? 1 : 0;
 
 	c->gl_add_op(p);
 }
@@ -291,6 +291,17 @@ void tglPolygonStipple(const TGLubyte *mask) {
 	for (int i = 0; i < 128; i++)
 		p[i + 1].ui = mask[i];
 
+	c->gl_add_op(p);
+}
+
+void tglStippleColor(TGLubyte r, TGLubyte g, TGLubyte b) {
+	TinyGL::GLContext *c = TinyGL::gl_get_context();
+	TinyGL::GLParam p[7];
+
+	p[0].op = TinyGL::OP_StippleColor;
+	p[1].f = r;
+	p[2].f = g;
+	p[3].f = b;
 	c->gl_add_op(p);
 }
 
@@ -456,6 +467,19 @@ void tglViewport(TGLint x, TGLint y, TGLsizei width, TGLsizei height) {
 	TinyGL::GLParam p[5];
 
 	p[0].op = TinyGL::OP_Viewport;
+	p[1].i = x;
+	p[2].i = y;
+	p[3].i = width;
+	p[4].i = height;
+
+	c->gl_add_op(p);
+}
+
+void tglScissor(TGLint x, TGLint y, TGLsizei width, TGLsizei height) {
+	TinyGL::GLContext *c = TinyGL::gl_get_context();
+	TinyGL::GLParam p[5];
+
+	p[0].op = TinyGL::OP_Scissor;
 	p[1].i = x;
 	p[2].i = y;
 	p[3].i = width;
@@ -725,6 +749,24 @@ void tglTexEnvi(TGLenum target, TGLenum pname, TGLint param) {
 	p[5].f = 0;
 	p[6].f = 0;
 	p[7].f = 0;
+
+	c->gl_add_op(p);
+}
+
+void tglTexEnvfv(TGLenum target, TGLenum pname, const TGLfloat *params) {
+	TinyGL::GLContext *c = TinyGL::gl_get_context();
+	TinyGL::GLParam p[8];
+	
+	p[0].op = TinyGL::OP_TexEnv;
+	p[1].i = target;
+	p[2].i = pname;
+	p[3].i = 0;
+
+	int n = 0;
+	if (target == TGL_TEXTURE_ENV && pname == TGL_TEXTURE_ENV_COLOR)
+		n = 4;
+	for (int i = 0; i < n; i++)
+		p[4 + i].f = params[i];
 
 	c->gl_add_op(p);
 }

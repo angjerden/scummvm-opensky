@@ -32,9 +32,14 @@
 #include "graphics/font.h"
 #include "graphics/fontman.h"
 #include "graphics/surface.h"
+#include "video/subtitles.h"
 
 #include "hypno/grammar.h"
 #include "hypno/libfile.h"
+
+namespace Audio {
+class SeekableAudioStream;
+}
 
 namespace Image {
 class ImageDecoder;
@@ -76,6 +81,37 @@ enum HypnoColors {
 enum SpiderColors {
 	kSpiderColorWhite = 248,
 	kSpiderColorBlue = 252,
+};
+
+enum HYPNOActions {
+	kActionNone,
+	kActionSkipIntro,
+	kActionSkipCutscene,
+	kActionPrimaryShoot,
+	kActionSkipLevel,
+	kActionKillPlayer,
+	kActionPause,
+	kActionLeft,
+	kActionDown,
+	kActionRight,
+	kActionUp,
+	kActionYes,
+	kActionNo,
+	kActionDifficultyChump,
+	kActionDifficultyPunk,
+	kActionDifficultyBadass,
+	kActionDifficultExit,
+	kActionRetry,
+	kActionRestart,
+	kActionNewMission,
+	kActionQuit,
+	kActionCredits,
+	kActionSelect,
+	kActionSecondaryShoot,
+	kActionAimLeft,
+	kActionAimDown,
+	kActionAimRight,
+	kActionAimUp,
 };
 
 class HypnoEngine;
@@ -121,7 +157,7 @@ public:
 	bool _unlockAllLevels;
 	bool _restoredContentEnabled;
 
-	Audio::SoundHandle _soundHandle;
+	Audio::SoundHandle _soundHandle, _musicHandle;
 	Common::InstallShieldV3 _installerArchive;
 	Common::List<LibFile*> _archive;
 
@@ -170,6 +206,11 @@ public:
 	bool canSaveAutosaveCurrently() override { return false; }
 	bool canSaveGameStateCurrently(Common::U32String *msg = nullptr) override { return (isDemo() ? false : true); }
 	Common::String _checkpoint;
+
+	bool _useSubtitles;
+	Video::Subtitles *_subtitles;
+	void adjustSubtitleSize();
+	void loadSubtitles(const Common::Path &path);
 
 	Common::Path _prefixDir;
 	Common::Path convertPath(const Common::String &);
@@ -232,6 +273,7 @@ public:
 	// intros
 	void runIntro(MVideo &video);
 	void runIntros(Videos &videos);
+	void runIntrosWithSubtitles(Videos &videos);
 	Common::HashMap<Filename, bool> _intros;
 
 	// levels
@@ -258,12 +300,12 @@ public:
 
 	// Sounds
 	Filename _soundPath;
-	Filename _music;
-	int _musicRate;
-	bool _musicStereo;
-	bool _doNotStopSounds;
+	Audio::SeekableAudioStream *loadAudioStream(const Filename &filename, uint32 sampleRate = 22050, bool stereo = false);
 	void playSound(const Filename &filename, uint32 loops, uint32 sampleRate = 22050, bool stereo = false);
+	void playMusic(const Filename &filename, uint32 sampleRate = 22050, bool stereo = false);
 	void stopSound();
+	void stopMusic();
+	bool isMusicActive();
 
 	// Arcade
 	Common::String _arcadeMode;
@@ -279,6 +321,12 @@ public:
 	virtual void pressedKey(const int keycode);
 	virtual bool clickedPrimaryShoot(const Common::Point &mousePos);
 	virtual bool clickedSecondaryShoot(const Common::Point &mousePos);
+	void resetGamepadAim(const Common::Rect &mouseBox);
+	void setGamepadAimActive(bool active);
+	bool isGamepadAimActive() const;
+	bool handleGamepadAimAction(const int action, bool pressed);
+	bool handleGamepadAxisAction(const int action, int16 position);
+	bool updateGamepadAim(const Common::Rect &mouseBox);
 	virtual void drawShoot(const Common::Point &mousePos);
 	virtual bool shoot(const Common::Point &mousePos, ArcadeShooting *arc, bool secondary);
 	virtual void hitPlayer();
@@ -287,6 +335,8 @@ public:
 	virtual byte *getTargetColor(Common::String name, int levelId);
 	virtual bool checkRButtonUp();
 	virtual void setRButtonUp(const bool val);
+	virtual void disableGameKeymaps();
+	virtual void enableGameKeymaps();
 
 	// Segments
 	Segments _segments;
@@ -322,6 +372,14 @@ public:
 	bool _loseLevel;
 	bool _skipDefeatVideo;
 	bool _skipNextVideo;
+	Common::Point _gamepadAimPosition;
+	int16 _gamepadAxisX;
+	int16 _gamepadAxisY;
+	bool _gamepadAimActive;
+	bool _gamepadAimLeft;
+	bool _gamepadAimDown;
+	bool _gamepadAimRight;
+	bool _gamepadAimUp;
 
 	virtual void drawCursorArcade(const Common::Point &mousePos);
 	virtual void drawPlayer();
@@ -404,6 +462,7 @@ struct chapterEntry {
 class WetEngine : public HypnoEngine {
 public:
 	WetEngine(OSystem *syst, const ADGameDescription *gd);
+	~WetEngine();
 	Common::HashMap<int, const struct chapterEntry*> _chapterTable;
 	Common::Array<int> _ids;
 	int _lastLevel;
@@ -455,6 +514,8 @@ public:
 	byte *getTargetColor(Common::String name, int levelId) override;
 	bool checkRButtonUp() override;
 	void setRButtonUp(const bool val) override;
+	void disableGameKeymaps() override;
+	void enableGameKeymaps() override;
 
 
 	bool hasFeature(EngineFeature f) const override {
@@ -466,6 +527,7 @@ private:
 	uint16 getNextChar(const Common::String &str, uint32 &c);
 	void drawGlyph(const Common::BitArray &font, int x, int y, int bitoffset, int width, int height, int pitch, uint32 color, bool invert);
 	void drawKoreanChar(uint16 chr, int &curx, int y, uint32 color);
+	void drawStatLine(const Common::String &name, const Common::String &value, int y, uint32 color);
 	void runMainMenu(Code *code);
 	void runLevelMenu(Code *code);
 	void runCheckLives(Code *code);
@@ -498,6 +560,7 @@ private:
 class SpiderEngine : public HypnoEngine {
 public:
 	SpiderEngine(OSystem *syst, const ADGameDescription *gd);
+	~SpiderEngine();
 	void loadAssets() override;
 	void loadAssetsDemo();
 	void loadAssetsFullGame();
@@ -572,6 +635,15 @@ private:
 	const Graphics::Font *_font;
 };
 
+// SOUND.LIB ships four music tracks that no level script references: the menus
+// and the territory approach videos use them. m_choice/m_hilite are the menu
+// click and highlight sounds (as in Wetlands).
+static const char *const kMenuChoiceSound = "sound/m_choice.raw";
+static const char *const kMenuHiliteSound = "sound/m_hilite.raw";
+static const char *const kMenuMusic = "sound/46-g.raw";
+static const char *const kTransitionMusic = "sound/45.raw";
+static const char *const kCreditsMusic = "sound/42.raw";
+
 class BoyzEngine : public HypnoEngine {
 public:
 	BoyzEngine(OSystem *syst, const ADGameDescription *gd);
@@ -624,6 +696,7 @@ public:
 	void saveProfile(const Common::String &name, int levelId);
 
 	private:
+	Common::Rect _lastHighlighted;
 	void renderHighlights(Hotspots *hs);
 	void waitForUserClick(uint32 timeout);
 	int pickABox();

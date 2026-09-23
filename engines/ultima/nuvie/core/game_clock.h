@@ -22,14 +22,10 @@
 #ifndef NUVIE_CORE_GAME_CLOCK_H
 #define NUVIE_CORE_GAME_CLOCK_H
 
-#include "ultima/shared/std/containers.h"
-
 #include "ultima/nuvie/core/nuvie_defs.h"
 
 namespace Ultima {
 namespace Nuvie {
-
-using Std::vector;
 
 #define GAMECLOCK_TICKS_PER_MINUTE   4
 
@@ -65,7 +61,7 @@ class GameClock {
 
 //bool active; // clock is active and running (false = paused)
 
-	vector<uint8> timers;
+	Common::Array<uint8> timers;
 	uint8 num_timers;
 
 	uint8 rest_counter; //hours until the party will heal again while resting.

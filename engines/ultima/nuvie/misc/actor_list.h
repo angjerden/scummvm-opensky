@@ -22,16 +22,15 @@
 #ifndef NUVIE_MISC_ACTOR_LIST_H
 #define NUVIE_MISC_ACTOR_LIST_H
 
-// include this if using ActorList
-#include "ultima/shared/std/containers.h"
+#include "common/array.h"
 
 namespace Ultima {
 namespace Nuvie {
 
 class Actor;
 
-typedef Std::vector<Actor *> ActorList;
-typedef Std::vector<Actor *>::iterator ActorIterator;
+typedef Common::Array<Actor *> ActorList;
+typedef Common::Array<Actor *>::iterator ActorIterator;
 
 } // End of namespace Nuvie
 } // End of namespace Ultima

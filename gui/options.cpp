@@ -57,14 +57,12 @@
 #include "widgets/edittext.h"
 
 #ifdef USE_CLOUD
-#ifdef USE_LIBCURL
 #include "backends/cloud/cloudmanager.h"
 #include "gui/cloudconnectionwizard.h"
 #include "gui/downloaddialog.h"
 #endif
-#endif
 
-#ifdef USE_LIBCURL
+#ifdef USE_HTTP
 #include "gui/downloadpacksdialog.h"
 #endif
 
@@ -139,7 +137,6 @@ enum {
 	kServerPortClearCmd = 'spcl',
 	kChooseRootDirCmd = 'chrp',
 	kRootPathClearCmd = 'clrp',
-	kOpenUrlStorageCmd = 'OpUr',
 	kDisconnectStorageCmd = 'DcSt',
 	kEnableStorageCmd = 'EnSt'
 };
@@ -339,7 +336,7 @@ void OptionsDialog::build() {
 			const Common::RenderModeDescription *p = Common::g_renderModes;
 			const Common::RenderMode renderMode = Common::parseRenderMode(ConfMan.get("render_mode", _domain));
 			int sel = 0;
-			for (int i = 0; p->code; ++p, ++i) {
+			for (; p->code; ++p) {
 				if (renderMode == p->id)
 					sel = p->id;
 			}
@@ -353,7 +350,7 @@ void OptionsDialog::build() {
 				const Common::RotationModeDescription *p = Common::g_rotationModes;
 				const Common::RotationMode rotationMode = Common::parseRotationMode(ConfMan.getInt("rotation_mode", _domain));
 				int sel = 0;
-				for (int i = 0; p->description; ++p, ++i) {
+				for (; p->description; ++p) {
 					if (rotationMode == p->id)
 						sel = p->id;
 				}
@@ -490,7 +487,9 @@ void OptionsDialog::build() {
 		_midiPopUp->setSelected(0);
 
 	if (_oplPopUp) {
-		OPL::Config::DriverId id = MAX<OPL::Config::DriverId>(OPL::Config::parse(ConfMan.get("opl_driver", _domain)), 0);
+		OPL::Config::DriverId id = OPL::Config::parse(ConfMan.get("opl_driver", _domain));
+		if (id < 0)
+			id = OPL::Config::parse("auto");
 		_oplPopUp->setSelectedTag(id);
 	}
 
@@ -823,6 +822,7 @@ void OptionsDialog::apply() {
 		g_system->setGraphicsMode(ConfMan.get("gfx_mode", _domain).c_str());
 		g_system->setStretchMode(ConfMan.get("stretch_mode", _domain).c_str());
 		g_system->setScaler(ConfMan.get("scaler", _domain).c_str(), ConfMan.getInt("scale_factor", _domain));
+		g_system->setRotationMode(ConfMan.getInt("rotation_mode", _domain));
 		g_system->setShader(ConfMan.getPath("shader", _domain));
 
 		if (ConfMan.hasKey("aspect_ratio"))
@@ -833,10 +833,6 @@ void OptionsDialog::apply() {
 			g_system->setFeatureState(OSystem::kFeatureFilteringMode, ConfMan.getBool("filtering", _domain));
 		if (ConfMan.hasKey("vsync"))
 			g_system->setFeatureState(OSystem::kFeatureVSync, ConfMan.getBool("vsync", _domain));
-
-		if (g_system->hasFeature(OSystem::kFeatureRotationMode)) {
-			g_system->setFeatureState(OSystem::kFeatureRotationMode, ConfMan.hasKey("rotation_mode", _domain));
-		}
 
 		OSystem::TransactionError gfxError = g_system->endGFXTransaction();
 
@@ -1339,11 +1335,10 @@ void OptionsDialog::setAudioSettingsState(bool enabled) {
 	_midiPopUpDesc->setEnabled(enabled);
 	_midiPopUp->setEnabled(enabled);
 
-	const Common::String allFlags = MidiDriver::musicType2GUIO((uint32)-1);
-	bool hasMidiDefined = (strpbrk(_guioptions.c_str(), allFlags.c_str()) != nullptr);
+	bool hasMidiDefined = _guioptions.contains(GUIO_MIDI_PREFIX);
 
 	if (_domain != Common::ConfigManager::kApplicationDomain && // global dialog
-		hasMidiDefined && // No flags are specified
+		hasMidiDefined && // No Adlib is specified but others are
 		!(_guioptions.contains(GUIO_MIDIADLIB))) {
 		_oplPopUpDesc->setEnabled(false);
 		_oplPopUp->setEnabled(false);
@@ -1357,8 +1352,8 @@ void OptionsDialog::setMIDISettingsState(bool enabled) {
 	if (_guioptions.contains(GUIO_NOMIDI))
 		enabled = false;
 
-	_gmDevicePopUpDesc->setEnabled(_domain.equals(Common::ConfigManager::kApplicationDomain) ? enabled : false);
-	_gmDevicePopUp->setEnabled(_domain.equals(Common::ConfigManager::kApplicationDomain) ? enabled : false);
+	_gmDevicePopUpDesc->setEnabled(enabled);
+	_gmDevicePopUp->setEnabled(enabled);
 
 	_enableMIDISettings = enabled;
 
@@ -1379,8 +1374,8 @@ void OptionsDialog::setMIDISettingsState(bool enabled) {
 void OptionsDialog::setMT32SettingsState(bool enabled) {
 	_enableMT32Settings = enabled;
 
-	_mt32DevicePopUpDesc->setEnabled(_domain.equals(Common::ConfigManager::kApplicationDomain) ? enabled : false);
-	_mt32DevicePopUp->setEnabled(_domain.equals(Common::ConfigManager::kApplicationDomain) ? enabled : false);
+	_mt32DevicePopUpDesc->setEnabled(enabled);
+	_mt32DevicePopUp->setEnabled(enabled);
 
 	_mt32Checkbox->setEnabled(enabled);
 	_enableGSCheckbox->setEnabled(enabled);
@@ -1544,8 +1539,8 @@ void OptionsDialog::addAchievementsControls(GuiObject *boss, const Common::Strin
 			yPos += yStep;
 
 			if (!descr->comment.empty()) {
-				uint16 str_chars = descr->comment.size(), printed_chars = 0, i = 0;
 				Common::U32String comment_line(descr->comment);
+				uint16 str_chars = comment_line.size(), printed_chars = 0, i = 0;
 				while ((str_chars - printed_chars) > textline_numchars) { // check if string needs to go on multiple lines
 					for (i = (printed_chars + textline_numchars - 1); comment_line[i] != ' ' && i > 0; i--) {}; // find a space to avoid breaking words
 					new StaticTextWidget(scrollContainer, lineHeight + commentDelta, yPos, width - commentDelta, yStep, Common::U32String(comment_line.begin() + (!printed_chars ? 0 : (printed_chars + 1)), comment_line.begin() + i), Graphics::kTextAlignStart, Common::U32String(), ThemeEngine::kFontStyleNormal);
@@ -1625,8 +1620,7 @@ void OptionsDialog::addGraphicControls(GuiObject *boss, const Common::String &pr
 	}
 
 	// RenderMode popup
-	const Common::String allFlags = Common::allRenderModesGUIOs();
-	bool renderingTypeDefined = (strpbrk(_guioptions.c_str(), allFlags.c_str()) != nullptr);
+	bool renderingTypeDefined = _guioptions.contains(GUIO_RENDER_PREFIX);
 
 	_renderModePopUpDesc = new StaticTextWidget(boss, prefix + "grRenderPopupDesc", _("Render mode:"), _("Special dithering modes supported by some games"));
 	if (ConfMan.isKeyTemporary("render_mode"))
@@ -1696,8 +1690,10 @@ void OptionsDialog::addGraphicControls(GuiObject *boss, const Common::String &pr
 
 	_shaderClearButton = addClearButton(boss, prefix + "grShaderClearButton", kClearShaderCmd);
 
-#ifdef USE_LIBCURL
+#ifdef USE_HTTP
+#ifndef EMSCRIPTEN // No shader updates on Emscripten, they are always loaded directly from server
 	_updateShadersButton = new ButtonWidget(boss, prefix + "UpdateShadersButton", _("Download Shaders"), _("Check on the scummvm.org website for updates of shader packs"), kUpdateShadersCmd);
+#endif
 #endif
 
 	enableShaderControls(g_system->hasFeature(OSystem::kFeatureShaders));
@@ -1769,8 +1765,7 @@ void OptionsDialog::addAudioControls(GuiObject *boss, const Common::String &pref
 	_midiPopUp = new PopUpWidget(boss, prefix + "auMidiPopup", _("Specifies output sound device or sound card emulator"));
 
 	// Populate it
-	const Common::String allFlags = MidiDriver::musicType2GUIO((uint32)-1);
-	bool hasMidiDefined = (strpbrk(_guioptions.c_str(), allFlags.c_str()) != nullptr);
+	bool hasMidiDefined = _guioptions.contains(GUIO_MIDI_PREFIX);
 
 	const PluginList p = MusicMan.getPlugins();
 	for (const auto &m : p) {
@@ -1870,7 +1865,7 @@ void OptionsDialog::addMIDIControls(GuiObject *boss, const Common::String &prefi
 }
 
 void OptionsDialog::addMT32Controls(GuiObject *boss, const Common::String &prefix) {
-	_mt32DevicePopUpDesc = new StaticTextWidget(boss, prefix + "auPrefMt32PopupDesc", _("MT-32 Device:"), _("Specifies default sound device for Roland MT-32/LAPC1/CM32l/CM64 output"));
+	_mt32DevicePopUpDesc = new StaticTextWidget(boss, prefix + "auPrefMt32PopupDesc", _("MT-32 device:"), _("Specifies default sound device for Roland MT-32/LAPC1/CM32l/CM64 output"));
 	_mt32DevicePopUp = new PopUpWidget(boss, prefix + "auPrefMt32Popup");
 
 	// Native mt32 setting
@@ -2193,12 +2188,13 @@ GlobalOptionsDialog::GlobalOptionsDialog(LauncherDialog *launcher)
 	_guiReturnToLauncherAtExit = nullptr;
 	_guiConfirmExit = nullptr;
 	_guiDisableBDFScaling = nullptr;
+	_guiKineticScrolling = nullptr;
+
 #ifdef USE_UPDATES
 	_updatesPopUpDesc = nullptr;
 	_updatesPopUp = nullptr;
 #endif
 #ifdef USE_CLOUD
-#ifdef USE_LIBCURL
 	_selectedStorageIndex = CloudMan.getStorageIndex();
 	_storagePopUpDesc = nullptr;
 	_storagePopUp = nullptr;
@@ -2221,7 +2217,6 @@ GlobalOptionsDialog::GlobalOptionsDialog(LauncherDialog *launcher)
 	_storageWizardNotConnectedHint = nullptr;
 	_storageWizardConnectButton = nullptr;
 	_redrawCloudTab = false;
-#endif
 #endif
 
 #ifdef USE_SDL_NET
@@ -2379,7 +2374,6 @@ void GlobalOptionsDialog::build() {
 	addMiscControls(miscContainer, "GlobalOptions_Misc_Container.", g_gui.useLowResGUI());
 
 #ifdef USE_CLOUD
-#ifdef USE_LIBCURL
 	//
 	// 8) The Cloud tab (remote storages)
 	//
@@ -2394,7 +2388,6 @@ void GlobalOptionsDialog::build() {
 	setTarget(container);
 
 	addCloudControls(container, "GlobalOptions_Cloud_Container.", g_gui.useLowResGUI());
-#endif // USE_LIBCURL
 #endif // USE_CLOUD
 
 #ifdef USE_SDL_NET
@@ -2673,10 +2666,17 @@ void GlobalOptionsDialog::addGUIControls(GuiObject *boss, const Common::String &
 
 	_guiDisableBDFScaling = new CheckboxWidget(boss, prefix + "DisableBDFScaling",
 		_("Disable fixed font scaling"),
-		_("Do not upscale fixed size fonts in the GUI. This reduces artefacts on low resolution screens")
+		_("Do not upscale fixed size fonts in the GUI. This reduces artefacts on low resolution screens.")
 	);
 
 	_guiDisableBDFScaling->setState(ConfMan.getBool("gui_disable_fixed_font_scaling", _domain));
+
+	_guiKineticScrolling = new CheckboxWidget(boss, prefix + "KineticScrolling",
+		_("Enable kinetic scrolling in lists"),
+		_("Enable smooth, momentum-based scrolling in list widgets.")
+	);
+
+	_guiKineticScrolling->setState(ConfMan.getBool("gui_kinetic_scrolling", _domain));
 
 #ifdef USE_TRANSLATION
 	_guiLanguagePopUpDesc = new StaticTextWidget(boss, prefix + "GuiLanguagePopupDesc", _("GUI language:"), _("Language of ScummVM GUI"));
@@ -2725,7 +2725,7 @@ void GlobalOptionsDialog::addGUIControls(GuiObject *boss, const Common::String &
 		_useSystemDialogsCheckbox->setState(ConfMan.getBool("gui_browser_native", _domain));
 	}
 
-#ifdef USE_LIBCURL
+#ifdef USE_HTTP
 	new ButtonWidget(boss, prefix + "UpdateIconsButton", _("Download Icons"),  _("Check on the scummvm.org website for updates of icon packs"), kUpdateIconsCmd);
 #endif
 }
@@ -2795,7 +2795,6 @@ void GlobalOptionsDialog::addMiscControls(GuiObject *boss, const Common::String 
 }
 
 #ifdef USE_CLOUD
-#ifdef USE_LIBCURL
 void GlobalOptionsDialog::addCloudControls(GuiObject *boss, const Common::String &prefix, bool lowres) {
 	_storagePopUpDesc = new StaticTextWidget(boss, prefix + "StoragePopupDesc", _("Active storage:"), _("Active cloud storage"));
 	_storagePopUp = new PopUpWidget(boss, prefix + "StoragePopup", Common::U32String(), kStoragePopUpCmd);
@@ -2845,7 +2844,6 @@ void GlobalOptionsDialog::addCloudControls(GuiObject *boss, const Common::String
 
 	setupCloudTab();
 }
-#endif // USE_LIBCURL
 #endif // USE_CLOUD
 
 #ifdef USE_SDL_NET
@@ -2972,7 +2970,7 @@ bool GlobalOptionsDialog::updateAutosavePeriod(int newValue) {
 				  "will be prompted when autosave is about to overwrite a save).\n"
 				  "List of games:\n");
 		for (ExistingSaveList::const_iterator it = saveList.begin(), end = saveList.end(); it != end; ++it)
-			message += Common::U32String(it->target) + Common::U32String(": ") + it->desc.getDescription() + "\n";
+			message += Common::U32String(it->target + ": " + it->desc.getDescription() + "\n");
 		message.deleteLastChar();
 		if (hasMore)
 			message += _("\nAnd more...");
@@ -2997,7 +2995,7 @@ bool GlobalOptionsDialog::updateAutosavePeriod(int newValue) {
 			if (!failedSaves.empty()) {
 				Common::U32String failMessage = _("ERROR: Failed to move the following saved games:\n");
 				for (ExistingSaveList::const_iterator it = failedSaves.begin(), end = failedSaves.end(); it != end; ++it)
-					failMessage += Common::U32String(it->target) + Common::U32String(": ") + it->desc.getDescription() + "\n";
+					failMessage += Common::U32String(it->target + ": " + it->desc.getDescription() + "\n");
 				failMessage.deleteLastChar();
 				GUI::MessageDialog(failMessage).runModal();
 			}
@@ -3088,7 +3086,6 @@ void GlobalOptionsDialog::apply() {
 #endif // USE_UPDATES
 
 #ifdef USE_CLOUD
-#ifdef USE_LIBCURL
 	if (CloudMan.getStorageIndex() != _selectedStorageIndex) {
 		if (!CloudMan.switchStorage(_selectedStorageIndex)) {
 			bool anotherStorageIsWorking = CloudMan.isWorking();
@@ -3101,7 +3098,6 @@ void GlobalOptionsDialog::apply() {
 			dialog.runModal();
 		}
 	}
-#endif // USE_LIBCURL
 #endif
 
 #ifdef USE_SDL_NET
@@ -3152,6 +3148,10 @@ void GlobalOptionsDialog::apply() {
 
 	if (_guiDisableBDFScaling) {
 		ConfMan.setBool("gui_disable_fixed_font_scaling", _guiDisableBDFScaling->getState(), _domain);
+	}
+
+	if (_guiKineticScrolling) {
+		ConfMan.setBool("gui_kinetic_scrolling", _guiKineticScrolling->getState(), _domain);
 	}
 
 #ifdef USE_DISCORD
@@ -3262,7 +3262,7 @@ void GlobalOptionsDialog::apply() {
 }
 
 void GlobalOptionsDialog::close() {
-#if defined(USE_CLOUD) && defined(USE_SDL_NET)
+#if defined(USE_SDL_NET)
 	if (LocalServer.isRunning()) {
 		LocalServer.stop();
 	}
@@ -3343,7 +3343,6 @@ void GlobalOptionsDialog::handleCommand(CommandSender *sender, uint32 cmd, uint3
 	}
 #endif
 
-#ifdef USE_CLOUD
 #ifdef USE_SDL_NET
 	case kChooseRootDirCmd: {
 		BrowserDialog browser(_("Select directory for Files Manager /root/"), true);
@@ -3358,7 +3357,7 @@ void GlobalOptionsDialog::handleCommand(CommandSender *sender, uint32 cmd, uint3
 	}
 #endif
 
-#ifdef USE_LIBCURL
+#ifdef USE_HTTP
 	case kUpdateIconsCmd: {
 		DownloadPacksDialog dia(_("icon packs"), "LIST", "gui-icons*.dat");
 		dia.runModal();
@@ -3369,7 +3368,7 @@ void GlobalOptionsDialog::handleCommand(CommandSender *sender, uint32 cmd, uint3
 	}
 #endif
 
-#ifdef USE_LIBCURL
+#ifdef USE_HTTP
 	case kUpdateShadersCmd: {
 		DownloadPacksDialog dia(_("shader packs"), "LIST-SHADERS", "shaders*.dat");
 		dia.runModal();
@@ -3377,7 +3376,6 @@ void GlobalOptionsDialog::handleCommand(CommandSender *sender, uint32 cmd, uint3
 	}
 #endif
 
-#endif
 	case kThemePathClearCmd:
 		_themePath->setLabel(Common::Path());
 		break;
@@ -3461,14 +3459,13 @@ void GlobalOptionsDialog::handleCommand(CommandSender *sender, uint32 cmd, uint3
 		break;
 	}
 #ifdef USE_CLOUD
-#ifdef USE_LIBCURL
 	case kCloudTabContainerReflowCmd: {
 		setupCloudTab();
 		break;
 	}
 	case kOpenCloudConnectionWizardCmd: {
 		CloudConnectionWizard wizard;
-		wizard.runModal();
+		wizard.runStorageModal(_selectedStorageIndex);
 		setupCloudTab();
 		reflowLayout();
 		break;
@@ -3494,31 +3491,6 @@ void GlobalOptionsDialog::handleCommand(CommandSender *sender, uint32 cmd, uint3
 	case kDownloadStorageCmd: {
 		DownloadDialog dialog(_selectedStorageIndex, _launcher);
 		dialog.runModal();
-		break;
-	}
-	case kOpenUrlStorageCmd: {
-		Common::String url = "https://cloud.scummvm.org/";
-		switch (_selectedStorageIndex) {
-		case Cloud::kStorageDropboxId:
-			url += "dropbox?refresh_token=true";
-			break;
-		case Cloud::kStorageOneDriveId:
-			url += "onedrive";
-			break;
-		case Cloud::kStorageGoogleDriveId:
-			url += "gdrive";
-			break;
-		case Cloud::kStorageBoxId:
-			url += "box";
-			break;
-		default:
-			break;
-		}
-
-		if (!g_system->openUrl(url)) {
-			MessageDialog alert(_("Failed to open URL!\nPlease navigate to this page manually."));
-			alert.runModal();
-		}
 		break;
 	}
 	case kDisconnectStorageCmd: {
@@ -3551,7 +3523,7 @@ void GlobalOptionsDialog::handleCommand(CommandSender *sender, uint32 cmd, uint3
 		sendCommand(kSetPositionCmd, 0);
 		break;
 	}
-#endif // USE_LIBCURL
+#endif // USE_CLOUD
 #ifdef USE_SDL_NET
 	case kRunServerCmd: {
 #ifdef NETWORKING_LOCALWEBSERVER_ENABLE_PORT_OVERRIDE
@@ -3581,7 +3553,6 @@ void GlobalOptionsDialog::handleCommand(CommandSender *sender, uint32 cmd, uint3
 		break;
 	}
 #endif // USE_SDL_NET
-#endif // USE_CLOUD
 #ifdef USE_FLUIDSYNTH
 	case kFluidSynthSettingsCmd:
 		_fluidSynthSettingsDialog->runModal();
@@ -3601,12 +3572,10 @@ void GlobalOptionsDialog::handleCommand(CommandSender *sender, uint32 cmd, uint3
 void GlobalOptionsDialog::handleTickle() {
 	OptionsDialog::handleTickle();
 #ifdef USE_CLOUD
-#ifdef USE_LIBCURL
 	if (_redrawCloudTab) {
 		reflowLayout(); // recalculates scrollbar as well
 		_redrawCloudTab = false;
 	}
-#endif // USE_LIBCURL
 #endif // USE_CLOUD
 
 #ifdef USE_SDL_NET
@@ -3671,9 +3640,7 @@ void GlobalOptionsDialog::reflowLayout() {
 
 	OptionsDialog::reflowLayout();
 #ifdef USE_CLOUD
-#ifdef USE_LIBCURL
 	setupCloudTab();
-#endif // USE_LIBCURL
 #endif // USE_CLOUD
 
 #ifdef USE_SDL_NET
@@ -3682,7 +3649,6 @@ void GlobalOptionsDialog::reflowLayout() {
 }
 
 #ifdef USE_CLOUD
-#ifdef USE_LIBCURL
 void GlobalOptionsDialog::setupCloudTab() {
 	_selectedStorageIndex = (_storagePopUp ? _storagePopUp->getSelectedTag() : (uint32)Cloud::kStorageNoneId);
 
@@ -3735,7 +3701,7 @@ void GlobalOptionsDialog::setupCloudTab() {
 	if (_storageLastSyncDesc) _storageLastSyncDesc->setVisible(shownConnectedInfo);
 	if (_storageLastSync) {
 		Common::U32String sync = CloudMan.getStorageLastSync(_selectedStorageIndex);
-		if (sync == "") {
+		if (sync.empty()) {
 			if (_selectedStorageIndex == CloudMan.getStorageIndex() && CloudMan.isSyncing())
 				sync = _("<right now>");
 			else
@@ -3814,7 +3780,6 @@ void GlobalOptionsDialog::shiftWidget(Widget *widget, const char *widgetName, in
 
 	widget->setPos(x + xOffset, y + yOffset);
 }
-#endif // USE_LIBCURL
 #endif // USE_CLOUD
 
 #ifdef USE_SDL_NET
@@ -3872,7 +3837,6 @@ void GlobalOptionsDialog::reflowNetworkTabLayout() {
 #endif // USE_SDL_NET
 
 #ifdef USE_CLOUD
-#ifdef USE_LIBCURL
 void GlobalOptionsDialog::storageSavesSyncedCallback(const Cloud::Storage::BoolResponse &response) {
 	_redrawCloudTab = true;
 }
@@ -3884,7 +3848,6 @@ void GlobalOptionsDialog::storageErrorCallback(const Networking::ErrorResponse &
 	if (!response.interrupted)
 		g_system->displayMessageOnOSD(_("Request failed.\nCheck your Internet connection."));
 }
-#endif // USE_LIBCURL
 #endif // USE_CLOUD
 
 bool OptionsDialog::testGraphicsSettings() {

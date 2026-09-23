@@ -27,7 +27,6 @@
 #include "ultima/ultima4/filesys/u4file.h"
 #include "ultima/ultima4/core/utils.h"
 #include "ultima/ultima4/ultima4.h"
-#include "ultima/shared/std/containers.h"
 
 namespace Ultima {
 namespace Ultima4 {
@@ -52,7 +51,7 @@ Response *hawkwindGetIntro(const DynamicResponse *dynResp);
  * A special case dialogue loader for Hawkwind.
  */
 Dialogue *U4HWDialogueLoader::load(Common::SeekableReadStream *source) {
-	Std::vector<Common::String> &hawkwindText = g_ultima->_hawkwindText;
+	Common::Array<Common::String> &hawkwindText = g_ultima->_hawkwindText;
 	hawkwindText = u4read_stringtable("hawkwind");
 
 	Dialogue *dlg = new Dialogue();
@@ -91,7 +90,7 @@ Dialogue *U4HWDialogueLoader::load(Common::SeekableReadStream *source) {
 Response *hawkwindGetAdvice(const DynamicResponse *dynResp) {
 	Common::String text;
 	int virtue = -1, virtueLevel = -1;
-	Std::vector<Common::String> &hawkwindText = g_ultima->_hawkwindText;
+	Common::Array<Common::String> &hawkwindText = g_ultima->_hawkwindText;
 
 	/* check if asking about a virtue */
 	for (int v = 0; v < VIRT_MAX; v++) {
@@ -120,7 +119,7 @@ Response *hawkwindGetAdvice(const DynamicResponse *dynResp) {
 
 Response *hawkwindGetIntro(const DynamicResponse *dynResp) {
 	Response *intro = new Response("");
-	Std::vector<Common::String> &hawkwindText = g_ultima->_hawkwindText;
+	Common::Array<Common::String> &hawkwindText = g_ultima->_hawkwindText;
 
 	if (g_context->_party->member(0)->getStatus() == STAT_SLEEPING ||
 	        g_context->_party->member(0)->getStatus() == STAT_DEAD) {

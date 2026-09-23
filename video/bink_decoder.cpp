@@ -40,6 +40,8 @@
 #include "graphics/yuv_to_rgb.h"
 #include "graphics/surface.h"
 
+#include "image/codecs/codec.h"
+
 #include "math/rdft.h"
 #include "math/dct.h"
 
@@ -73,8 +75,10 @@ bool BinkDecoder::loadStream(Common::SeekableReadStream *stream) {
 	close();
 
 	uint32 id = stream->readUint32BE();
-	if ((id != kBIKfID) && (id != kBIKgID) && (id != kBIKhID) && (id != kBIKiID))
+	if ((id != kBIKfID) && (id != kBIKgID) && (id != kBIKhID) && (id != kBIKiID)) {
+		delete stream;
 		return false;
+	}
 
 	uint32 fileSize         = stream->readUint32LE() + 8;
 	uint32 frameCount       = stream->readUint32LE();
@@ -82,6 +86,7 @@ bool BinkDecoder::loadStream(Common::SeekableReadStream *stream) {
 
 	if (largestFrameSize > fileSize) {
 		warning("Largest frame size greater than file size");
+		delete stream;
 		return false;
 	}
 
@@ -94,6 +99,7 @@ bool BinkDecoder::loadStream(Common::SeekableReadStream *stream) {
 	uint32 frameRateDen = stream->readUint32LE();
 	if (frameRateNum == 0 || frameRateDen == 0) {
 		warning("Invalid frame rate (%d/%d)", frameRateNum, frameRateDen);
+		delete stream;
 		return false;
 	}
 
@@ -279,11 +285,7 @@ BinkDecoder::BinkVideoTrack::BinkVideoTrack(uint32 width, uint32 height, uint32 
 		_surfaceWidth++;
 	}
 
-	_pixelFormat = g_system->getScreenFormat();
-
-	// Default to a 32bpp format, if in 8bpp mode
-	if (_pixelFormat.bytesPerPixel == 1)
-		_pixelFormat = Graphics::PixelFormat(4, 8, 8, 8, 8, 8, 16, 24, 0);
+	_pixelFormat = Image::Codec::getDefaultYUVFormat();
 
 	// Compute the video dimensions in blocks
 	_yBlockWidth   = (width  +  7) >> 3;
@@ -347,15 +349,15 @@ bool BinkDecoder::seekIntern(const Audio::Timestamp &time) {
 	// Adjust the video track to use for seeking
 	findNextVideoTrack();
 
-	if (frame == keyFrame) {
-		// We're already good, no need to go further
-		return true;
-	}
-
 	// Seek the audio tracks
 	for (uint32 i = 0; i < _audioTracks.size(); i++) {
 		BinkAudioTrack *audioTrack = (BinkAudioTrack *)getTrack(i + 1);
 		audioTrack->seek(videoTrack->getFrameTime(keyFrame));
+	}
+
+	if (frame == keyFrame) {
+		// We're already good, no need to go further
+		return true;
 	}
 
 	while (getCurFrame() < (int32)frame - 1)
@@ -417,7 +419,7 @@ bool BinkDecoder::BinkAudioTrack::seek(const Audio::Timestamp &time) {
 		// For now, we do as the official Bink decoder up to version 1.2j. The stream is prefilled
 		// with silence.
 		// The official bink decoder behavior is documented here:
-		// http://www.radgametools.com/bnkhist.htm#Changes from 1.2i to 1.2J (02-18-2002)
+		// <https://www.radgametools.com/bnkhist.htm#Changes> from 1.2i to 1.2J (02-18-2002)
 		Audio::AudioStream *silence = Audio::makeSilentAudioStream(_audioInfo->outSampleRate, _audioInfo->outChannels == 2);
 		Audio::AudioStream *prebuffer = Audio::makeLimitingAudioStream(silence, Audio::Timestamp(750));
 		_audioStream->queueAudioStream(prebuffer);

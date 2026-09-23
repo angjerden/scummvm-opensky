@@ -59,17 +59,23 @@ public:
 		void setValue(bool val);
 		void setValue(DXVector4 val);
 
-		const char *getParamName() const { return _paramName.c_str(); }
+		const char *getParamName() const { return _paramName; }
+		ParamType getParamType() { return _type; }
+		const char *getValue() const { return _valString; }
+		void getValue(int &val) { val = _valInt; }
+		void getValue(float &val) { val = _valFloat; }
+		void getValue(bool &val) { val = _valBool; }
+		void getValue(DXVector4 &val) { val = _valVector; }
 
 		bool persist(BasePersistenceManager *persistMgr);
 
 	private:
 		void setDefaultValues();
 		ParamType _type;
-		Common::String _paramName;
+		char * _paramName;
 		bool _initialized;
 
-		Common::String _valString;
+		char *_valString;
 		int32 _valInt;
 		float _valFloat;
 		DXVector4 _valVector;
@@ -85,9 +91,9 @@ public:
 	void clear();
 	void setParam(const char *paramName, ScValue *val);
 	void setParam(const char *paramName, DXVector4 Val);
+	Effect3DParam *getParamByName(const char *paramName);
 
 private:
-	Effect3DParam *getParamByName(const char *paramName);
 	BaseArray<Effect3DParam *> _params;
 };
 

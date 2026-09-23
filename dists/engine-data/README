@@ -27,6 +27,10 @@ Those informations were stored in the original executables.
 darkseed.dat:
 This file contains essential game data used by the Darkseed engine.
 
+eem.dat:
+This file contains floppy-only scrapbook dialog data used by the Eagle Eye
+Mysteries engine.
+
 drascula.dat:
 This file contains essential game data used by the Drascula engine.
 
@@ -42,6 +46,11 @@ our GUI.
 
 fonts-cjk.dat:
 This file contains set of free CJK fonts (or other big ones), used in our GUI and
+some engines. This file is intended to be big, thus, not suitable for ports with
+memory constraints.
+
+fonts-imgui.dat:
+This file contains set of free symbol fonts (or other big ones), used by ImGui with
 some engines. This file is intended to be big, thus, not suitable for ports with
 memory constraints.
 
@@ -71,6 +80,9 @@ scripts, from.
 
 lure.dat:
 This file contains essential game data used by Lure of the Temptress game.
+
+macs2_translation.dat:
+This file contains game translations for the MACS2 engine.
 
 macgui.dat:
 The file contains set of offsets for recreation of Classic Mac OS GUI, used

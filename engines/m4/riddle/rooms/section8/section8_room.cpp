@@ -24,12 +24,20 @@
 #include "m4/riddle/riddle.h"
 #include "m4/riddle/rooms/section8/section8.h"
 #include "m4/riddle/vars.h"
+#include "m4/adv_r/adv_control.h"
 #include "m4/graphics/gr_series.h"
 #include "m4/gui/gui_vmng.h"
 
 namespace M4 {
 namespace Riddle {
 namespace Rooms {
+
+// The scenes of the rooms handled by this class define one "MEI CHEN" hotspot for each
+// position Mei Chen can stop at. They are told apart by their amount of trailing spaces,
+// which matches the index of the position (see the coordinates in daemonSub1).
+static const char *const MEI_CHEN_HOTSPOTS[5] = {
+	"MEI CHEN", "MEI CHEN ", "MEI CHEN  ", "MEI CHEN   ", "MEI CHEN    "
+};
 
 int32 Section8Room::getStatueIndex(int32 val1) {
 	if (val1 == _var2)
@@ -96,12 +104,11 @@ int32 Section8Room::daemonSub1(int32 dx, bool ascendingFl) {
 		}
 	}
 
-	hotspot_set_active(_G(currentSceneDef).hotspots, "MEI CHEN", false);
-	hotspot_set_active(_G(currentSceneDef).hotspots, "MEI CHEN ", false);
-	hotspot_set_active(_G(currentSceneDef).hotspots, "MEI CHEN  ", false);
-	hotspot_set_active(_G(currentSceneDef).hotspots, "MEI CHEN   ", false);
-	hotspot_set_active(_G(currentSceneDef).hotspots, "MEI CHEN    ", false);
-	_guessHotspotName = Common::String("MEI CHEN      ");
+	for (int j = 0; j < 5; ++j)
+		hotspot_set_active(_G(currentSceneDef).hotspots, MEI_CHEN_HOTSPOTS[j], false);
+
+	// The hotspot of the position Mei Chen is heading to is activated by daemon() case 4
+	_guessHotspotName = MEI_CHEN_HOTSPOTS[i];
 	_unkArrayIndex = i;
 	_unkArray[_unkArrayIndex] = 0;
 	_guessX = fullArr[i];
@@ -292,7 +299,7 @@ void Section8Room::parser() {
 
 			case 70:
 				_G(flags)[V270] = 805;
-				_G(game).new_room = 805;
+				_G(game).setRoom(805);
 				adv_kill_digi_between_rooms(false);
 				digi_preload("950_s29", -1);
 				digi_play_loop("950_s29", 3, 96, -1, -1);
@@ -639,7 +646,7 @@ void Section8Room::parser() {
 			break;
 
 		case 20:
-			_G(game).new_room = _savedNextRoom;
+			_G(game).setRoom(_savedNextRoom);
 			adv_kill_digi_between_rooms(false);
 			digi_preload("950_s29", -1);
 			digi_play_loop("950_s29", 3, 255, -1, -1);
@@ -680,7 +687,7 @@ void Section8Room::daemon() {
 			_meiHandsBehindBack = series_load("MEI CHIEN HANDS BEHIND BACK", -1, nullptr);
 			setGlobals3(_meiHandsBehindBack, 1, 17);
 			sendWSMessage_3840000(_mcTrekMach, 4);
-			_guessHotspotName = Common::String("MEI CHEN      ");
+			_guessHotspotName = MEI_CHEN_HOTSPOTS[_unkArrayIndex];
 			_unkArray[_unkArrayIndex] = 0;
 			kernel_timing_trigger(imath_ranged_rand(1200, 1800), 5, nullptr);
 			// CHECKME: CouldMakeMem();

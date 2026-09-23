@@ -26,6 +26,10 @@
 #include "graphics/fonts/bdf.h"
 #include "graphics/fontman.h"
 
+#ifdef USE_FREETYPE2
+#include "graphics/fonts/ttf.h"
+#endif
+
 namespace Common {
 	class SeekableReadStream;
 	class MacResManager;
@@ -183,6 +187,7 @@ public:
 
 	void loadFonts(Common::SeekableReadStream *stream);
 	void loadFonts(const Common::Path &fileName);
+	void loadMacFont(Common::MacResManager *fontFile, const Common::String &family, Common::SeekableReadStream *fond);
 	void loadFonts(Common::MacResManager *fontFile);
 	void loadWindowsFont(const Common::Path &fileName);
 
@@ -205,6 +210,16 @@ public:
 
 	int getFamilyId(int newId, int newSlant);
 
+#ifdef USE_FREETYPE2
+	/**
+	 * Set the TTF rendering mode used when loading TTF fonts.
+	 * Defaults to kTTFRenderModeMonochrome for classic Mac look.
+	 * Set to kTTFRenderModeLight for anti-aliased text.
+	 */
+	void setTTFRenderMode(TTFRenderMode mode) { _ttfRenderMode = mode; }
+	TTFRenderMode getTTFRenderMode() const { return _ttfRenderMode; }
+#endif
+
 private:
 	void loadFontsBDF();
 	void loadFonts();
@@ -215,6 +230,7 @@ private:
 
 #ifdef USE_FREETYPE2
 	void generateTTFFont(MacFont &toFront, Common::SeekableReadStream *stream);
+	TTFRenderMode _ttfRenderMode = Graphics::kTTFRenderModeMonochrome;
 #endif
 
 private:

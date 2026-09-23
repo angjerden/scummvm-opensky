@@ -109,9 +109,17 @@ bool FontSurface::isSpace(char c) {
 	return (c & 0x7f) == ' ';
 }
 
-const char *FontSurface::writeString(const Common::String &s, const Common::Rect &bounds) {
+const char *FontSurface::writeString(const Common::String &s, const Common::Rect &bounds, bool ttsVoiceText, Common::String *ttsMessage) {
 	_displayString = s.c_str();
 	assert(_fontData);
+
+#ifdef USE_TTS
+	bool deleteTTSMessage = false;
+	if (!ttsMessage) {
+		ttsMessage = new Common::String();
+		deleteTTSMessage = true;
+	}
+#endif
 
 	for (;;) {
 		const char *msgStartP = _displayString;
@@ -198,10 +206,16 @@ const char *FontSurface::writeString(const Common::String &s, const Common::Rect
 
 			if (c == ' ') {
 				_writePos.x += _fontReduced ? 3 : 4;
+#ifdef USE_TTS
+				*ttsMessage += ' ';
+#endif
 			} else if (c == '\r') {
 				fillRect(bounds, _bgColor);
 				addDirtyRect(bounds);
 				_writePos = Common::Point(bounds.left, bounds.top);
+#ifdef USE_TTS
+				*ttsMessage += '\n';
+#endif
 			} else if (c == 1) {
 				// Turn off reduced font mode
 				_fontReduced = false;
@@ -231,6 +245,9 @@ const char *FontSurface::writeString(const Common::String &s, const Common::Rect
 			} else if (c == 6) {
 				// Non-breakable space
 				writeChar(' ', bounds);
+#ifdef USE_TTS
+				*ttsMessage += ' ';
+#endif
 			} else if (c == 7) {
 				// Set text background color
 				int bgColor = fontAtoi();
@@ -270,7 +287,14 @@ const char *FontSurface::writeString(const Common::String &s, const Common::Rect
 				// Skip x position
 				int xAmount = fontAtoi();
 				_writePos.x = MIN(bounds.left + xAmount, (int)bounds.right);
+#ifdef USE_TTS
+				*ttsMessage += '\n';
+#endif
 			} else if (c == 10) {
+#ifdef USE_TTS
+				*ttsMessage += '\n';
+#endif
+
 				// Newline
 				if (newLine(bounds))
 					return _displayString;
@@ -278,6 +302,9 @@ const char *FontSurface::writeString(const Common::String &s, const Common::Rect
 				// Set y position
 				int yp = fontAtoi();
 				_writePos.y = MIN(bounds.top + yp, (int)bounds.bottom);
+#ifdef USE_TTS
+				*ttsMessage += '\n';
+#endif
 			} else if (c == 12) {
 				// Set text colors
 				int idx = fontAtoi(2);
@@ -286,13 +313,22 @@ const char *FontSurface::writeString(const Common::String &s, const Common::Rect
 				setTextColor(idx);
 			} else if (Common::RU_RUS == lang && (c & 0x80)) {
 				writeChar(c, bounds);
+#ifdef USE_TTS
+				*ttsMessage += c;
+#endif
 			} else if (c < ' ') {
 				// End of string or invalid command
 				_displayString = nullptr;
+#ifdef USE_TTS
+				*ttsMessage += '\n';
+#endif
 				break;
 			} else {
 				// Standard character - write it out
 				writeChar(c, bounds);
+#ifdef USE_TTS
+				*ttsMessage += c;
+#endif
 			}
 		}
 
@@ -303,7 +339,43 @@ const char *FontSurface::writeString(const Common::String &s, const Common::Rect
 			break;
 	}
 
+#ifdef USE_TTS
+	if (ttsVoiceText) {
+		g_vm->sayText(*ttsMessage);
+	}
+
+	if (deleteTTSMessage) {
+		delete ttsMessage;
+		ttsMessage = nullptr;
+	}
+#endif
+
 	return _displayString;
+}
+
+const char *FontSurface::fitToWidth(const char *s, int maxWidth) {
+	const char *strSave = _displayString;
+
+	for (;;) {
+		// Measure the rendered width of the string
+		_displayString = s;
+		int total = 0;
+		while (*_displayString && !getNextCharWidth(total)) {
+		}
+
+		// writeString wraps once its running position reaches the right
+		// edge, so the text only fits if it stays strictly narrower
+		if (total < maxWidth || !*s)
+			break;
+
+		// Too wide, so drop the leading character and remeasure
+		_displayString = s;
+		getNextChar();
+		s = _displayString;
+	}
+
+	_displayString = strSave;
+	return s;
 }
 
 void FontSurface::writeCharacter(uint16_t c, const Common::Rect &clipRect) {
@@ -316,6 +388,32 @@ void FontSurface::writeCharacter(uint16_t c, const Common::Rect &clipRect) {
 	_fontJustify = justify;
 }
 
+// The French version stores accented characters as their code page 437
+// codes, while its font keeps the corresponding glyphs in repurposed ASCII
+// slots, so translate the former into the latter
+static uint16_t frenchChar(byte c) {
+	switch (c) {
+	case 0x81: return 0x5E;   // u with diaeresis
+	case 0x82: return 0x24;   // e with acute accent
+	case 0x83: return 0x26;   // a with circumflex
+	case 0x85: return 0x5D;   // a with grave accent
+	case 0x87: return 0x7D;   // c with cedilla
+	case 0x88: return 0x23;   // e with circumflex
+	case 0x8A: return 0x25;   // e with grave accent
+	case 0x8B: return 0x5F;   // i with diaeresis
+	case 0x8C: return 0x7B;   // i with circumflex
+	case 0x93: return 0x5B;   // o with circumflex
+	case 0x96: return 0x3D;   // u with circumflex
+	case 0x97: return 0x5C;   // u with grave accent
+	case 0x80: return 'C';    // capital C with cedilla, which has no glyph
+	case 0x90: return 'E';    // capital E with acute accent, which has no glyph
+	default:
+		// Never let an unknown high byte become a control code
+		c &= 0x7f;
+		return (c < ' ') ? ' ' : c;
+	}
+}
+
 uint16_t FontSurface::getNextChar() {
 	if (_isBig5) {
 		uint8_t lead = *_displayString++;
@@ -324,6 +422,8 @@ uint16_t FontSurface::getNextChar() {
 		return (lead << 8) | (*_displayString++ & 0xff);
 	} else if (Common::RU_RUS == lang)
 		return *_displayString++ & 0xff;
+	else if (Common::FR_FRA == lang && (*_displayString & 0x80))
+		return frenchChar(*_displayString++ & 0xff);
 	else
 		return *_displayString++ & 0x7f;
 }

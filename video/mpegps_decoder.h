@@ -57,12 +57,16 @@ public:
 	MPEGPSDecoder(double decibel = 0.0);
 	virtual ~MPEGPSDecoder();
 
-	bool loadStream(Common::SeekableReadStream *stream);
-	void close();
+	bool loadStream(Common::SeekableReadStream *stream) override;
+	void close() override;
+
+	// Set the number of prebuffered packets in demuxer
+	// Used only by qdEngine
+	void setPrebufferedPackets(int packets);
 
 protected:
-	void readNextPacket();
-	bool useAudioSync() const { return false; }
+	void readNextPacket() override;
+	bool useAudioSync() const override { return false; }
 
 private:
 	class MPEGPSDemuxer {
@@ -75,6 +79,8 @@ private:
 
 		Common::SeekableReadStream *getFirstVideoPacket(int32 &startCode, uint32 &pts, uint32 &dts);
 		Common::SeekableReadStream *getNextPacket(uint32 currentTime, int32 &startCode, uint32 &pts, uint32 &dts);
+
+		void setPrebufferedPackets(int packets) { _prebufferedPackets = packets; }
 
 	private:
 		class Packet {
@@ -98,6 +104,11 @@ private:
 		Common::Queue<Packet> _audioQueue;
 		// If we come across a non-packetized elementary stream
 		bool _isESStream;
+
+		uint32 _firstAudioPacketPts = 0xFFFFFFFF;
+		uint32 _firstVideoPacketPts = 0xFFFFFFFF;
+
+		int _prebufferedPackets = 150;
 	};
 
 	// Base class for handling MPEG streams
@@ -120,17 +131,17 @@ private:
 		MPEGVideoTrack(Common::SeekableReadStream *firstPacket);
 		~MPEGVideoTrack();
 
-		bool endOfTrack() const { return _endOfTrack; }
-		uint16 getWidth() const;
-		uint16 getHeight() const;
-		Graphics::PixelFormat getPixelFormat() const;
-		bool setOutputPixelFormat(const Graphics::PixelFormat &format);
-		int getCurFrame() const { return _curFrame; }
-		uint32 getNextFrameStartTime() const { return _nextFrameStartTime.msecs(); }
-		const Graphics::Surface *decodeNextFrame();
+		bool endOfTrack() const override { return _endOfTrack; }
+		uint16 getWidth() const override;
+		uint16 getHeight() const override;
+		Graphics::PixelFormat getPixelFormat() const override;
+		bool setOutputPixelFormat(const Graphics::PixelFormat &format) override;
+		int getCurFrame() const override { return _curFrame; }
+		uint32 getNextFrameStartTime() const override { return _nextFrameStartTime.msecs(); }
+		const Graphics::Surface *decodeNextFrame() override;
 
-		bool sendPacket(Common::SeekableReadStream *packet, uint32 pts, uint32 dts);
-		StreamType getStreamType() const { return kStreamTypeVideo; }
+		bool sendPacket(Common::SeekableReadStream *packet, uint32 pts, uint32 dts) override;
+		StreamType getStreamType() const override { return kStreamTypeVideo; }
 
 		void setEndOfTrack() { _endOfTrack = true; }
 
@@ -159,11 +170,11 @@ private:
 		MPEGAudioTrack(Common::SeekableReadStream &firstPacket, Audio::Mixer::SoundType soundType);
 		~MPEGAudioTrack();
 
-		bool sendPacket(Common::SeekableReadStream *packet, uint32 pts, uint32 dts);
-		StreamType getStreamType() const { return kStreamTypeAudio; }
+		bool sendPacket(Common::SeekableReadStream *packet, uint32 pts, uint32 dts) override;
+		StreamType getStreamType() const override { return kStreamTypeAudio; }
 
 	protected:
-		Audio::AudioStream *getAudioStream() const;
+		Audio::AudioStream *getAudioStream() const override;
 
 	private:
 		Audio::PacketizedAudioStream *_audStream;
@@ -176,11 +187,11 @@ private:
 		AC3AudioTrack(Common::SeekableReadStream &firstPacket, double decibel, Audio::Mixer::SoundType soundType);
 		~AC3AudioTrack();
 
-		bool sendPacket(Common::SeekableReadStream *packet, uint32 pts, uint32 dts);
-		StreamType getStreamType() const { return kStreamTypeAudio; }
+		bool sendPacket(Common::SeekableReadStream *packet, uint32 pts, uint32 dts) override;
+		StreamType getStreamType() const override { return kStreamTypeAudio; }
 
 	protected:
-		Audio::AudioStream *getAudioStream() const;
+		Audio::AudioStream *getAudioStream() const override;
 
 	private:
 		Audio::PacketizedAudioStream *_audStream;
@@ -192,11 +203,11 @@ private:
 		PS2AudioTrack(Common::SeekableReadStream *firstPacket, Audio::Mixer::SoundType soundType);
 		~PS2AudioTrack();
 
-		bool sendPacket(Common::SeekableReadStream *packet, uint32 pts, uint32 dts);
-		StreamType getStreamType() const { return kStreamTypeAudio; }
+		bool sendPacket(Common::SeekableReadStream *packet, uint32 pts, uint32 dts) override;
+		StreamType getStreamType() const override { return kStreamTypeAudio; }
 
 	protected:
-		Audio::AudioStream *getAudioStream() const;
+		Audio::AudioStream *getAudioStream() const override;
 
 	private:
 		Audio::PacketizedAudioStream *_audStream;

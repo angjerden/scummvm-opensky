@@ -59,6 +59,10 @@ void ScummEngine::loadCJKFont() {
 
 	_useMultiFont = false;	// Korean Multi-Font
 
+	// Sega CD Rebel Assault uses its SMUSH subtitle font.
+	if (_game.id == GID_REBEL1 && _game.platform == Common::kPlatformSegaCD)
+		return;
+
 	// Special case for Korean
 	if (isScummvmKorTarget()) {
 		loadKorFont();
@@ -112,7 +116,12 @@ void ScummEngine::loadCJKFont() {
 			numChar = 2350;
 			break;
 		case Common::JA_JPN:
-			fontFile = (_game.id == GID_DIG) ? "kanji16.fnt" : "japanese.fnt";
+			if (_game.id == GID_DIG)
+				fontFile = "kanji16.fnt";
+			else if (_game.id == GID_REBEL2)
+				fontFile = "LAUNCH/KANJI.FNT";
+			else
+				fontFile = "japanese.fnt";
 			numChar = 8192;
 			break;
 		case Common::ZH_TWN:
@@ -1056,6 +1065,13 @@ void CharsetRenderer::saveLoadWithSerializer(Common::Serializer &ser) {
 	ser.syncAsByte(_color, VER(73));
 
 	if (ser.isLoading()) {
+		// Some old v0.13.x saves have bogus values, for some reason (see
+		// bug #15931). When detecting such weird values made before the
+		// v1.0.0 release (VER(80)) that followed it, reinitialize the id
+		// using a, hopefully, sane value.
+		if (ser.getVersion() < VER(80) && _curId > _vm->_numCharsets - 1)
+			_curId = _vm->_string[0]._default.charset;
+
 		setCurID(_curId);
 		setColor(_color);
 	}
@@ -1687,7 +1703,7 @@ CharsetRendererMac::~CharsetRendererMac() {
 }
 
 void CharsetRendererMac::setCurID(int32 id) {
-	if  (id == -1)
+	if (id == -1)
 		return;
 
 	// This should only happen, if it happens at all, with older savegames.
@@ -2083,6 +2099,7 @@ void CharsetRendererNut::setCurID(int32 id) {
 
 	int numFonts = ((_vm->_game.id == GID_CMI) && (_vm->_game.features & GF_DEMO)) ? 4 : 5;
 	assert(id < numFonts);
+	(void)numFonts;
 	_curId = id;
 	if (!_fr[id]) {
 		char fontname[11];

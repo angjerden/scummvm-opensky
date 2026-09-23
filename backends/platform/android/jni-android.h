@@ -30,7 +30,6 @@
 #include "common/archive.h"
 #include "common/array.h"
 #include "common/ustr.h"
-#include "engines/engine.h"
 
 namespace Graphics {
 	struct Surface;
@@ -57,6 +56,7 @@ public:
 	static bool virt_keyboard_state;
 
 	static int32 gestures_insets[4];
+	static int32 cutout_insets[4];
 
 	static jint onLoad(JavaVM *vm);
 
@@ -100,6 +100,10 @@ public:
 	static Common::String getScummVMLogPath();
 	static jint getAndroidSDKVersionId();
 	static void setCurrentGame(const Common::String &target);
+	static void notifyHTTPService(int localPort, bool minimal);
+	static jobject getTTSManager();
+	static Common::Array<Common::String> getMIDIDevices();
+	static jobject openMIDIDevice(int deviceId, int *port);
 
 	static inline bool haveSurface();
 	static inline bool swapBuffers();
@@ -112,13 +116,6 @@ public:
 		return fetchEGLVersion();
 	}
 
-	static void setAudioPause();
-	static void setAudioPlay();
-	static void setAudioStop();
-
-	static inline int writeAudio(JNIEnv *env, jbyteArray &data, int offset,
-									int size);
-
 	static Common::Array<Common::String> getAllStorageLocations();
 
 	static jobject getNewSAFTree(bool writable, const Common::String &initURI, const Common::String &prompt);
@@ -128,13 +125,14 @@ public:
 	static int exportBackup(const Common::U32String &prompt);
 	static int importBackup(const Common::U32String &prompt, const Common::String &path);
 
+	static jstring convertToJString(JNIEnv *env, const Common::U32String &str);
+	static Common::U32String convertFromJString(JNIEnv *env, const jstring &jstr);
 private:
 	static pthread_key_t _env_tls;
 
 	static JavaVM *_vm;
 	// back pointer to (java) peer instance
 	static jobject _jobj;
-	static jobject _jobj_audio_track;
 	static jobject _jobj_egl;
 	static jobject _jobj_egl_display;
 	static jobject _jobj_egl_surface;
@@ -163,6 +161,10 @@ private:
 	static jmethodID _MID_getScummVMConfigPath;
 	static jmethodID _MID_getScummVMLogPath;
 	static jmethodID _MID_setCurrentGame;
+	static jmethodID _MID_notifyHTTPService;
+	static jmethodID _MID_getTTSManager;
+	static jmethodID _MID_getMIDIDevices;
+	static jmethodID _MID_openMIDIDevice;
 	static jmethodID _MID_getSysArchives;
 	static jmethodID _MID_getAllStorageLocations;
 	static jmethodID _MID_initSurface;
@@ -176,12 +178,6 @@ private:
 
 	static jmethodID _MID_EGL10_eglSwapBuffers;
 
-	static jmethodID _MID_AudioTrack_flush;
-	static jmethodID _MID_AudioTrack_pause;
-	static jmethodID _MID_AudioTrack_play;
-	static jmethodID _MID_AudioTrack_stop;
-	static jmethodID _MID_AudioTrack_write;
-
 	static const JNINativeMethod _natives[];
 
 	static void throwByName(JNIEnv *env, const char *name, const char *msg);
@@ -190,8 +186,6 @@ private:
 	// natives for the dark side
 	static void create(JNIEnv *env, jobject self, jobject asset_manager,
 						jobject egl, jobject egl_display,
-						jobject at, jint audio_sample_rate,
-						jint audio_buffer_size,
 						jboolean assets_updated_);
 	static void destroy(JNIEnv *env, jobject self);
 
@@ -207,11 +201,10 @@ private:
 
 	static void systemInsetsUpdated(JNIEnv *env, jobject self, jintArray gestureInsets, jintArray systemInsets, jintArray cutoutInsets);
 
-	static jstring getNativeVersionInfo(JNIEnv *env, jobject self);
-	static jstring convertToJString(JNIEnv *env, const Common::U32String &str);
-	static Common::U32String convertFromJString(JNIEnv *env, const jstring &jstr);
+	static void setDefaultAudioValues(JNIEnv *env, jclass clazz, jint sampleRate, jint framesPerBurst);
+	static void notifyAudioDisconnect(JNIEnv *env, jclass clazz);
 
-	static PauseToken _pauseToken;
+	static jstring getNativeVersionInfo(JNIEnv *env, jobject self);
 
 	static JNIEnv *fetchEnv();
 	static int fetchEGLVersion();
@@ -226,11 +219,6 @@ inline bool JNI::swapBuffers() {
 
 	return env->CallBooleanMethod(_jobj_egl, _MID_EGL10_eglSwapBuffers,
 									_jobj_egl_display, _jobj_egl_surface);
-}
-
-inline int JNI::writeAudio(JNIEnv *env, jbyteArray &data, int offset, int size) {
-	return env->CallIntMethod(_jobj_audio_track, _MID_AudioTrack_write, data,
-								offset, size);
 }
 
 #endif

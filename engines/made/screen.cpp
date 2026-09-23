@@ -32,6 +32,23 @@
 
 namespace Made {
 
+enum TextChannelIndex {
+	kTapeRecorderName = 84,
+	kTapeRecorderTrack = 85,
+	kTapeRecorderMaxTrack = 86,
+	kTapeRecorderTime = 87,
+	kTapeRecorderScan = 88,
+	kHoverOver = 89,
+	kClickMessage = 97
+};
+
+enum TapeRecorderIndex {
+	kTime = 0,
+	kMaxTrack = 1,
+	kTrack = 2,
+	kName = 3
+};
+
 Screen::Screen(MadeEngine *vm) : _vm(vm) {
 
 	_palette = new byte[768];
@@ -51,7 +68,7 @@ Screen::Screen(MadeEngine *vm) : _vm(vm) {
 	_clipArea.destSurface = _workScreen;
 
 	// Screen mask is only needed in v2 games
-	if (_vm->getGameID() != GID_RTZ) {
+	if (_vm->getGameID() != GID_RTZ && _vm->getGameID() != GID_RSBESTNDE && _vm->getGameID() != GID_RSBUSYNDE) {
 		_screenMask = new Graphics::Surface();
 		_screenMask->create(320, 200, Graphics::PixelFormat::createFormatCLUT8());
 		_maskDrawCtx.clipRect = Common::Rect(320, 200);
@@ -93,6 +110,9 @@ Screen::Screen(MadeEngine *vm) : _vm(vm) {
 	_outlineColor = 0;
 	_dropShadowColor = 0;
 
+	_queueNextText = false;
+	_voiceTimeText = false;
+
 	clearChannels();
 }
 
@@ -103,7 +123,7 @@ Screen::~Screen() {
 
 	delete _backgroundScreen;
 	delete _workScreen;
-	if (_vm->getGameID() != GID_RTZ)
+	if (_vm->getGameID() != GID_RTZ && _vm->getGameID() != GID_RSBESTNDE && _vm->getGameID() != GID_RSBUSYNDE)
 		delete _screenMask;
 	delete _fx;
 }
@@ -111,7 +131,7 @@ Screen::~Screen() {
 void Screen::clearScreen() {
 	_backgroundScreen->fillRect(Common::Rect(0, 0, 320, 200), 0);
 	_workScreen->fillRect(Common::Rect(0, 0, 320, 200), 0);
-	if (_vm->getGameID() != GID_RTZ)
+	if (_vm->getGameID() != GID_RTZ && _vm->getGameID() != GID_RSBESTNDE && _vm->getGameID() != GID_RSBUSYNDE)
 		_screenMask->fillRect(Common::Rect(0, 0, 320, 200), 0);
 	_mask = 0;
 	_needPalette = true;
@@ -182,7 +202,8 @@ void Screen::drawSurface(Graphics::Surface *sourceSurface, int x, int y, int16 f
 
 	source = (byte *)sourceSurface->getBasePtr(0, startY);
 	dest = (byte *)clipInfo.destSurface->getBasePtr(x, y);
-	if (_vm->getGameID() != GID_RTZ)
+	// only set up maskp if game uses masking and mask requested in f.call
+	if (mask && (_vm->getGameID() != GID_RTZ && _vm->getGameID() != GID_RSBESTNDE && _vm->getGameID() != GID_RSBUSYNDE))
 		maskp = (byte *)_maskDrawCtx.destSurface->getBasePtr(x, y);
 
 	int32 sourcePitch, linePtrAdd, sourceAdd;
@@ -206,16 +227,14 @@ void Screen::drawSurface(Graphics::Surface *sourceSurface, int x, int y, int16 f
 	for (int16 yc = 0; yc < clipHeight; yc++) {
 		linePtr = source + sourceAdd;
 		for (int16 xc = 0; xc < clipWidth; xc++) {
-			if (*linePtr && (_vm->getGameID() == GID_RTZ || (mask == 0 || (maskp && maskp[xc] == 0)))) {
-				if (*linePtr)
-					dest[xc] = *linePtr;
-			}
+			if (*linePtr && (! maskp || maskp[xc] == 0))
+				dest[xc] = *linePtr;
 			linePtr += linePtrAdd;
 		}
 
 		source += sourcePitch;
 		dest += clipInfo.destSurface->pitch;
-		if (_vm->getGameID() != GID_RTZ)
+		if (maskp)
 			maskp += _maskDrawCtx.destSurface->pitch;
 	}
 
@@ -232,6 +251,11 @@ uint16 Screen::updateChannel(uint16 channelIndex) {
 void Screen::deleteChannel(uint16 channelIndex) {
 	if (channelIndex < 1 || channelIndex >= 100)
 		return;
+
+	if (_channels[channelIndex - 1].type == 2) {
+		_channels[channelIndex - 1].previousText.clear();
+	}
+
 	_channels[channelIndex - 1].type = 0;
 	_channels[channelIndex - 1].state = 0;
 	_channels[channelIndex - 1].index = 0;
@@ -252,6 +276,12 @@ int16 Screen::getChannelState(uint16 channelIndex) {
 void Screen::setChannelState(uint16 channelIndex, int16 state) {
 	if (channelIndex < 1 || channelIndex >= 100 || _channels[channelIndex - 1].type == 0)
 		return;
+
+	if (state != _channels[channelIndex - 1].state && _channels[channelIndex - 1].type == 2) {
+		_channels[channelIndex - 1].previousText.clear();
+		_queueNextText = true;
+	} 
+
 	_channels[channelIndex - 1].state = state;
 }
 
@@ -406,6 +436,39 @@ void Screen::drawAnimFrame(uint16 animIndex, int16 x, int16 y, int16 frameNum, i
 
 uint16 Screen::drawPic(uint16 index, int16 x, int16 y, int16 flipX, int16 flipY) {
 	drawFlex(index, x, y, flipX, flipY, 0, _backgroundScreenDrawCtx);
+
+#ifdef USE_TTS
+	if (_vm->getGameID() == GID_RTZ && index > 0) {
+		if (index == 843) {	// Save/load screen
+			_vm->_saveLoadScreenOpen = true;
+			_vm->_rtzSaveLoadIndex = 0;
+			_vm->_rtzFirstSaveSlot = 0;
+		} else {
+			_vm->_saveLoadScreenOpen = false;
+		}
+
+		if (index == 1501) {	// Tape recorder
+			_vm->_tapeRecorderOpen = true;
+		} else {
+			_vm->_tapeRecorderOpen = false;
+		}
+	} else if (_vm->getGameID() == GID_LGOP2) {
+		if (index == 465) {	// Save/load screen (Play-O-Matic)
+			_vm->_playOMaticButtonIndex = 0;
+			_vm->_saveLoadScreenOpen = true;
+		} else if (index == 196) {	// Play-O-Matic button highlights
+			_vm->checkHoveringPlayOMatic(y);
+		} else if (index != 463 && index != 0) {
+			// 1216 is drawn before "best interactive fiction" line, 757 before "choose your character", and 761 before the
+			// second copyright message, all of which need voicing
+			if (index == 1216 || index == 757 || index == 761) {
+				_vm->_forceVoiceText = true;
+			}
+			_vm->_saveLoadScreenOpen = false;
+		}
+	}
+#endif
+
 	return 0;
 }
 
@@ -576,6 +639,14 @@ uint16 Screen::placeText(uint16 channelIndex, uint16 textObjectIndex, int16 x, i
 	if (_ground == 0)
 		state |= 2;
 
+	// The channel for this message isn't deleted until the text on screen disappears, but it gets refreshed
+	// if the player clicks again, so the previous text needs to be manually reset here to allow the message to be voiced
+	// whenever the player clicks
+	if (channelIndex == kClickMessage && (_channels[channelIndex].x != x || _channels[channelIndex].y != y)) {
+		_channels[channelIndex].previousText.clear();
+		_queueNextText = true;
+	}
+
 	_channels[channelIndex].state = state;
 	_channels[channelIndex].type = 2;
 	_channels[channelIndex].index = textObjectIndex;
@@ -585,11 +656,95 @@ uint16 Screen::placeText(uint16 channelIndex, uint16 textObjectIndex, int16 x, i
 	_channels[channelIndex].fontNum = fontNum;
 	_channels[channelIndex].outlineColor = outlineColor;
 
+#ifdef USE_TTS
+	voiceChannelText(text, channelIndex);
+#endif
+
 	if (_channelsUsedCount <= channelIndex)
 		_channelsUsedCount = channelIndex + 1;
 
 	return channelIndex + 1;
 }
+
+#ifdef USE_TTS
+
+void Screen::voiceChannelText(const char *text, uint16 channelIndex) {
+	if ((channelIndex != kTapeRecorderTime && strcmp(_channels[channelIndex].previousText.c_str(), text)) || 
+			(channelIndex == kTapeRecorderTime && _voiceTimeText)) {
+		size_t len = strlen(text);
+		_channels[channelIndex].previousText = text;
+
+		if (len == 0) {
+			return;
+		}
+		
+		if (channelIndex == kHoverOver && _queueNextText) {
+			_vm->sayText(text, Common::TextToSpeechManager::QUEUE);
+			_queueNextText = false;
+		} else {
+			bool voiceText = true;
+
+			Object *object = nullptr;
+			const char *message = nullptr;
+			switch (channelIndex) {
+			case kTapeRecorderName:
+				// Voice name, track, and max track all at once, so that they're all properly voiced
+				// when the player switches between entries on the tape recorder (the track and max track numbers
+				// aren't necessarily unique, and may not be voiced otherwise)
+				_vm->sayText(Common::String::format("%s: %s", _vm->_tapeRecorderText[kName].c_str(), text));
+
+				// Track
+				object = _vm->_dat->getObject(_channels[kTapeRecorderTrack].index);
+				if (object) {
+					message = object->getString();
+				}
+				_channels[kTapeRecorderTrack].previousText = message;
+				_vm->sayText(Common::String::format("%s: %s", _vm->_tapeRecorderText[kTrack].c_str(),
+								_channels[kTapeRecorderTrack].previousText.c_str()), 
+								Common::TextToSpeechManager::QUEUE);
+
+				// Max track
+				object = _vm->_dat->getObject(_channels[kTapeRecorderMaxTrack].index);
+				if (object) {
+					message = object->getString();
+				}
+				_vm->sayText(Common::String::format("%s: %s", _vm->_tapeRecorderText[kMaxTrack].c_str(), message), 
+								Common::TextToSpeechManager::QUEUE);
+
+				voiceText = false;
+				break;
+			case kTapeRecorderTrack:
+				if (!_channels[kTapeRecorderName].previousText.empty()) {
+					// Voice here in case the track is changed while the tape recorder is open
+					_vm->sayText(Common::String::format("%s: %s", _vm->_tapeRecorderText[kTrack].c_str(), text), 
+								Common::TextToSpeechManager::QUEUE);
+				}
+				// fall through
+			case kTapeRecorderMaxTrack:
+				// Max track shouldn't change unless the player changes entries, in which case it'll be
+				// voiced under the kTapeRecorderName condition, so no need to voice it here
+				voiceText = false;
+				break;
+			case kTapeRecorderTime:
+				_voiceTimeText = false;
+				_vm->sayText(Common::String::format("%s: %s", _vm->_tapeRecorderText[kTime].c_str(), text), Common::TextToSpeechManager::QUEUE);
+				voiceText = false;
+			}
+
+			if (voiceText) {
+				if (_vm->_saveLoadScreenOpen) {
+					Common::String ttsText(text);
+					ttsText.replace('_', ' ');
+					_vm->sayText(ttsText, Common::TextToSpeechManager::QUEUE);
+				} else {
+					_vm->sayText(text);
+				}
+			}
+		}
+	}
+}
+
+#endif
 
 void Screen::show() {
 
@@ -751,6 +906,9 @@ void Screen::printTextEx(const char *text, int16 x, int16 y, int16 fontNum, int1
 	setFont(oldFontNum);
 	_fontDrawCtx = oldFontDrawCtx;
 
+	if (_vm->getGameID() == GID_MANHOLE || _vm->getGameID() == GID_RODNEY) {
+		_vm->sayText(text);
+	}
 }
 
 void Screen::printObjectText(int16 objectIndex, int16 x, int16 y, int16 fontNum, int16 textColor, int16 outlineColor, const ClipInfo &clipInfo) {
@@ -818,6 +976,14 @@ SpriteListItem Screen::getFromSpriteList(int16 index) {
 
 void Screen::clearSpriteList() {
 	_spriteList.clear();
+}
+
+void Screen::setMouseCursor(const Graphics::Cursor *cursor) {
+	// The original Windows version of Rodney's Funscreen upscales the
+	// main screen to the native resolution, but leaves the cursor
+	// unscaled. For simplicity, we hardcode the cursor scale to
+	// 0.5x, which matches the original when running in 640x400.
+	CursorMan.replaceCursor(cursor, FRAC_HALF, FRAC_HALF);
 }
 
 void Screen::setDefaultMouseCursor() {

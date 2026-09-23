@@ -228,7 +228,6 @@ MODULE_OBJS = \
 	engine/debugging/log_file.o \
 	engine/debugging/message_buffer.o \
 	engine/device/mouse_w32.o \
-	engine/font/fonts_engine.o \
 	engine/game/game_init.o \
 	engine/game/savegame.o \
 	engine/game/savegame_components.o \
@@ -319,6 +318,7 @@ MODULE_OBJS = \
 	plugins/ags_bm_font_renderer/ags_bm_font_renderer.o \
 	plugins/ags_clipboard/ags_clipboard.o \
 	plugins/ags_collision_detector/ags_collision_detector.o \
+	plugins/ags_console_sys_plugin/ags_console_sys_plugin.o \
 	plugins/ags_consoles/ags_consoles.o \
 	plugins/ags_controller/ags_controller.o \
 	plugins/ags_controller/ags_controller_arcnor.o \
@@ -326,12 +326,14 @@ MODULE_OBJS = \
 	plugins/ags_creditz/ags_creditz1.o \
 	plugins/ags_creditz/ags_creditz2.o \
 	plugins/ags_creditz/drawing.o \
+	plugins/ags_filedel/ags_filedel.o \
 	plugins/ags_fire/ags_fire.o \
 	plugins/ags_flashlight/ags_flashlight.o \
 	plugins/ags_flashlight/gfx.o \
 	plugins/ags_galaxy_steam/ags_wadjeteye_steam.o \
 	plugins/ags_galaxy_steam/ags_galaxy_steam.o \
 	plugins/ags_joy/ags_joy.o \
+	plugins/ags_maya/ags_maya.o \
 	plugins/ags_nickenstien_gfx/ags_nickenstien_gfx.o \
 	plugins/ags_pal_render/ags_pal_render.o \
 	plugins/ags_pal_render/raycast.o \
@@ -354,6 +356,7 @@ MODULE_OBJS = \
 	plugins/ags_tcp_ip/ags_tcp_ip.o \
 	plugins/ags_touch/ags_touch.o \
 	plugins/ags_trans/ags_trans.o \
+	plugins/ags_utils/ags_utils.o \
 	plugins/ags_wadjet_util/ags_wadjet_util.o \
 	plugins/ags_waves/ags_waves.o \
 	plugins/ags_waves/data.o \

@@ -37,8 +37,9 @@ class EuphonyPlayer;
 class TownsPC98_AudioDriver;
 
 namespace Audio {
-class PCSpeaker;
+class PCSpeakerStream;
 class MaxTrax;
+class HalestormDriver;
 } // End of namespace Audio
 
 namespace Common {
@@ -265,7 +266,7 @@ public:
 	int getRate() const override { return _rate; }
 private:
 	Common::Mutex _mutex;
-	Audio::PCSpeaker *_speaker;
+	Audio::PCSpeakerStream *_speaker;
 	int _rate;
 
 	struct Channel {
@@ -355,7 +356,6 @@ protected:
 };
 
 class SoundMacRes;
-class HalestormDriver;
 class SoundMac : public Sound {
 public:
 	SoundMac(KyraEngine_v1 *vm, Audio::Mixer *mixer);
@@ -382,7 +382,7 @@ private:
 	void setQuality(bool hi);
 
 	SoundMacRes *_res;
-	HalestormDriver *_driver;
+	Audio::HalestormDriver *_driver;
 	const int _talkieFlag;
 	bool _ready;
 

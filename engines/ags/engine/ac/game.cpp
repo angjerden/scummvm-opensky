@@ -400,10 +400,13 @@ void unload_game() {
 	_GP(thisroom).Free();
 
 	// Free game state and game struct
-	delete _G(play);
-	_G(play) = new GameState();
-	delete _G(game);
-	_G(game) = new GameSetupStruct();
+	// Use placement new to keep the same memory locations
+	// as these structures are still referenced and may be reused
+	// in some games
+	_G(play)->~GameState();
+	new(_G(play)) GameState();
+	_G(game)->~GameSetupStruct();
+	new(_G(game)) GameSetupStruct();
 
 	// Reset all resource caches
 	// IMPORTANT: this is hard reset, including locked items
@@ -1127,7 +1130,7 @@ int __GetLocationType(int xxx, int yyy, int allowHotspot0) {
 		return 0;
 	xxx = vpt.first.X;
 	yyy = vpt.first.Y;
-	if ((xxx >= _GP(thisroom).Width) | (xxx < 0) | (yyy < 0) | (yyy >= _GP(thisroom).Height))
+	if ((xxx >= _GP(thisroom).Width) || (xxx < 0) || (yyy < 0) || (yyy >= _GP(thisroom).Height))
 		return 0;
 
 	// check characters, objects and walkbehinds, work out which is
@@ -1255,7 +1258,7 @@ void display_switch_in_resume() {
 }
 
 void replace_tokens(const char *srcmes, char *destm, size_t maxlen) {
-	int indxdest = 0, indxsrc = 0;
+	size_t indxdest = 0, indxsrc = 0;
 	const char *srcp;
 	char *destp;
 	while (srcmes[indxsrc] != 0) {
@@ -1275,11 +1278,11 @@ void replace_tokens(const char *srcmes, char *destm, size_t maxlen) {
 			}
 			char tval[10];
 			if (tokentype == 1) {
-				if ((inx < 1) | (inx >= _GP(game).numinvitems))
+				if ((inx < 1) || (inx >= _GP(game).numinvitems))
 					quit("!Display: invalid inv item specified in @IN@");
 				snprintf(tval, sizeof(tval), "%d", _G(playerchar)->inv[inx]);
 			} else {
-				if ((inx < 0) | (inx >= MAXGSVALUES))
+				if ((inx < 0) || (inx >= MAXGSVALUES))
 					quit("!Display: invalid global int index speicifed in @GI@");
 				snprintf(tval, sizeof(tval), "%d", GetGlobalInt(inx));
 			}
@@ -1290,7 +1293,7 @@ void replace_tokens(const char *srcmes, char *destm, size_t maxlen) {
 			indxdest++;
 			indxsrc++;
 		}
-		if (indxdest >= (int)maxlen - 3)
+		if (indxdest >= maxlen - 3)
 			break;
 	}
 	destm[indxdest] = 0;
@@ -1335,6 +1338,8 @@ void game_sprite_updated(int sprnum, bool deleted) {
 
 	// GUI still have a special draw route, so cannot rely on object caches;
 	// will have to do a per-GUI and per-control check.
+	// TODO: devise a way to speed this iteration up, perhaps link GUI objects
+	// to the sprite notification block somehow, etc...?
 	//
 	// gui backgrounds
 	for (auto &gui : _GP(guis)) {

@@ -137,7 +137,7 @@ public:
 	ValueDisplayDialog(const Common::U32String &label, int minVal, int maxVal, int val, uint16 incKey, uint16 decKey);
 
 	void open() override;
-	void drawDialog(GUI::DrawLayer layerToDraw) override;
+	void drawDialog(GUI::DrawLayer layerToDraw, bool resetClipping = true) override;
 	void handleTickle() override;
 	void handleMouseDown(int x, int y, int button, int clickCount) override {
 		close();
@@ -241,7 +241,11 @@ protected:
 	GUI::CheckboxWidget *createOriginalGUICheckbox(GuiObject *boss, const Common::String &name);
 	GUI::CheckboxWidget *createGammaCorrectionCheckbox(GuiObject *boss, const Common::String &name);
 	GUI::CheckboxWidget *createSegaShadowModeCheckbox(GuiObject *boss, const Common::String &name);
+	GUI::CheckboxWidget *createSegaCdWaitCursorWhenPausedCheckbox(GuiObject *boss, const Common::String &name);
 	GUI::CheckboxWidget *createCopyProtectionCheckbox(GuiObject *boss, const Common::String &name);
+#ifdef USE_TTS
+	GUI::CheckboxWidget *createEnableTTSCheckbox(GuiObject *boss, const Common::String &name);
+#endif
 	void updateAdjustmentSlider(GUI::SliderWidget *slider, GUI::StaticTextWidget *value);
 
 	Common::Array<GUI::CheckboxWidget *> _enhancementsCheckboxes;
@@ -263,6 +267,9 @@ private:
 		kSmoothScrollCmd = 'SMSC'
 	};
 
+#ifdef USE_SID_AUDIO
+	GUI::CheckboxWidget *_c64SidTypeCheckbox = nullptr;
+#endif
 	GUI::CheckboxWidget *_smoothScrollCheckbox = nullptr;
 	GUI::CheckboxWidget *_semiSmoothScrollCheckbox = nullptr;
 
@@ -294,6 +301,9 @@ private:
 
 	GUI::CheckboxWidget *_enableOriginalGUICheckbox = nullptr;
 	GUI::CheckboxWidget *_enableCopyProtectionCheckbox = nullptr;
+#ifdef USE_TTS
+	GUI::CheckboxWidget *_enableTTSCheckbox = nullptr;
+#endif
 
 	GUI::SliderWidget *_overtureTicksSlider = nullptr;
 	GUI::StaticTextWidget *_overtureTicksValue = nullptr;
@@ -322,6 +332,9 @@ private:
 	GUI::CheckboxWidget *_enableOriginalGUICheckbox = nullptr;
 	GUI::CheckboxWidget *_enableGammaCorrectionCheckbox = nullptr;
 	GUI::CheckboxWidget *_enableCopyProtectionCheckbox = nullptr;
+#ifdef USE_TTS
+	GUI::CheckboxWidget *_enableTTSCheckbox = nullptr;
+#endif
 	GUI::SliderWidget *_sndQualitySlider = nullptr;
 	GUI::StaticTextWidget *_sndQualityValue = nullptr;
 	int _quality = 0;
@@ -347,6 +360,9 @@ private:
 	void handleCommand(GUI::CommandSender *sender, uint32 cmd, uint32 data) override;
 
 	GUI::CheckboxWidget *_enableOriginalGUICheckbox = nullptr;
+#ifdef USE_TTS
+	GUI::CheckboxWidget *_enableTTSCheckbox = nullptr;
+#endif
 
 	GUI::SliderWidget *_playbackAdjustmentSlider = nullptr;
 	GUI::StaticTextWidget *_playbackAdjustmentValue = nullptr;
@@ -376,6 +392,10 @@ private:
 
 	GUI::CheckboxWidget *_enableOriginalGUICheckbox = nullptr;
 	GUI::CheckboxWidget *_enableSegaShadowModeCheckbox = nullptr;
+	GUI::CheckboxWidget *_enableSegaCdWaitCursorWhenPausedCheckbox = nullptr;
+#ifdef USE_TTS
+	GUI::CheckboxWidget *_enableTTSCheckbox = nullptr;
+#endif
 
 	GUI::SliderWidget *_introAdjustmentSlider = nullptr;
 	GUI::StaticTextWidget *_introAdjustmentValue = nullptr;
@@ -424,7 +444,7 @@ private:
 
 	GUI::EditTextWidget *_lobbyServerAddr = nullptr;
 
-#ifdef USE_LIBCURL
+#ifdef USE_BASIC_NET
 	GUI::CheckboxWidget *_enableCompetitiveMods = nullptr;
 #endif
 

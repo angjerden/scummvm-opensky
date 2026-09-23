@@ -39,17 +39,8 @@ DECLARE_SINGLETON(Nancy::State::SetupMenu);
 namespace Nancy {
 namespace State {
 
-SetupMenu::~SetupMenu() {
-	for (auto *tog : _toggles) {
-		delete tog;
-	}
-
-	for (auto *scroll : _scrollbars) {
-		delete scroll;
-	}
-
-	delete _exitButton;
-}
+// Toggles the engine has ConfMan keys for; see getToggleConfManKey()
+static const uint kNumKnownToggles = 2;
 
 void SetupMenu::process() {
 	switch (_state) {
@@ -76,16 +67,20 @@ bool SetupMenu::onStateExit(const NancyState::NancyState nextState) {
 void SetupMenu::registerGraphics() {
 	_background.registerGraphics();
 
-	for (auto *tog : _toggles) {
+	for (auto &tog : _toggles) {
 		tog->registerGraphics();
 	}
 
-	for (auto *scroll : _scrollbars) {
+	for (auto &scroll : _scrollbars) {
 		scroll->registerGraphics();
 	}
 
 	if (_exitButton) {
 		_exitButton->registerGraphics();
+	}
+
+	if (_designSelectButton) {
+		_designSelectButton->registerGraphics();
 	}
 }
 
@@ -141,7 +136,7 @@ void SetupMenu::init() {
 
 	_background.registerGraphics();
 
-	g_nancy->_cursor->setCursorType(CursorManager::kNormalArrow);
+	g_nancy->_cursor->setCursorType(g_nancy->getGameType() >= kGameTypeNancy10 ? CursorManager::kHotspotArrow : CursorManager::kNormalArrow);
 	g_nancy->setMouseEnabled(true);
 
 	g_nancy->_sound->stopSound("MSND");
@@ -153,11 +148,32 @@ void SetupMenu::init() {
 		}
 	}
 
-	for (uint i = 0; i < _setupData->_buttonDests.size() - 1; ++i) {
-		_toggles.push_back(new UI::Toggle(5, _background._drawSurface,
+	// The buttons run toggles first, then Done. Nancy15 appends an "Interface
+	// Designs" button after Done, which opens the Design Select screen. Keying
+	// on LDSN keeps Nancy16, which dropped both the chunk and the screen, out
+	// of this.
+	const uint numButtons = _setupData->_buttonDests.size();
+	uint numToggles = numButtons - 1;
+	uint doneIndex = numButtons - 1;
+
+	const LDSN *designData = GetEngineData(LDSN)
+	if (designData && numToggles > kNumKnownToggles && numButtons <= _setupData->_buttonDownSrcs.size()) {
+		numToggles = numButtons - 2;
+		doneIndex = numButtons - 2;
+
+		_designSelectButton.reset(new UI::Button(5, _background._drawSurface,
+			_setupData->_buttonDownSrcs[numButtons - 1], _setupData->_buttonDests[numButtons - 1],
+			_setupData->_extraButtonHighlightSrc));
+		_designSelectButton->init();
+		_designSelectButton->setVisible(false);
+	}
+
+	_toggles.resize(numToggles);
+	for (uint i = 0; i < numToggles; ++i) {
+		_toggles[i].reset(new UI::Toggle(5, _background._drawSurface,
 			_setupData->_buttonDownSrcs[i], _setupData->_buttonDests[i]));
 
-		_toggles.back()->init();
+		_toggles[i]->init();
 	}
 
 	// Set toggle visibility
@@ -165,12 +181,13 @@ void SetupMenu::init() {
 		_toggles[i]->setState(ConfMan.getBool(getToggleConfManKey(i), ConfMan.getActiveDomainName()));
 	}
 
+	_scrollbars.resize(_setupData->_scrollbarSrcs.size());
 	for (uint i = 0; i < _setupData->_scrollbarSrcs.size(); ++i) {
-		_scrollbars.push_back(new UI::Scrollbar(7, _setupData->_scrollbarSrcs[i],
+		_scrollbars[i].reset(new UI::Scrollbar(7, _setupData->_scrollbarSrcs[i],
 			_background._drawSurface, Common::Point(_setupData->_scrollbarsCenterXPosL[i] + 1, _setupData->_scrollbarsCenterYPos[i]),
 			_setupData->_scrollbarsCenterXPosR[i] + 1 - _setupData->_scrollbarsCenterXPosL[i] - 1, false));
-		_scrollbars.back()->init();
-		_scrollbars.back()->setVisible(true);
+		_scrollbars[i]->init();
+		_scrollbars[i]->setVisible(true);
 	}
 
 	// Set scrollbar positions
@@ -178,9 +195,9 @@ void SetupMenu::init() {
 	_scrollbars[1]->setPosition(ConfMan.getInt("music_volume") / 255.0);
 	_scrollbars[2]->setPosition(ConfMan.getInt("sfx_volume") / 255.0);
 
-	_exitButton = new UI::Button(5, _background._drawSurface,
-		_setupData->_buttonDownSrcs.back(), _setupData->_buttonDests.back(),
-		_setupData->_doneButtonHighlightSrc);
+	_exitButton.reset(new UI::Button(5, _background._drawSurface,
+		_setupData->_buttonDownSrcs[doneIndex], _setupData->_buttonDests[doneIndex],
+		_setupData->_doneButtonHighlightSrc));
 	_exitButton->init();
 	_exitButton->setVisible(false);
 
@@ -193,7 +210,7 @@ void SetupMenu::run() {
 	NancyInput input = g_nancy->_input->getInput();
 
 	for (uint i = 0; i < _scrollbars.size(); ++i) {
-		auto *scroll = _scrollbars[i];
+		auto &scroll = _scrollbars[i];
 
 		float startPos = scroll->getPos();
 		scroll->handleInput(input);
@@ -223,7 +240,7 @@ void SetupMenu::run() {
 	}
 
 	for (uint i = 0; i < _toggles.size(); ++i) {
-		auto *tog = _toggles[i];
+		auto &tog = _toggles[i];
 		tog->handleInput(input);
 		if (tog->_stateChanged) {
 			g_nancy->_sound->playSound("BUOK");
@@ -232,6 +249,19 @@ void SetupMenu::run() {
 				// Make sure we don't write an empty string as a key in ConfMan
 				ConfMan.setBool(key, tog->_toggleState, ConfMan.getActiveDomainName());
 			}
+		}
+	}
+
+	if (_designSelectButton) {
+		_designSelectButton->handleInput(input);
+
+		if (_designSelectButton->_isClicked) {
+			g_nancy->_sound->playSound("BUOK");
+
+			// Keep hold of the state this menu will return to, so closing the
+			// design screen and then this menu lands back in the game
+			g_nancy->setState(NancyState::kDesignSelect, g_nancy->getPreviousState());
+			return;
 		}
 	}
 
@@ -244,7 +274,7 @@ void SetupMenu::run() {
 		}
 	}
 
-	g_nancy->_cursor->setCursorType(CursorManager::kNormalArrow);
+	g_nancy->_cursor->setCursorType(g_nancy->getGameType() >= kGameTypeNancy10 ? CursorManager::kHotspotArrow : CursorManager::kNormalArrow);
 }
 
 void SetupMenu::stop() {

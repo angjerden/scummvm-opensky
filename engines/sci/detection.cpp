@@ -149,6 +149,7 @@ static const PlainGameDescriptor s_sciGameTitles[] = {
 	{"phantasmagoria",  "Phantasmagoria"},
 	{"pqswat",          "Police Quest: SWAT"},
 	{"realm",           "The Realm"},
+	{"shield",          "Behind the Developer's Shield"},
 	{"shivers",         "Shivers"},
 	{"sq6",             "Space Quest 6: The Spinal Frontier"},
 	{"torin",           "Torin's Passage"},
@@ -218,6 +219,8 @@ public:
 
 	ADDetectedGame fallbackDetect(const FileMap &allFiles, const Common::FSList &fslist, ADDetectedGameExtraInfo **extra) const override;
 
+	void dumpDetectionEntries() const override;
+
 private:
 	void addFileToDetectedGame(const Common::Path &name, const FileMap &allFiles, MD5Properties md5Prop, ADDetectedGame &game) const;
 };
@@ -231,8 +234,15 @@ DetectedGames SciMetaEngineDetection::detectGames(const Common::FSList &fslist, 
 			if (game.gameId.equals(g->gameidStr))
 				break;
 		}
+
+		// Save the language info from the options string, since it will be overwritten in the next step.
+		Common::List<Common::Language> langList = Common::parseLanguagesFromGameGUIOptionsString(game.getGUIOptions());
+
 		game.setGUIOptions(customizeGuiOptions(fslist.begin()->getParent().getPath(), parseGameGUIOptions(game.getGUIOptions()), game.platform, g->gameidStr, g->version));
-		game.appendGUIOptions(getGameGUIOptionsDescriptionLanguage(game.language));
+
+		// Restore the language info to the options string.
+		for (const Common::Language &lang : langList)
+			game.appendGUIOptions(getGameGUIOptionsDescriptionLanguage(lang));
 	}
 
 	return games;
@@ -296,7 +306,7 @@ ADDetectedGame SciMetaEngineDetection::fallbackDetect(const FileMap &allFiles, c
 		}
 	} else if (allFiles.contains("Data1")) {
 		// add Mac volumes
-		md5Prop = (MD5Properties)(md5Prop | kMD5MacResOrDataFork);
+		md5Prop = (MD5Properties)(md5Prop | kMD5MacResFork);
 		for (int i = 1; i <= 13; i++) {
 			Common::String volume = Common::String::format("Data%d", i);
 			addFileToDetectedGame(Common::Path(volume), allFiles, md5Prop, game);
@@ -312,6 +322,12 @@ void SciMetaEngineDetection::addFileToDetectedGame(const Common::Path &name, con
 		game.hasUnknownFiles = true;
 		game.matchedFiles[name] = fileProperties;
 	}
+}
+
+void SciMetaEngineDetection::dumpDetectionEntries() const {
+#if 0
+	AdvancedMetaEngineDetectionBase::dumpDetectionEntries();
+#endif
 }
 
 } // End of namespace Sci

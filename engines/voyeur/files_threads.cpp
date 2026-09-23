@@ -25,6 +25,8 @@
 #include "voyeur/staticres.h"
 #include "common/config-manager.h"
 
+#include "backends/keymapper/keymapper.h"
+
 namespace Voyeur {
 
 int ThreadResource::_useCount[8];
@@ -1140,6 +1142,10 @@ void ThreadResource::doRoom() {
 	vm._soundManager->startVOCPlay(vm._currentVocId);
 	voy._eventFlags &= ~EVTFLAG_TIME_DISABLED;
 
+	Common::Keymapper *keymapper = g_system->getEventManager()->getKeymapper();
+	keymapper->getKeymap("voyeur-default")->setEnabled(false);
+	keymapper->getKeymap("room")->setEnabled(true);
+
 	bool breakFlag = false;
 	while (!vm.shouldQuit() && !breakFlag) {
 		_vm->_voyeurArea = AREA_ROOM;
@@ -1292,6 +1298,9 @@ void ThreadResource::doRoom() {
 		vm._currentVocId = -1;
 	}
 
+	keymapper->getKeymap("room")->setEnabled(false);
+	keymapper->getKeymap("voyeur-default")->setEnabled(true);
+
 	vm._eventsManager->hideCursor();
 	chooseSTAMPButton(0);
 }
@@ -1359,6 +1368,10 @@ int ThreadResource::doInterface() {
 
 	_vm->_eventsManager->setCursor(crosshairsCursor);
 
+	Common::Keymapper *keymapper = g_system->getEventManager()->getKeymapper();
+	keymapper->getKeymap("voyeur-default")->setEnabled(false);
+	keymapper->getKeymap("camera")->setEnabled(true);
+
 	// Main loop
 	int regionIndex = 0;
 	Common::Rect mansionViewBounds(MANSION_VIEW_X, MANSION_VIEW_Y,
@@ -1369,8 +1382,13 @@ int ThreadResource::doInterface() {
 		_vm->doTimeBar();
 		_vm->_eventsManager->getMouseInfo();
 
+		Common::Point pt = _vm->_eventsManager->getMousePos();
+
 		if (checkMansionScroll())
 			_vm->doScroll(_vm->_mansionViewPos);
+
+		g_system->warpMouse(MANSION_VIEW_X + MANSION_VIEW_WIDTH / 2, MANSION_VIEW_Y + MANSION_VIEW_HEIGHT / 2);
+		pt = _vm->_eventsManager->getMousePos();
 
 		_vm->checkPhoneCall();
 		if (!_vm->_soundManager->getVOCStatus()) {
@@ -1379,7 +1397,6 @@ int ThreadResource::doInterface() {
 		}
 
 		// Calculate the mouse position within the entire mansion
-		Common::Point pt = _vm->_eventsManager->getMousePos();
 		if (!mansionViewBounds.contains(pt))
 			pt = Common::Point(-1, -1);
 		else
@@ -1481,6 +1498,9 @@ int ThreadResource::doInterface() {
 	} while (!_vm->_eventsManager->_rightClick && !_vm->shouldQuit() &&
 		(!_vm->_eventsManager->_leftClick || regionIndex == -1));
 
+	keymapper->getKeymap("camera")->setEnabled(false);
+	keymapper->getKeymap("voyeur-default")->setEnabled(true);
+
 	_vm->_eventsManager->hideCursor();
 	_vm->_voy->_eventFlags |= EVTFLAG_TIME_DISABLED;
 	_vm->_bVoy->freeBoltGroup(_vm->_playStampGroupId);
@@ -1497,22 +1517,24 @@ bool ThreadResource::checkMansionScroll() {
 	bool result = false;
 
 	// Scroll mansion view if close to any of the mansion edges
-	if (pt.x >= 0 && pt.x < MANSION_SCROLL_AREA_X && viewPos.x > 0) {
-		viewPos.x = MAX(viewPos.x - MANSION_SCROLL_INC_X, 0);
+	const int xDiff = MANSION_VIEW_WIDTH / 2 - pt.x;
+	const int yDiff = MANSION_VIEW_HEIGHT / 2 - pt.y;
+	if (pt.x >= 0 && xDiff > 0 && viewPos.x > 0) {
+		viewPos.x = MAX(viewPos.x - xDiff, 0);
 		result = true;
 	}
-	if  (pt.x >= (MANSION_VIEW_WIDTH - MANSION_SCROLL_AREA_X) &&
-			pt.x < MANSION_VIEW_WIDTH && viewPos.x < MANSION_MAX_X) {
-		viewPos.x = MIN(viewPos.x + MANSION_SCROLL_INC_X, MANSION_MAX_X);
+	if (pt.x < MANSION_VIEW_WIDTH && xDiff < 0 &&
+		viewPos.x < MANSION_MAX_X) {
+		viewPos.x = MIN(viewPos.x - xDiff, MANSION_MAX_X);
 		result = true;
 	}
-	if (pt.y >= 0 && pt.y < MANSION_SCROLL_AREA_Y && viewPos.y > 0) {
-		viewPos.y = MAX(viewPos.y - MANSION_SCROLL_INC_Y, 0);
+	if (pt.y >= 0 && yDiff > 0 && viewPos.y > 0) {
+		viewPos.y = MAX(viewPos.y - yDiff, 0);
 		result = true;
 	}
-	if  (pt.y >= (MANSION_VIEW_HEIGHT - MANSION_SCROLL_AREA_Y) &&
-			pt.y < MANSION_VIEW_HEIGHT && viewPos.y < MANSION_MAX_Y) {
-		viewPos.y = MIN(viewPos.y + MANSION_SCROLL_INC_Y, MANSION_MAX_Y);
+	if (pt.y < MANSION_VIEW_HEIGHT && yDiff < 0 &&
+		viewPos.y < MANSION_MAX_Y) {
+		viewPos.y = MIN(viewPos.y - yDiff, MANSION_MAX_Y);
 		result = true;
 	}
 

@@ -59,8 +59,6 @@ namespace Voyeur {
 #define MANSION_VIEW_Y 27
 #define MANSION_VIEW_WIDTH 240
 #define MANSION_VIEW_HEIGHT 148
-#define MANSION_SCROLL_AREA_X 20
-#define MANSION_SCROLL_AREA_Y 20
 #define MANSION_SCROLL_INC_X 4
 #define MANSION_SCROLL_INC_Y 4
 
@@ -71,6 +69,11 @@ enum VoyeurDebugChannels {
 enum VoyeurArea { AREA_NONE, AREA_APARTMENT, AREA_INTERFACE, AREA_ROOM, AREA_EVIDENCE };
 
 struct VoyeurGameDescription;
+
+enum VOYEURAction {
+	kActionNone,
+	kActionSkip,
+};
 
 class VoyeurEngine : public Engine {
 private:

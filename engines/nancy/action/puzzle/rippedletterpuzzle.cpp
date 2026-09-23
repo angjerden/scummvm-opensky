@@ -48,8 +48,6 @@ void RippedLetterPuzzle::init() {
 
 	if (_useCustomPickUpTile) {
 		_pickedUpPiece._drawSurface.create(_image, _customPickUpTileSrc);
-	} else {
-		_pickedUpPiece._drawSurface.create(_destRects[0].width(), _destRects[0].height(), g_nancy->_graphics->getInputPixelFormat());
 	}
 
 	_pickedUpPiece.setVisible(false);
@@ -100,6 +98,8 @@ void RippedLetterPuzzle::readData(Common::SeekableReadStream &stream) {
 	uint elemSize = g_nancy->getGameType() <= kGameTypeNancy8 ? 1 : 2;
 
 	_initOrder.resize(width * height);
+	assert(width * height <= 24); // If this gets hit we need to increase the sizes in RippedLetterPuzzleData
+
 	for (uint i = 0; i < height; ++i) {
 		for (uint j = 0; j < width; ++j) {
 			_initOrder[i * width + j] = (elemSize == 1 ? stream.readByte() : stream.readSint16LE());
@@ -118,8 +118,8 @@ void RippedLetterPuzzle::readData(Common::SeekableReadStream &stream) {
 	stream.skip((maxWidth > width ? (maxHeight - height) * maxWidth : maxWidth * maxHeight - width * height) * elemSize);
 
 	if (g_nancy->getGameType() >= kGameTypeNancy9) {
-		uint16 numDoubledElements = stream.readUint16LE();
-		_doubles.resize(numDoubledElements);
+		uint16 numDoubledElements = stream.readUint16LE();	// 0 in Nancy 12
+		_doubles.resize(numDoubledElements > 0 ? numDoubledElements : 20);
 		uint i = 0;
 		for (uint j = 0; j < 20; ++j) {
 			int16 id = stream.readSint16LE();
@@ -129,6 +129,19 @@ void RippedLetterPuzzle::readData(Common::SeekableReadStream &stream) {
 				_doubles[i].push_back(id);
 			}
 		}
+	}
+
+	if (g_nancy->getGameType() >= kGameTypeNancy14) {
+		// A piece can only be dropped into a slot belonging to the same group
+		// as the slot it originated from
+		_pieceGroups.resize(width * height);
+		for (uint i = 0; i < height; ++i) {
+			for (uint j = 0; j < width; ++j) {
+				_pieceGroups[i * width + j] = stream.readSint16LE();
+			}
+			stream.skip(maxWidth > width ? (maxWidth - width) * elemSize : 0);
+		}
+		stream.skip((maxWidth > width ? (maxHeight - height) * maxWidth : maxWidth * maxHeight - width * height) * elemSize);
 	}
 
 	_solveOrder.resize(width * height);
@@ -192,8 +205,10 @@ void RippedLetterPuzzle::readData(Common::SeekableReadStream &stream) {
 }
 
 void RippedLetterPuzzle::execute() {
+	const uint16 sceneId = NancySceneState.getSceneInfo().sceneID;
+
 	switch (_state) {
-	case kBegin:
+	case kBegin: {
 		_puzzleState = (RippedLetterPuzzleData *)NancySceneState.getPuzzleData(RippedLetterPuzzleData::getTag());
 		assert(_puzzleState);
 
@@ -202,18 +217,30 @@ void RippedLetterPuzzle::execute() {
 
 		NancySceneState.setNoHeldItem();
 
-		if (!_puzzleState->playerHasTriedPuzzle) {
+		// The serialized puzzle state uses 24 slots. Resize it to
+		// the current puzzle dimensions before use
+		_puzzleState->order.resize(_initOrder.size());
+		_puzzleState->rotations.resize(_initRotations.size());
+
+		// Only load the saved puzzle data if it's saved for this scene.
+		// There are games such as Nancy7 that feature multiple puzzle of this type
+		// in different scenes, and we don't want to load the wrong puzzle state.
+		if (!_puzzleState->playerHasTriedPuzzle || _puzzleState->sceneId != sceneId) {
 			_puzzleState->order = _initOrder;
 			_puzzleState->rotations = _initRotations;
 			_puzzleState->playerHasTriedPuzzle = true;
-		} else if (_puzzleState->_pickedUpPieceID != -1) {
+			_puzzleState->pickedUpPieceID = -1;
+			_puzzleState->pickedUpPieceLastPos = -1;
+			_puzzleState->pickedUpPieceRot = 0;
+			_puzzleState->sceneId = sceneId;
+		} else if (_puzzleState->pickedUpPieceID != -1) {
 			// Puzzle was left while still holding a piece (e.g. by clicking a scene item).
 			// Make sure we put the held piece back in its place
-			_puzzleState->order[_puzzleState->_pickedUpPieceLastPos] = _puzzleState->_pickedUpPieceID;
-			_puzzleState->rotations[_puzzleState->_pickedUpPieceLastPos] = _puzzleState->_pickedUpPieceRot;
-			_puzzleState->_pickedUpPieceID = -1;
-			_puzzleState->_pickedUpPieceLastPos = -1;
-			_puzzleState->_pickedUpPieceRot = 0;
+			_puzzleState->order[_puzzleState->pickedUpPieceLastPos] = _puzzleState->pickedUpPieceID;
+			_puzzleState->rotations[_puzzleState->pickedUpPieceLastPos] = _puzzleState->pickedUpPieceRot;
+			_puzzleState->pickedUpPieceID = -1;
+			_puzzleState->pickedUpPieceLastPos = -1;
+			_puzzleState->pickedUpPieceRot = 0;
 		}
 
 		for (uint i = 0; i < _puzzleState->order.size(); ++i) {
@@ -225,7 +252,8 @@ void RippedLetterPuzzle::execute() {
 		g_nancy->_sound->loadSound(_rotateSound);
 
 		_state = kRun;
-		// fall through
+	}
+	// fall through
 	case kRun:
 		switch (_solveState) {
 		case kNotSolved :
@@ -282,19 +310,25 @@ void RippedLetterPuzzle::handleInput(NancyInput &input) {
 		return;
 	}
 
+	// Nancy10+ uses the dedicated puzzle rotate/hand cursors; earlier games
+	// reuse the generic rotate and hotspot cursors.
+	const bool useNewCursors = g_nancy->getGameType() >= kGameTypeNancy10;
+	const CursorManager::CursorType rotateCursor = useNewCursors ? CursorManager::kNewRotatePiece : CursorManager::kRotateCW;
+	const CursorManager::CursorType takeCursor = useNewCursors ? CursorManager::kNewUseHandHotspot : CursorManager::kHotspot;
+	const CursorManager::CursorType dropCursor = useNewCursors ? CursorManager::kNewUseHand : CursorManager::kHotspot;
+
 	for (uint i = 0; i < _puzzleState->order.size(); ++i) {
 		Common::Rect screenHotspot = NancySceneState.getViewport().convertViewportToScreen(_destRects[i]);
 		if (screenHotspot.contains(input.mousePos)) {
 			Common::Rect insideRect;
-			if (_puzzleState->_pickedUpPieceID == -1) {
+			if (_puzzleState->pickedUpPieceID == -1) {
 				// No piece picked up
 
 				// Check if the mouse is inside the rotation hotspot
-				insideRect = _rotateHotspot;
-				insideRect.translate(screenHotspot.left, screenHotspot.top);
+				insideRect = getPieceHotspot(_rotateHotspot, screenHotspot);
 
 				if (_rotationType != kRotationNone && insideRect.contains(input.mousePos)) {
-					g_nancy->_cursor->setCursorType(CursorManager::kRotateCW);
+					g_nancy->_cursor->setCursorType(rotateCursor);
 
 					if (input.input & NancyInput::kLeftMouseButtonUp) {
 						// Player has clicked, rotate the piece
@@ -311,19 +345,17 @@ void RippedLetterPuzzle::handleInput(NancyInput &input) {
 				}
 
 				// Check if the mouse is inside the pickup hotspot
-				insideRect = _takeHotspot;
-				insideRect.translate(screenHotspot.left, screenHotspot.top);
+				insideRect = getPieceHotspot(_takeHotspot, screenHotspot);
 
 				if (insideRect.contains(input.mousePos)) {
-					g_nancy->_cursor->setCursorType(CursorManager::kHotspot);
+					g_nancy->_cursor->setCursorType(takeCursor);
 
 					if (input.input & NancyInput::kLeftMouseButtonUp) {
 						// Player has clicked, take the piece
 
 						// First, copy the graphic from the full drawSurface...
 						if (!_useCustomPickUpTile) {
-							_pickedUpPiece._drawSurface.clear(g_nancy->_graphics->getTransColor());
-							_pickedUpPiece._drawSurface.blitFrom(_drawSurface, _destRects[i], Common::Point());
+							copyPieceToPickedUp(i);
 						}
 
 						_pickedUpPiece.setVisible(true);
@@ -331,10 +363,10 @@ void RippedLetterPuzzle::handleInput(NancyInput &input) {
 						_pickedUpPiece.pickUp();
 
 						// ...then change the data...
-						_puzzleState->_pickedUpPieceID = _puzzleState->order[i];
-						_puzzleState->_pickedUpPieceRot = _puzzleState->rotations[i];
+						_puzzleState->pickedUpPieceID = _puzzleState->order[i];
+						_puzzleState->pickedUpPieceRot = _puzzleState->rotations[i];
 						_puzzleState->order[i] = -1;
-						_puzzleState->_pickedUpPieceLastPos = i;
+						_puzzleState->pickedUpPieceLastPos = i;
 
 						// ...then clear the piece from the drawSurface
 						drawPiece(i, 0);
@@ -347,12 +379,14 @@ void RippedLetterPuzzle::handleInput(NancyInput &input) {
 			} else {
 				// Currently carrying a piece
 
-				// Check if the mouse is inside the drop hotspot
-				insideRect = _dropHotspot;
-				insideRect.translate(screenHotspot.left, screenHotspot.top);
+				// Check if the mouse is inside the drop hotspot, and whether
+				// the held piece is allowed in this slot
+				insideRect = getPieceHotspot(_dropHotspot, screenHotspot);
+				bool sameGroup = _pieceGroups.empty() ||
+					_pieceGroups[i] == _pieceGroups[_puzzleState->pickedUpPieceID];
 
-				if (insideRect.contains(input.mousePos)) {
-					g_nancy->_cursor->setCursorType(CursorManager::kHotspot);
+				if (sameGroup && insideRect.contains(input.mousePos)) {
+					g_nancy->_cursor->setCursorType(dropCursor);
 
 					if (input.input & NancyInput::kLeftMouseButtonUp) {
 						// Player has clicked, drop the piece and pick up a new one
@@ -361,20 +395,22 @@ void RippedLetterPuzzle::handleInput(NancyInput &input) {
 						if (_puzzleState->order[i] == -1) {
 							// No, hide the picked up piece graphic
 							_pickedUpPiece.setVisible(false);
-							_puzzleState->_pickedUpPieceLastPos = -1;
+							_puzzleState->pickedUpPieceLastPos = -1;
 						} else {
 							// Yes, change the picked piece graphic
 							if (!_useCustomPickUpTile) {
-								_pickedUpPiece._drawSurface.clear(g_nancy->_graphics->getTransColor());
-								_pickedUpPiece._drawSurface.blitFrom(_drawSurface, _destRects[i], Common::Point());
+								copyPieceToPickedUp(i);
 							}
 
 							_pickedUpPiece.setVisible(true);
 							_pickedUpPiece.setTransparent(true);
+							// After a swap, the held piece must return
+							// to this slot on save or re-entry
+							_puzzleState->pickedUpPieceLastPos = i;
 						}
 
-						SWAP<int8>(_puzzleState->order[i], _puzzleState->_pickedUpPieceID);
-						SWAP<byte>(_puzzleState->rotations[i], _puzzleState->_pickedUpPieceRot);
+						SWAP<int8>(_puzzleState->order[i], _puzzleState->pickedUpPieceID);
+						SWAP<byte>(_puzzleState->rotations[i], _puzzleState->pickedUpPieceRot);
 
 						// Draw the newly placed piece
 						drawPiece(i, _puzzleState->rotations[i], _puzzleState->order[i]);
@@ -390,10 +426,13 @@ void RippedLetterPuzzle::handleInput(NancyInput &input) {
 
 	_pickedUpPiece.handleInput(input);
 
-	if (_puzzleState->_pickedUpPieceID == -1) {
+	if (_puzzleState->pickedUpPieceID == -1) {
 		// No piece picked up, check the exit hotspot
 		if (NancySceneState.getViewport().convertViewportToScreen(_exitHotspot).contains(input.mousePos)) {
-			g_nancy->_cursor->setCursorType(_customCursorID != -1 ? (CursorManager::CursorType)_customCursorID : g_nancy->_cursor->_puzzleExitCursor);
+			if (_customCursorID != -1)
+				g_nancy->_cursor->setCursorType((CursorManager::CursorType)_customCursorID, true);
+			else
+				g_nancy->_cursor->setCursorType(g_nancy->_cursor->_puzzleExitCursor);
 
 			if (input.input & NancyInput::kLeftMouseButtonUp) {
 				// Player has clicked, exit
@@ -419,15 +458,25 @@ void RippedLetterPuzzle::drawPiece(const uint pos, const byte rotation, const in
 	GraphicsManager::rotateBlit(srcSurf, destSurf, rotation);
 }
 
+void RippedLetterPuzzle::copyPieceToPickedUp(const uint pos) {
+	// Pieces may have different shapes, so size the held tile to the one being picked up
+	const Common::Rect &rect = _destRects[pos];
+	_pickedUpPiece._drawSurface.create(rect.width(), rect.height(), _drawSurface.format);
+	_pickedUpPiece._drawSurface.blitFrom(_drawSurface, rect, Common::Point());
+}
+
+Common::Rect RippedLetterPuzzle::getPieceHotspot(const Common::Rect &hotspot, const Common::Rect &screenRect) const {
+	// An empty hotspot means the whole piece is interactive
+	Common::Rect ret = hotspot.height() ? hotspot : Common::Rect(screenRect.width(), screenRect.height());
+	ret.translate(screenRect.left, screenRect.top);
+	return ret;
+}
+
 bool RippedLetterPuzzle::checkOrder(bool useAlt) {
 	auto &current = _puzzleState->order;
 	auto &correct = useAlt ? _solveOrderAlt : _solveOrder;
 
-	if (!_doubles.size()) {
-		return current == correct;
-	}
-
-	for (uint i = 0; i < current.size(); ++i) {
+	for (uint i = 0; i < correct.size(); ++i) {
 		bool foundCorrect = false;
 		bool isDoubled = false;
 		for (auto &d : _doubles) {

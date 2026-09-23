@@ -32,6 +32,9 @@
 #include "backends/platform/libretro/include/libretro-fs.h"
 
 AbstractFSNode *LibRetroFilesystemFactory::makeRootFileNode() const {
+	if (LibRetroFilesystemNode::useAuthorizedRoot())
+		return new LibRetroFilesystemNode(LibRetroFilesystemNode::getAuthorizedRootPath());
+
 	return new LibRetroFilesystemNode("/");
 }
 
@@ -39,8 +42,7 @@ AbstractFSNode *LibRetroFilesystemFactory::makeCurrentDirectoryFileNode() const 
 #ifdef PLAYSTATION3
 	return new LibRetroFilesystemNode("/");
 #else
-	char buf[MAXPATHLEN];
-	return getcwd(buf, MAXPATHLEN) ? new LibRetroFilesystemNode(buf) : NULL;
+	return new LibRetroFilesystemNode(LibRetroFilesystemNode::getDefaultDir());
 #endif
 }
 

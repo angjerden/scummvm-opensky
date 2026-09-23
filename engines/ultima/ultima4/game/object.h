@@ -24,13 +24,14 @@
 #include "ultima/ultima4/core/coords.h"
 #include "ultima/ultima4/map/map_tile.h"
 #include "ultima/ultima4/core/types.h"
+#include "common/list.h"
 
 namespace Ultima {
 namespace Ultima4 {
 
 class Object;
 
-typedef Std::deque<Object *> ObjectDeque;
+typedef Common::List<Object *> ObjectDeque;
 
 enum ObjectMovementBehavior {
 	MOVEMENT_FIXED,
@@ -134,7 +135,7 @@ protected:
 	Coords _coords, _prevCoords;
 	ObjectMovementBehavior _movementBehavior;
 	Type _objType;
-	Std::deque<class Map *> _maps;           /**< A list of maps this object is a part of */
+	Common::List<class Map *> _maps;           /**< A list of maps this object is a part of */
 
 	bool _focused;
 	bool _visible;

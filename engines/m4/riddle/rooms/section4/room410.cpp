@@ -20,8 +20,9 @@
  */
 
 #include "m4/riddle/rooms/section4/room410.h"
-#include "m4/graphics/gr_series.h"
 #include "m4/riddle/vars.h"
+#include "m4/adv_r/adv_control.h"
+#include "m4/graphics/gr_series.h"
 
 namespace M4 {
 namespace Riddle {
@@ -44,7 +45,7 @@ void Room410::init() {
 	digi_preload("410_s02");
 	_val1 = 140;
 
-	midi_play("danzig1", 0, 1, -1, 949);
+	midi_play("danzig1", 0, true, -1, 949);
 	interface_hide();
 	_pu = series_stream("410PU01", 8, 0x100, -1);
 	series_stream_break_on_frame(_pu, 2, 100);
@@ -74,7 +75,7 @@ void Room410::daemon() {
 		break;
 
 	case 103:
-		midi_play("danzig1", 255, 1, -1, 949);
+		midi_play("danzig1", 255, true, -1, 949);
 		break;
 
 	case 104:

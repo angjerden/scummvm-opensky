@@ -38,7 +38,7 @@ void InputManager::processEvents() {
 	using namespace Common;
 	Common::Event event;
 
-	_inputs &= ~(NancyInput::kLeftMouseButtonDown | NancyInput::kLeftMouseButtonUp | NancyInput::kRightMouseButtonDown | NancyInput::kRightMouseButtonUp | NancyInput::kRaycastMap);
+	_inputs &= ~(NancyInput::kLeftMouseButtonDown | NancyInput::kLeftMouseButtonUp | NancyInput::kRightMouseButtonDown | NancyInput::kRightMouseButtonUp | NancyInput::kRaycastMap | NancyInput::kMouseWheel);
 	_otherKbdInput.clear();
 
 	while (g_nancy->getEventManager()->pollEvent(event)) {
@@ -46,6 +46,14 @@ void InputManager::processEvents() {
 		case EVENT_KEYDOWN:
 			// Push all keyboard events into an array and let getInput() callers handle them
 			_otherKbdInput.push_back(event.kbd);
+			_inputBeginState = g_nancy->getState();
+			break;
+		case EVENT_WHEELUP:
+			_inputs |= NancyInput::kMouseWheelUp;
+			_inputBeginState = g_nancy->getState();
+			break;
+		case EVENT_WHEELDOWN:
+			_inputs |= NancyInput::kMouseWheelDown;
 			_inputBeginState = g_nancy->getState();
 			break;
 		case EVENT_CUSTOM_ENGINE_ACTION_START:
@@ -178,14 +186,14 @@ void InputManager::initKeymaps(Common::KeymapArray &keymaps, const char *target)
 	Keymap *mainKeymap = new Keymap(Keymap::kKeymapTypeGame, "nancy-main", _("Nancy Drew"));
 	Action *act;
 
-	act = new Action(kStandardActionLeftClick, _("Left Click Interact"));
+	act = new Action(kStandardActionLeftClick, _("Left click"));
 	act->setLeftClickEvent();
 	act->setCustomEngineActionEvent(kNancyActionLeftClick);
 	act->addDefaultInputMapping("MOUSE_LEFT");
 	act->addDefaultInputMapping("JOY_A");
 	mainKeymap->addAction(act);
 
-	act = new Action(kStandardActionRightClick, _("Right Click Interact"));
+	act = new Action(kStandardActionRightClick, _("Right click"));
 	act->setRightClickEvent();
 	act->setCustomEngineActionEvent(kNancyActionRightClick);
 	act->addDefaultInputMapping("MOUSE_RIGHT");
@@ -233,7 +241,7 @@ void InputManager::initKeymaps(Common::KeymapArray &keymaps, const char *target)
 	if (gameId == "nancy3" || gameId == "nancy6") {
 		Keymap *mazeKeymap = new Keymap(Keymap::kKeymapTypeGame, _mazeKeymapID, _("Nancy Drew - Maze"));
 
-		act = new Action("RAYCM", _("Show/hide maze map"));
+		act = new Action("RAYCM", _("Show / hide maze map"));
 		act->setCustomEngineActionEvent(kNancyActionShowRaycastMap);
 		act->addDefaultInputMapping("m");
 		act->addDefaultInputMapping("JOY_RIGHT_SHOULDER");

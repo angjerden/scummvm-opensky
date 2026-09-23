@@ -33,6 +33,9 @@
 #include "common/system.h"
 #include "common/savefile.h"
 #include "graphics/scaler.h"
+#include "graphics/surface.h"
+#include "graphics/font.h"
+#include "graphics/fontman.h"
 
 namespace Kyra {
 
@@ -46,7 +49,7 @@ Button *EoBCoreEngine::gui_getButton(Button *buttonList, int index) {
 	return 0;
 }
 
-void EoBCoreEngine::gui_drawPlayField(bool refresh) {
+void EoBCoreEngine::gui_drawPlayField(bool refresh, bool screenUpdt) {
 	_screen->loadEoBBitmap("PLAYFLD", _cgaMappingDeco, 5, 3, 2);
 	int cp = _screen->setCurPage(2);
 	if (_flags.lang == Common::Language::ZH_TWN) {
@@ -65,7 +68,7 @@ void EoBCoreEngine::gui_drawPlayField(bool refresh) {
 	_screen->setCurPage(cp);
 	_screen->copyRegion(0, 0, 0, 0, 320, 200, 2, 0, Screen::CR_NO_P_CHECK);
 
-	if (!_loading)
+	if (!_loading && screenUpdt)
 		_screen->updateScreen();
 
 	gui_setupPlayFieldHelperPages();
@@ -87,13 +90,15 @@ void EoBCoreEngine::gui_setupPlayFieldHelperPages(bool) {
 void EoBCoreEngine::gui_restorePlayField() {
 	loadVcnData(0, _cgaLevelMappingIndex ? _cgaMappingLevel[_cgaLevelMappingIndex[_currentLevel - 1]] : 0);
 	_screen->_curPage = 0;
-	gui_drawPlayField(true);
+	gui_drawPlayField(true, false);
 	gui_drawAllCharPortraitsWithStats();
 }
 
-void EoBCoreEngine::gui_drawAllCharPortraitsWithStats() {
+void EoBCoreEngine::gui_drawAllCharPortraitsWithStats(bool screenUpdt) {
 	for (int i = 5; i >= 0; --i)
-		gui_drawCharPortraitWithStats(i);
+		gui_drawCharPortraitWithStats(i, false);
+	if (screenUpdt && _screen->_curPage == 0)
+		_screen->updateScreen();
 }
 
 void EoBCoreEngine::gui_drawCharPortraitWithStats(int index, bool screenUpdt) {
@@ -559,7 +564,7 @@ void EoBCoreEngine::gui_drawInventoryItem(int slot, int redraw, int pageNum) {
 			gui_drawBox(x - 1, y - 1, wh, wh, col1, col2, slot == 16 ? -1 : guiSettings()->colors.fill);
 
 		if (slot == 16) {
-			_screen->fillRect(x + 3, y + 9, x + 14, y + 13, guiSettings()->colors.guiColorBlack);
+			_screen->fillRect(x + 2, y + 9, x + 14, y + 13, guiSettings()->colors.guiColorBlack);
 			int cnt = countQueuedItems(_characters[_updateCharNum].inventory[slot], -1, -1, 1, 1);
 			if (_flags.platform != Common::kPlatformSegaCD) {
 				Screen::FontId cf = _screen->setFont(Screen::FID_6_FNT);
@@ -825,6 +830,9 @@ void EoBCoreEngine::gui_toggleButtons() {
 void EoBCoreEngine::gui_setPlayFieldButtons() {
 	gui_resetButtonList();
 	gui_initButtonsFromList(_updateFlags ? _buttonList2 : _buttonList1);
+		
+	if (_configAutomap)
+		gui_initButton(99);
 }
 
 void EoBCoreEngine::gui_setInventoryButtons() {
@@ -833,11 +841,17 @@ void EoBCoreEngine::gui_setInventoryButtons() {
 
 	if (_flags.platform == Common::kPlatformSegaCD)
 		gui_initButton(95);
+
+	if (_configAutomap)
+		gui_initButton(99);
 }
 
 void EoBCoreEngine::gui_setStatsListButtons() {
 	gui_resetButtonList();
 	gui_initButtonsFromList(_updateFlags ? _buttonList6 : _buttonList4);
+
+	if (_configAutomap)
+		gui_initButton(99);
 }
 
 void EoBCoreEngine::gui_setSwapCharacterButtons() {
@@ -854,7 +868,7 @@ void EoBCoreEngine::gui_initButton(int index, int, int, int) {
 	Button *b = 0;
 	int cnt = 1;
 
-	if ((_flags.gameID == GI_EOB1 && !(_flags.platform == Common::kPlatformSegaCD && index >= 95) && index > 92) || (_flags.gameID == GI_EOB2 && _buttonDefs[index].x == 0x7fff))
+	if ((_flags.gameID == GI_EOB1 && !(_flags.platform == Common::kPlatformSegaCD && index >= 95) && index > 92 && index < 99) || (_flags.gameID == GI_EOB2 && _buttonDefs[index].x == 0x7fff))
 		return;
 
 	if (_activeButtons) {
@@ -927,7 +941,7 @@ int EoBCoreEngine::clickedCamp(Button *button) {
 		_screen->sega_selectPalette(-1, 2, true);
 		gui_setupPlayFieldHelperPages(true);
 		snd_playLevelScore();
-		gui_drawAllCharPortraitsWithStats();
+		gui_drawAllCharPortraitsWithStats(false);
 	}
 
 	_screen->fillRect(0, 0, 175, 143, 0, 2);
@@ -1343,9 +1357,9 @@ int EoBCoreEngine::clickedSpellbookAbort(Button *button) {
 	_screen->fillRect(64, 121, 175, 176, 0, 0);
 	_screen->fillRect(64, 121, 175, 176, 0, 2);
 	_screen->copyRegion(0, 0, 64, _flags.platform == Common::kPlatformSegaCD ? 120 : 121, 112, 56, Screen_EoB::kSpellbookBackupPage, 0, Screen::CR_NO_P_CHECK);
-	_screen->updateScreen();
 	gui_drawCompass(true);
 	gui_toggleButtons();
+	_screen->updateScreen();
 	return button->index;
 }
 
@@ -2396,6 +2410,7 @@ void GUI_EoB::runCampMenu() {
 
 	for (bool runLoop = true; runLoop && !_vm->shouldQuit();) {
 		bool buttonsUnchanged = true;
+		uint32 frameEnd = _vm->_system->getMillis() + 8;
 
 		if (newMenu != -1) {
 			drawCampMenu();
@@ -2566,7 +2581,7 @@ void GUI_EoB::runCampMenu() {
 					i = selectCharacterDialogue(53);
 					if (i > 0) {
 						_vm->dropCharacter(i);
-						_vm->gui_drawPlayField(false);
+						_vm->gui_drawPlayField(false, false);
 						_screen->copyRegion(0, 120, 0, 0, 176, 24, 0, Screen_EoB::kCampMenuBackupPage, Screen::CR_NO_P_CHECK);
 						Screen::FontId cfn = _screen->setFont(_vm->_conFont);
 						_vm->gui_drawAllCharPortraitsWithStats();
@@ -2670,6 +2685,8 @@ void GUI_EoB::runCampMenu() {
 			_screen->updateScreen();
 			prevHighlightButton = highlightButton;
 		}
+
+		_vm->delayUntil(frameEnd);
 	}
 
 	if (cs != -1)
@@ -2689,6 +2706,7 @@ bool GUI_EoB::runLoadMenu(int x, int y, bool fromMainMenu) {
 	_screen->modifyScreenDim(11, dm->sx + (x >> 3), dm->sy + y, dm->w, dm->h);
 
 	for (bool runLoop = true; runLoop && !_vm->shouldQuit();) {
+		uint32 frameEnd = _vm->_system->getMillis() + 8;
 		updateSaveSlotsList(_vm->_targetName);
 
 		_vm->useMainMenuGUISettings(fromMainMenu);
@@ -2712,6 +2730,7 @@ bool GUI_EoB::runLoadMenu(int x, int y, bool fromMainMenu) {
 				result = true;
 			}
 		}
+		_vm->delayUntil(frameEnd);
 	}
 
 	_screen->modifyScreenDim(11, xo, yo, dm->w, dm->h);
@@ -2739,6 +2758,7 @@ bool GUI_EoB::confirmDialogue2(int dim, int id, int deflt) {
 		drawMenuButtonBox(x[i], y, 32, _dlgButtonHeight2, false, false);
 
 	for (bool runLoop = true; runLoop && !_vm->shouldQuit();) {
+		uint32 frameEnd = _vm->_system->getMillis() + 8;
 		Common::Point p = _vm->getMousePos();
 		if (_vm->posWithinRect(p.x, p.y, x[0], y, x[0] + 32, y + _dlgButtonHeight2))
 			newHighlight = 0;
@@ -2774,6 +2794,7 @@ bool GUI_EoB::confirmDialogue2(int dim, int id, int deflt) {
 			_screen->updateScreen();
 			lastHighlight = newHighlight;
 		}
+		_vm->delayUntil(frameEnd);
 	}
 
 	drawMenuButtonBox(x[newHighlight], y, 32, _dlgButtonHeight2, true, true);
@@ -3242,9 +3263,9 @@ Common::String GUI_EoB::transferTargetMenu(Common::Array<Common::String> &target
 
 	Common::StringArray::iterator ii = targets.begin();
 	for (int i = 0; i < _savegameListSize; ++i) {
-		int slsize = (*ii).size() + 1;
+		int slsize = ii->size() + 1;
 		_savegameList[i] = new char[slsize];
-		Common::strlcpy(_savegameList[i], (*ii++).c_str(), slsize);
+		Common::strlcpy(_savegameList[i], (ii++)->c_str(), slsize);
 	}
 
 	const ScreenDim *dm = _screen->getScreenDim(11);
@@ -3327,6 +3348,7 @@ bool GUI_EoB::runSaveMenu(int x, int y) {
 	_screen->modifyScreenDim(11, dm->sx + (x >> 3), dm->sy + y, dm->w, dm->h);
 
 	for (bool runLoop = true; runLoop && !_vm->shouldQuit();) {
+		uint32 frameEnd = _vm->_system->getMillis() + 8;
 		updateSaveSlotsList(_vm->_targetName);
 		int slot = selectSaveSlotDialog(x, y, 0);
 		if (slot > _numSlotsVisible - 1) {
@@ -3406,6 +3428,7 @@ bool GUI_EoB::runSaveMenu(int x, int y) {
 
 			runLoop = false;
 		}
+		_vm->delayUntil(frameEnd);
 	}
 
 	_screen->modifyScreenDim(11, xo, yo, dm->w, dm->h);
@@ -3427,6 +3450,7 @@ int GUI_EoB::selectSaveSlotDialog(int x, int y, int id) {
 	int slot = -1;
 
 	for (bool runLoop = true; runLoop && !_vm->shouldQuit();) {
+		uint32 frameEnd = _vm->_system->getMillis() + 8;
 		int inputFlag = _vm->checkInput(0, false, 0) & 0x8FF;
 		_vm->removeInputTop();
 		bool clickedButton = false;
@@ -3525,6 +3549,7 @@ int GUI_EoB::selectSaveSlotDialog(int x, int y, int id) {
 			drawSaveSlotButton(newHighlight, 1, true);
 			_screen->updateScreen();
 		}
+		_vm->delayUntil(frameEnd);
 	}
 
 	return newHighlight;
@@ -3647,6 +3672,7 @@ void GUI_EoB::runMemorizePrayMenu(int charIndex, int spellType) {
 	bool highLightClicked = (_vm->gameFlags().platform == Common::kPlatformSegaCD);
 
 	for (bool runLoop = true; runLoop && !_vm->shouldQuit();) {
+		uint32 frameEnd = _vm->_system->getMillis() + 8;
 		updateBoxFrameHighLight(charIndex);
 
 		if (newHighLightButton < 0)
@@ -3781,6 +3807,7 @@ void GUI_EoB::runMemorizePrayMenu(int charIndex, int spellType) {
 			if (newHighLightButton == lastHighLightButton)
 				drawMenuButton(_vm->gui_getButton(buttonList, inputFlag & 0x7FFF), _vm->gameFlags().platform == Common::kPlatformSegaCD, true, true);
 		}
+		_vm->delayUntil(frameEnd);
 	}
 
 	releaseButtons(buttonList);
@@ -3881,6 +3908,7 @@ void GUI_EoB::scribeScrollDialogue() {
 				int newHighLight = 0;
 
 				while (s && !_vm->shouldQuit()) {
+					uint32 frameEnd = _vm->_system->getMillis() + 8;
 					if (redraw) {
 						s = 0;
 						for (int i = 0; i < 32 && s < 6; i++) {
@@ -3946,6 +3974,7 @@ void GUI_EoB::scribeScrollDialogue() {
 						redraw = true;
 						s--;
 					}
+					_vm->delayUntil(frameEnd);
 				}
 
 				releaseButtons(buttonList);
@@ -4282,6 +4311,7 @@ bool GUI_EoB::confirmDialogue(int id) {
 	bool result = false;
 
 	for (bool runLoop = true; runLoop && !_vm->shouldQuit();) {
+		uint32 frameEnd = _vm->_system->getMillis() + 8;
 		if (newHighlight != lastHighlight) {
 			if (lastHighlight != -1)
 				drawMenuButton(_vm->gui_getButton(buttonList, lastHighlight + 33), false, false, true);
@@ -4321,6 +4351,7 @@ bool GUI_EoB::confirmDialogue(int id) {
 			drawMenuButton(b, false, true, true);
 			_screen->updateScreen();
 		}
+		_vm->delayUntil(frameEnd);
 	}
 
 	releaseButtons(buttonList);
@@ -4416,6 +4447,7 @@ int GUI_EoB::selectCharacterDialogue(int id) {
 	Screen::FontId of = _screen->setFont(_vm->_conFont);
 
 	while (result == -2 && !_vm->shouldQuit()) {
+		uint32 frameEnd = _vm->_system->getMillis() + 8;
 		int inputFlag = _vm->checkInput(buttonList, false, 0);
 		_vm->removeInputTop();
 
@@ -4460,6 +4492,7 @@ int GUI_EoB::selectCharacterDialogue(int id) {
 			if (found[result])
 				result = -2;
 		}
+		_vm->delayUntil(frameEnd);
 	}
 
 	updateBoxFrameHighLight(-1);

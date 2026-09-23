@@ -789,17 +789,9 @@ int Player::scan(uint totrack, uint tobeat, uint totick) {
 }
 
 void Player::turn_off_parts() {
-	Part *part;
-
-	if (!_se->_dynamicChanAllocation) {
-		turn_off_pedals();
-		for (part = _parts; part; part = part->_next)
-			part->allNotesOff();
-	} else {
-		for (part = _parts; part; part = part->_next)
-			part->off();
-		_se->reallocateMidiChannels(_midi);
-	}
+	for (Part *part = _parts; part; part = part->_next)
+		part->off(_se->_dynamicChanAllocation);
+	_se->reallocateMidiChannels(_midi);
 }
 
 void Player::play_active_notes() {
@@ -1096,7 +1088,7 @@ void Player::fixAfterLoad() {
 	}
 }
 
-void Player::metaEvent(byte type, byte *msg, uint16 len) {
+void Player::metaEvent(byte type, const byte *msg, uint16 len) {
 	if (type == 0x2F)
 		clear();
 }
@@ -1111,8 +1103,8 @@ void Player::metaEvent(byte type, byte *msg, uint16 len) {
 static void syncWithSerializer(Common::Serializer &s, ParameterFader &pf) {
 	s.syncAsSint16LE(pf.param, VER(17));
 	if (s.isLoading() && s.getVersion() < 116) {
-		int16 start, end;
-		uint32 tt, ct;
+		int16 start = 0, end = 0;
+		uint32 tt = 0, ct = 0;
 		s.syncAsSint16LE(start, VER(17));
 		s.syncAsSint16LE(end, VER(17));
 		s.syncAsUint32LE(tt, VER(17));

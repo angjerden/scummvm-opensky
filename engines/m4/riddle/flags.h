@@ -37,9 +37,9 @@ enum Flag {
 	V002 =   2,
 	V003 =   3,
 	V004 =   4,
-	V005 =   5,
-	V006 =   6,
-	V007 =   7,
+	V005 =   5, // Warning level from Feng Li
+	V006 =   6, // Number of trips Ripley has taken (technically: Times foreign Posh Express offices entered)
+	V007 =   7, // Marshall Matt is waiting at the exit of room 301
 	V008 =   8,
 	V009 =   9,
 	V010 =  10,
@@ -116,7 +116,7 @@ enum Flag {
 	V081 =  81, // Room 303 Torso Tomato : first look animation played
 	V082 =  82,
 	V083 =  83,
-	V084 =  84,
+	V084 =  84, // Room 304: 1 if cobra is dead, 2 if cobra has been caught alive
 	V085 =  85,
 	V086 =  86,
 	V087 =  87,
@@ -126,14 +126,14 @@ enum Flag {
 	V091 =  91,
 	V092 =  92,
 	V093 =  93,
-	V094 =  94,
+	kBridgeWheelPosition =  94, // 0 and 4 = horizontal and walkable
 	V095 =  95,
 	V096 =  96,
 	V097 =  97,
 	V098 =  98,
 	V099 =  99,
 
-	V100 = 100,
+	kBridgeLocked = 100,
 	V101 = 101,
 	V102 = 102,
 	V103 = 103,
@@ -319,7 +319,7 @@ enum Flag {
 	V282 = 282,
 	V283 = 283,
 	V284 = 284,
-	V285 = 285,
+	V285 = 285,// empty translation table in journal
 	V286 = 286,
 	V287 = 287,
 	V288 = 288,

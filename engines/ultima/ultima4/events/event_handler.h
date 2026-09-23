@@ -26,7 +26,6 @@
 #include "ultima/ultima4/controllers/key_handler_controller.h"
 #include "ultima/ultima4/core/types.h"
 #include "ultima/ultima4/gfx/screen.h"
-#include "ultima/shared/std/containers.h"
 #include "common/events.h"
 #include "common/list.h"
 #include "common/rect.h"
@@ -99,7 +98,7 @@ protected:
 	static bool _controllerDone;
 	static bool _ended;
 	TimedEventMgr _timer;
-	Std::vector<Controller *> _controllers;
+	Common::Array<Controller *> _controllers;
 	MouseAreaList _mouseAreaSets;
 	updateScreenCallback _updateScreen;
 public:

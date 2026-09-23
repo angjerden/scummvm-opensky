@@ -19,18 +19,49 @@
  *
  */
 
+#include "common/config-manager.h"
 #include "common/debug.h"
 #include "m4/riddle/gui/game_menu.h"
 #include "m4/riddle/riddle.h"
 #include "m4/riddle/triggers.h"
 #include "m4/riddle/console.h"
 #include "m4/riddle/vars.h"
+#include "m4/adv_r/adv_control.h"
 #include "m4/adv_r/other.h"
-#include "m4/core/errors.h"
 #include "m4/console.h"
 
 namespace M4 {
 namespace Riddle {
+
+struct MessageLog {
+	const char *_english;
+	const char *_german;
+	const char *_spanish;
+	const char *_french;
+	const char *_italian;
+};
+
+static const MessageLog MESSAGE_TITLES[] = {
+	{"Reminder from Feng Li", "Erinnerung von Feng Li", "Reminder from Feng Li", "M\x0emo de Feng Li", "Promemoria da Feng Li"},
+	{"Appeal for Oddities from Feng Li", "Bitte von Feng Li um Kuriosit\x06""ten", "Appeal for Oddities from Feng Li", "Demande d'objets de Feng Li", "Richiesta attrazioni da Feng Li"},
+	{"2nd Appeal for Oddities from Feng Li", "2. Bitte von Feng Li um Kuriosit\x06""ten", "2nd Appeal for Oddities from Feng Li", "2\x10 demande d'objets de Feng Li", "2. richiesta attrazioni da Feng Li"},
+	{"3rd Appeal for Oddities from Feng Li", "3. Bitte von Feng Li um Kuriosit\x06""ten", "3rd Appeal for Oddities from Feng Li", "3\x10 demande d'objets de Feng Li", "3. richiesta attrazioni da Feng Li"},
+	{"Urgent Warning from Feng Li", "Dringende Warnung von Feng Li", "Urgent Warning from Feng Li", "Mise end garde urgente de Feng Li", "Avviso urgente da Feng Li"},
+	{"Radiogram from Mei's Aunt & Uncle", "Telegramm von Mei's Tante & Onkel", "Radiogram from Mei's Aunt & Uncle", "Message des tante et oncle de Mei", "Radiogramma dagli zii di Mei"},
+	{"Radiogram from Danzig Chief of Police", "Telegramm vom Danziger Polizeichef", "Radiogram from Danzig Chief of Police", "Message du pr\x0e""fet", "Radiogramma dal capo della polizia di Danzica"},
+	{"Message about Emerald from Feng Li", "Klage \x0e""ber Smaragd von Feng Li", "Message about Emerald from Feng Li", "Message de Feng Li sur l'\x0emeraude", "Messagio sullo smeraldo da Feng Li"},
+	{"Ultimatum about Emerald from Feng Li", "Ultimatum wegen des Smaragds von Feng Li", "Ultimatum about Emerald from Feng Li", "Ultimatum de Feng Li sur l'\x0emeraude", "Ultimatum sullo smeraldo da Feng Li"},
+	{"Refused Delivery", "Annahme verweigert", "Refused Delivery", "Livraison refus\x0e""e", "Consegna rifiutata"},
+	{"Radiogram from Prof. Menendez's Assistant", "Telegramm von Prof. Menendez' Assistenten", "Radiogram from Prof. Menendez's Assistant", "Message de l'assistant de Menendez", "Radiogramma dall'assistente del Prof. Menendey"},
+	{"2nd Radiogram from Prof. Menendez's Assistant", "2. Telegramm von Prof. Menendez' Assistenten", "2nd Radiogram from Prof. Menendez's Assistant", "2\0x10 Message de l'assistant de Menendez", "2. radiogramma dall'assistente del Prof. Menendez"},
+	{"Radiogram from Mei", "Telegramm von Mei", "Radiogram from Mei", "Radiogram de Mei", "Radiogramma da Mei"},
+	{"Thank You Note from Feng Li", "Dankschreiben von Feng Li", "Thank You Note from Feng Li", "Note de remerciment de Feng Li", "Ringraziamento da Feng Li"}
+};
+
+static const MessageLog MESSAGE_OPTIONS[] = {
+	{"MESSAGE LOG", "LOGBUCH F\x04""R TELEGRAMME", "MESSAGE LOG", "CARNET DE MESSAGES", "REGISTRO DEI TELEGRAMMI"},
+	{"CLOSE LOG", "SCHLIESSEN",	 "CLOSE LOG", "SORTIE", "CHIUDERE"},
+};
 
 RiddleEngine::RiddleEngine(OSystem *syst, const M4GameDescription *gameDesc) :
 		M4Engine(syst, gameDesc) {
@@ -43,6 +74,11 @@ RiddleEngine::RiddleEngine(OSystem *syst, const M4GameDescription *gameDesc) :
 	_sections.push_back(&_section7);
 	_sections.push_back(&_section8);
 	_sections.push_back(&_section9);
+}
+
+void RiddleEngine::initializePath(const Common::FSNode &gamePath) {
+	M4Engine::initializePath(gamePath);
+	SearchMan.addSubDirectoryMatching(gamePath, "option1");
 }
 
 M4::Vars *RiddleEngine::createVars() {
@@ -99,31 +135,30 @@ void RiddleEngine::global_daemon() {
 }
 
 void RiddleEngine::global_parser() {
-	bool lookFlag = player_said_any("look", "look at");
-	bool talkFlag = player_said_any("talk", "talk to");
-	bool takeFlag = player_said("take");
-	bool useFlag = player_said_any("push", "pull", "gear", "open", "close");
-	bool npcFlag = player_said("MEI CHEN") ||
-		player_said("FENG LI") ||
-		player_said("TWELVETREES") ||
-		player_said("WOLF") ||
-		player_said("PERSON IN PIT") ||
-		player_said("TWELVETREES ") ||
-		player_said("OLD WOMAN") ||
-		player_said("OLD LADY") ||
-		player_said("AGENT") ||
-		player_said("BUTLER") ||
-		player_said("ACOLYTE") ||
-		player_said("OFFICIAL") ||
-		player_said("GATEKEEPER") ||
-		player_said("PEASANT") ||
-		player_said("ACOLYTE") ||
-		player_said("MENENDEZ") ||
-		player_said("GUARD") ||
-		player_said("FARMER");
-	bool combineFlag = inv_player_has(_G(player).verb) &&
-		inv_player_has(_G(player).noun);
-	bool splitFlag = useFlag && inv_player_has(_G(player).noun);
+	const bool lookFlag = player_said_any("look", "look at");
+	const bool talkFlag = player_said_any("talk", "talk to");
+	const bool takeFlag = player_said("take");
+	const bool useFlag = player_said_any("push", "pull", "gear", "open", "close");
+	const bool npcFlag = player_said("MEI CHEN") ||
+	                     player_said("FENG LI") ||
+	                     player_said("TWELVETREES") ||
+	                     player_said("WOLF") ||
+	                     player_said("PERSON IN PIT") ||
+	                     player_said("TWELVETREES ") ||
+	                     player_said("OLD WOMAN") ||
+	                     player_said("OLD LADY") ||
+	                     player_said("AGENT") ||
+	                     player_said("BUTLER") ||
+	                     player_said("ACOLYTE") ||
+	                     player_said("OFFICIAL") ||
+	                     player_said("GATEKEEPER") ||
+	                     player_said("PEASANT") ||
+	                     player_said("MENENDEZ") ||
+	                     player_said("GUARD") ||
+	                     player_said("FARMER");
+	const bool combineFlag = inv_player_has(_G(player).verb) &&
+	                         inv_player_has(_G(player).noun);
+	const bool splitFlag = useFlag && inv_player_has(_G(player).noun);
 
 	if (npcFlag && inv_player_has(_G(player).verb)) {
 		digi_play("com017", 1);
@@ -161,8 +196,8 @@ void RiddleEngine::global_parser() {
 		splitItems("WOODEN LADDER", "BROWN VINE");
 	} else if (splitFlag && player_said("ENVELOPE")) {
 		splitItems("VON SELTSAM'S NOTE", "POSTAGE STAMP");
-		kernel_examine_inventory_object("PING VON SELTSAM'S NOTE",
-			5, 1, 270, 150, 10000, "406R18C");
+		kernel_examine_inventory_object("PING VON SELTSAM'S NOTE", _G(master_palette),
+			5, 1, 270, 150, 10000, "406R18C",-1);
 	} else if (splitFlag && player_said("LADDER/VINES")) {
 		splitItems("WOODEN LADDER", "VINES");
 	} else if (splitFlag && player_said("VINES")) {
@@ -335,7 +370,7 @@ void RiddleEngine::global_parser() {
 			player_set_commands_allowed(true);
 			break;
 		case 7777:
-			if (_messageLog._result != 16) {
+			if (_G(messageLogResult) != 16) {
 				_G(flags)[V052] = 1;
 
 				if (_G(player).walker_in_this_scene && _G(flags)[V292]) {
@@ -346,7 +381,7 @@ void RiddleEngine::global_parser() {
 					case 2:
 					case 3:
 					case 4:
-						ws_walk(_G(my_walker), _G(player_info).x, _G(player_info).y, nullptr, 5, 1);
+						ws_walk(_G(my_walker), _G(player_info).x, _G(player_info).y, nullptr, 1, 5, true);
 						break;
 					case 5:
 					case 7:
@@ -357,12 +392,13 @@ void RiddleEngine::global_parser() {
 					case 9:
 					case 10:
 					case 11:
-						ws_walk(_G(my_walker), _G(player_info).x, _G(player_info).y, nullptr, 7, 1);
+						ws_walk(_G(my_walker), _G(player_info).x, _G(player_info).y, nullptr, 1, 7, true);
 						break;
 					default:
-						player_set_commands_allowed(false);
 						break;
 					}
+
+					player_set_commands_allowed(false);
 				} else {
 					kernel_timing_trigger(1, 2);
 				}
@@ -454,8 +490,8 @@ void RiddleEngine::global_parser() {
 	} else if (_G(kernel).trigger == 10001) {
 		player_set_commands_allowed(true);
 		digi_stop(1);
-		kernel_examine_inventory_object("PING POSTAGE STAMP", 5, 1,
-			270, 150, 990, "406R19");
+		kernel_examine_inventory_object("PING POSTAGE STAMP", _G(master_palette), 5, 1,
+			270, 150, 990, "406R19", -1);
 	} else if (useFlag && HAS("TWELVETREES' NOTE")) {
 		inv_move_object("TWELVETREES' NOTE", NOWHERE);
 		inv_give_to_player("TWELVETREES' MAP");
@@ -573,9 +609,74 @@ void RiddleEngine::splitItems(const char *item1, const char *item2) {
 	inv_give_to_player(item2);
 }
 
+void messageLogCallback(TextItem *textItem, TextScrn *textScrn) {
+	_G(flags[V349]) = textItem->tag - 1;
+	_G(messageLogResult) = textItem->tag;
+	TextScrn_Destroy(_G(messageScreen));
+	_G(messageScreen) = nullptr;
+	kernel_trigger_dispatchx(_G(messageLogTrigger));
+}
+
+const char* getTranslatedMessageLogItem(const MessageLog* messages, int index) {
+	Common::Language lang = g_engine->getLanguage();
+
+	const char *messageTitle = messages[index]._english;
+	if (lang == Common::DE_DEU)
+		messageTitle = messages[index]._german;
+	else if (lang == Common::ES_ESP)
+		messageTitle = messages[index]._spanish;
+	else if (lang == Common::FR_FRA)
+		messageTitle = messages[index]._french;
+	else if (lang == Common::IT_ITA)
+		messageTitle = messages[index]._italian;
+
+	return messageTitle;
+}
+
+
 void RiddleEngine::showMessageLog(int trigger) {
-	// TODO
-	warning("TODO: showMessageLog");
+
+	_G(messageLogTrigger) = kernel_trigger_create(trigger);
+	gr_font_set(_G(font_inter));
+	const int32 fontHeight = gr_font_get_height();
+	int32 ecx = 0;
+	int32 maxWidth = 0;
+	
+	for (int i = 0; i < 14; ++i) {
+		if (_G(flags)[(Flag)(V350 + i)]) {
+			++ecx;
+			const int width = gr_font_string_width(getTranslatedMessageLogItem(MESSAGE_TITLES,i), 0);
+			if (width > maxWidth)
+				maxWidth = width;
+		}
+	}
+
+	if (ecx == 0)
+		return;
+
+	maxWidth += 16;
+	_G(messageScreen) = TextScrn_Create(601 - maxWidth, 361 - ((ecx + 2) * (fontHeight + 2) + 16), 600, 360, 65, 422, 13, 15);
+
+	TextScrn_Add_Message(_G(messageScreen), 8, 8, 0, TS_CENTRE, getTranslatedMessageLogItem(MESSAGE_OPTIONS, 0));
+
+	int32 edi = fontHeight + 14;
+	
+	int i = 0;
+	for (; i < 14; ++i) {
+		if (_G(flags)[(Flag)(V350 + i)]) {
+			TextScrn_Add_TextItem(_G(messageScreen), 8, edi, i + 1, TS_GIVEN, getTranslatedMessageLogItem(MESSAGE_TITLES, i), (M4CALLBACK)messageLogCallback);
+			edi += 1 + fontHeight;
+		}
+	}
+	TextScrn_Add_TextItem(_G(messageScreen), 8, edi + 4, i + 2, TS_GIVEN, getTranslatedMessageLogItem(MESSAGE_OPTIONS, 1), (M4CALLBACK)messageLogCallback);
+	TextScrn_Activate(_G(messageScreen));
+}
+
+void RiddleEngine::hide_message_log_dialog() {
+	if (_G(messageScreen))
+		TextScrn_Destroy(_G(messageScreen));
+
+	_G(messageScreen) = nullptr;
 }
 
 void RiddleEngine::lookAtInventoryItem() {
@@ -652,7 +753,7 @@ void RiddleEngine::lookAtInventoryItem() {
 			str = "PING TWELVETREES' MAP";
 	}
 
-	kernel_examine_inventory_object(str.c_str(), 5, 1, 270, 150, kINVENTORY_CLOSEUP_END, digi);
+	kernel_examine_inventory_object(str.c_str(), _G(master_palette), 5, 1, 270, 150, kINVENTORY_CLOSEUP_END, digi, -1);
 }
 
 void sketchInJournal(const char *digiName) {
@@ -768,5 +869,12 @@ void sketchInJournal(const char *digiName) {
 	}
 }
 
+bool RiddleEngine::canLoadGameStateCurrently(Common::U32String *msg) {
+	if (g_vars && _G(game).room_id == 494)
+		// Allow loading games from the main menu
+		return true;
+	else
+		return M4Engine::canLoadGameStateCurrently(msg);
+}
 } // namespace Riddle
 } // namespace M4

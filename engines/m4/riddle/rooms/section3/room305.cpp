@@ -20,9 +20,10 @@
  */
 
 #include "m4/riddle/rooms/section3/room305.h"
-#include "m4/graphics/gr_series.h"
 #include "m4/riddle/riddle.h"
 #include "m4/riddle/vars.h"
+#include "m4/adv_r/adv_control.h"
+#include "m4/graphics/gr_series.h"
 #include "m4/gui/gui_vmng.h"
 
 namespace M4 {
@@ -164,7 +165,7 @@ void Room305::init() {
 	switch (_G(game).previous_room) {
 	case KERNEL_RESTORING_GAME:
 		if (player_been_here(201)) {
-			_stander = TriggerMachineByHash(1, 1, 0, 0, 0, 0, 494, 278, 73, 0xf00, 1,
+			_stander = TriggerMachineByHash(1, 1, 0, 0, 0, 0, 494, 278, 73, 0xf00, true,
 				triggerMachineByHashCallback, "fl stander");
 			sendWSMessage_10000(1, _stander, _feng3, 1, 1, 400, _feng3, 1, 6, 0);
 			_fengMode = _fengShould = 1;
@@ -576,8 +577,7 @@ void Room305::pre_parser() {
 	const bool lookFlag = player_said_any("look", "look at");
 	const bool takeFlag = player_said("take");
 
-	if (_drawerOpen && !(takeFlag && player_said("turtle treats"))
-			&& !(lookFlag && player_said("turtle treats"))) {
+	if (_drawerOpen && !(takeFlag && player_said("turtle treats")) && !(lookFlag && player_said("turtle treats"))) {
 		player_set_commands_allowed(false);
 		Common::strcpy_s(_G(player).verb, "close");
 		Common::strcpy_s(_G(player).noun, "drawer");
@@ -729,10 +729,11 @@ next1:
 
 	if (itemFlag || (takeFlag && player_said_any("SHRUNKEN HEAD",
 			"INCENSE BURNER", "CRYSTAL SKULL", "ROMANOV EMERALD",
-			"WHALE BONE HORN"))) {
+			"WHALE BONE HORN", "WHEELED TOY"))) {
 		switch (_G(kernel).trigger) {
 		case -1:
-			if ((itemFlag && inv_player_has(_G(player).verb)) || takeFlag) {
+			if ((itemFlag && inv_player_has(_G(player).verb)) ||
+					(takeFlag && inv_object_is_here(_G(player).noun))) {
 				if (itemFlag) {
 					if (!walkToObject())
 						goto next2;
@@ -742,8 +743,49 @@ next1:
 			}
 			break;
 
-		default:
+		case 1:
+			player_set_commands_allowed(false);
+			setGlobals1(_ripMedHigh, 1, 12, 12, 12);
+			sendWSMessage_110000(3);
 			break;
+
+		case 3:
+			if (itemFlag) {
+				hotspot_set_active(_G(player).verb, true);
+
+#define DROP(FIELD, NAME, CASE) if (player_said(NAME)) { \
+	FIELD = series_show_sprite(CASE, 0, 0xf00); \
+	inv_move_object(NAME, 305); }
+				DROP(_shrunkenHead2, "SHRUNKEN HEAD", "DISPLAY CASE SHRUNKEN HEAD")
+				DROP(_incenseHolder2, "INCENSE BURNER", "DISPLAY CASE INCENSE HOLDER")
+				DROP(_crystalSkull2, "CRYSTAL SKULL", "DISPLAY CASE CRYSTAL SKULL")
+				DROP(_emerald2, "ROMANOV EMERALD", "DISPLAY CASE EMERALD")
+				DROP(_whaleboneHorn2, "WHALE BONE HORN", "DISPLAY CASE WHALE BONE HORN")
+				DROP(_wheeledToy2, "WHEELED TOY", "DISPLAY CASE WHEELED TOY")
+#undef DROP
+			} else {
+				hotspot_set_active(_G(player).noun, false);
+
+#define TAKE(FIELD, NAME) if (player_said(NAME)) { \
+	terminateMachineAndNull(FIELD); inv_give_to_player(NAME); }
+				TAKE(_shrunkenHead2, "SHRUNKEN HEAD")
+				TAKE(_incenseHolder2, "INCENSE BURNER")
+				TAKE(_crystalSkull2, "CRYSTAL SKULL")
+				TAKE(_emerald2, "ROMANOV EMERALD")
+				TAKE(_whaleboneHorn2, "WHALE BONE HORN")
+				TAKE(_wheeledToy2, "WHEELED TOY")
+#undef TAKE
+			}
+
+			sendWSMessage_140000(5);
+			break;
+
+		case 5:
+			player_set_commands_allowed(true);
+			break;
+
+		default:
+			goto next2;
 		}
 	} else {
 		goto next2;
@@ -755,8 +797,7 @@ next2:
 	if (chiselFlag || (takeFlag && player_said("CHISEL"))) {
 		switch (_G(kernel).trigger) {
 		case -1:
-			if ((chiselFlag && inv_player_has(_G(player).verb)) ||
-				(takeFlag && inv_object_is_here(_G(player).noun))) {
+			if ((chiselFlag && inv_player_has(_G(player).verb)) || (takeFlag && inv_object_is_here(_G(player).noun))) {
 				if (chiselFlag) {
 					if (player_said("CHISEL")) {
 						ws_walk(_G(my_walker), 186, 279, nullptr, 1, 10);
@@ -775,7 +816,7 @@ next2:
 
 		case 3:
 			if (chiselFlag) {
-				hotspot_set_active(_G(player).verb, false);
+				hotspot_set_active(_G(player).verb, true);
 
 				if (player_said("CHISEL")) {
 					_knife2 = series_show_sprite("DISPLAY CASE YETI HANDLED KNIFE", 0, 0xf00);
@@ -812,8 +853,7 @@ next3:
 	if (caseFlag || (takeFlag && player_said_any("GERMAN BANKNOTE", "REBUS AMULET", "SILVER BUTTERFLY", "POSTAGE STAMP", "STICK AND SHELL MAP"))) {
 		switch (_G(kernel).trigger) {
 		case -1:
-			if ((caseFlag && inv_player_has(_G(player).verb)) ||
-					(takeFlag && inv_object_is_here(_G(player).noun))) {
+			if ((caseFlag && inv_player_has(_G(player).verb)) || (takeFlag && inv_object_is_here(_G(player).noun))) {
 				if (caseFlag) {
 					if (player_said("GERMAN BANKNOTE"))
 						ws_walk(_G(my_walker), 88, 305, nullptr, 1, 10);
@@ -844,7 +884,7 @@ next3:
 			break;
 
 		case 3:
-			if (useFlag) {
+			if (caseFlag) {
 				hotspot_set_active(_G(player).verb, true);
 
 #define DROP(FIELD, NAME, CASE) if (player_said(NAME)) { \
@@ -855,8 +895,8 @@ next3:
 				DROP(_banknote2, "GERMAN BANKNOTE", "DISPLAY CASE GERMAN BANKNOTE")
 				DROP(_stamp2, "POSTAGE STAMP", "DISPLAY CASE CHEAPEST STAMP")
 				DROP(_map2, "STICK AND SHELL MAP", "DISPLAY CASE QUARRY STICK MAP")
-#undef ITEM
-				sendWSMessage_140000(3);
+#undef DROP
+				sendWSMessage_140000(5);
 
 			} else {
 				hotspot_set_active(_G(player).noun, false);
@@ -905,8 +945,7 @@ next4:
 		default:
 			break;
 		}
-	} else if (lookFlag && player_said("cartoon") && _G(kernel).trigger >= -1
-			&& _G(kernel).trigger <= 5) {
+	} else if (lookFlag && player_said("cartoon") && _G(kernel).trigger >= -1 && _G(kernel).trigger <= 5) {
 		switch (_G(kernel).trigger) {
 		case -1:
 		case 1: {
@@ -1085,16 +1124,14 @@ next4:
 			_G(flags)[V085] = 1;
 			digi_play("305r16", 1);
 		}
-	} else if (lookFlag && player_said("turtle") &&
-			inv_object_is_here("turtle")) {
+	} else if (lookFlag && player_said("turtle") && inv_object_is_here("turtle")) {
 		if (_G(flags)[V085]) {
 			digi_play("305r16b", 1);
 		} else {
 			_G(flags)[V085] = 1;
 			digi_play("305r16", 1);
 		}
-	} else if (lookFlag && player_said("turtle treats") &&
-			inv_object_is_here("TURTLE TREATS")) {
+	} else if (lookFlag && player_said("turtle treats") && inv_object_is_here("TURTLE TREATS")) {
 		digi_play("305r18", 1);
 	} else if (lookFlag && player_said("drawer")) {
 		digi_play("305r17", 1);
@@ -1161,7 +1198,7 @@ next4:
 	} else if (LOOK("INCENSE BURNER")) {
 		digi_play("305r50", 1);
 	} else if (LOOK("CRYSTAL SKULL")) {
-		digi_play("3055r51", 1);
+		digi_play("305r51", 1);
 	} else if (LOOK("ROMANOV EMERALD")) {
 		digi_play("305r29a", 1);
 	} else if (LOOK("WHALE BONE HORN")) {
@@ -1277,19 +1314,29 @@ bool Room305::walkToObject() {
 	if (player_said("SHRUNKEN HEAD")) {
 		ws_walk(_G(my_walker), 98, 313, nullptr, 1, 10, true);
 		return true;
-	} else if (player_said("INCENSE BURNER")) {
+	}
+
+	if (player_said("INCENSE BURNER")) {
 		ws_walk(_G(my_walker), 171, 285, nullptr, 1, 10, true);
 		return true;
-	} else if (player_said("CRYSTAL SKULL")) {
+	}
+
+	if (player_said("CRYSTAL SKULL")) {
 		ws_walk(_G(my_walker), 70, 320, nullptr, 1, 10, true);
 		return true;
-	} else if (player_said("WHALE BONE HORN")) {
+	}
+
+	if (player_said("WHALE BONE HORN")) {
 		ws_walk(_G(my_walker), 116, 304, nullptr, 1, 10, true);
 		return true;
-	} else if (player_said("WHEELED TOY")) {
+	}
+
+	if (player_said("WHEELED TOY")) {
 		ws_walk(_G(my_walker), 151, 296, nullptr, 1, 10, true);
 		return true;
-	} else if (player_said("ROMANOV EMERALD")) {
+	}
+
+	if (player_said("ROMANOV EMERALD")) {
 		if (_G(flags)[V090] == 3) {
 			digi_play("305f08", 1, 255, 6);
 			_fengShould = 2;
@@ -1340,22 +1387,21 @@ const char *Room305::getXAreaCartoon() const {
 }
 
 const char *Room305::getXAreaSeries() const {
-	if (_G(flags)[V000]) {
-		static const char *NAMES[9] = {
-			"395car01", "395car08", "395car03", "395car06",
-			"395car05", "395car04", "395car07", "395car02",
-			"395car09"
-		};
-		return NAMES[getXAreaNum() - 1];
+	static const char *NAMES_CARTOONS[9] = {
+		"395car01", "395car08", "395car03", "395car06",
+		"395car05", "395car04", "395car07", "395car02",
+		"395car09"};
 
-	} else {
-		static const char *NAMES[9] = {
-			"jack dempsey", "parrot", "kerosene",
-			"chimney tree", "prof bingo", "blind men",
-			"lemon", "hollow log", "restaurant"
-		};
-		return NAMES[getXAreaNum() - 1];
+	static const char *NAMES_AREA[9] = {
+		"jack dempsey", "parrot", "kerosene",
+		"chimney tree", "prof bingo", "blind men",
+		"lemon", "hollow log", "restaurant"};
+
+	if (_G(flags)[V000]) {
+		return NAMES_CARTOONS[getXAreaNum() - 1];
 	}
+
+	return NAMES_AREA[getXAreaNum() - 1];
 }
 
 Common::String Room305::getXAreaDigi() const {

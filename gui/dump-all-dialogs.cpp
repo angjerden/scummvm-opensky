@@ -108,7 +108,7 @@ void dumpDialogs(const Common::String &message, const Common::String &lang) {
 	GUI::AboutDialog aboutDialog;
 	handleSimpleDialog(aboutDialog, "aboutDialog" + suffix, surf);
 
-#if defined(USE_CLOUD) && defined(USE_LIBCURL)
+#ifdef USE_CLOUD
 	// CloudConnectingWizard
 	GUI::CloudConnectionWizard cloudConnectingWizard;
 	handleSimpleDialog(cloudConnectingWizard, "cloudConnectingWizard" + suffix, surf);
@@ -116,7 +116,9 @@ void dumpDialogs(const Common::String &message, const Common::String &lang) {
 	// RemoteBrowserDialog
 	GUI::RemoteBrowserDialog remoteBrowserDialog(_("Select directory with game data"));
 	handleSimpleDialog(remoteBrowserDialog, "remoteBrowserDialog" + suffix, surf);
+#endif
 
+#ifdef USE_HTTP
 	// DownloadIconPacksDialog
 	GUI::DownloadPacksDialog downloadIconPacksDialog(_("icon packs"), "LIST", "gui-icons*.dat");
 	handleSimpleDialog(downloadIconPacksDialog, "downloadIconPacksDialog" + suffix, surf);
@@ -179,7 +181,7 @@ void dumpAllDialogs(const Common::String &message) {
 					   0};
 
 	// HACK: Pass info to backend to force window resize
-	ConfMan.setBool("force_resize", true, Common::ConfigManager::kApplicationDomain);
+	ConfMan.setBool("dumper_force_resize", true, Common::ConfigManager::kApplicationDomain);
 	Common::FSNode dumpDir("snapshots");
 
 	if (!dumpDir.isDirectory())
@@ -218,7 +220,10 @@ void dumpAllDialogs(const Common::String &message) {
 	// Clean up the temporary flag.
 	// Since we are still within the same method where we added,
 	// there is no need to flush config to the disk
-	ConfMan.removeKey("force_resize", Common::ConfigManager::kApplicationDomain);
+	ConfMan.removeKey("dumper_force_resize", Common::ConfigManager::kApplicationDomain);
+	ConfMan.flushToDisk();
+
+	warning("ALL DIALOGS DUMPED");
 }
 
 } // End of namespace GUI

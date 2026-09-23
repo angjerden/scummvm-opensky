@@ -22,8 +22,8 @@
 #ifndef NUVIE_SOUND_MIXER_RANDOM_COLLECTION_AUDIO_STREAM_H
 #define NUVIE_SOUND_MIXER_RANDOM_COLLECTION_AUDIO_STREAM_H
 
-#include "ultima/shared/std/containers.h"
 #include "audio/audiostream.h"
+#include "common/array.h"
 
 namespace Ultima {
 namespace Nuvie {
@@ -42,7 +42,7 @@ public:
 /**
  * Factory function for a QueuingAudioStream.
  */
-RandomCollectionAudioStream *makeRandomCollectionAudioStream(int rate, bool stereo, Std::vector<Audio::RewindableAudioStream *>streams, DisposeAfterUse::Flag disposeAfterUse);
+RandomCollectionAudioStream *makeRandomCollectionAudioStream(int rate, bool stereo, Common::Array<Audio::RewindableAudioStream *>streams, DisposeAfterUse::Flag disposeAfterUse);
 
 } // End of namespace U6Audio
 } // End of namespace Nuvie

@@ -21,8 +21,8 @@
 
 /*! \mainpage %ScummVM Source Reference
  *
- * These pages contains a cross referenced documentation for the %ScummVM source code,
- * generated with Doxygen (http://www.doxygen.org) directly from the source.
+ * These pages contain a cross referenced documentation for the %ScummVM source code,
+ * generated with Doxygen (https://www.doxygen.nl) directly from the source.
  * Currently not much is actually properly documented, but at least you can get an overview
  * of almost all the classes, methods and variables, and how they interact.
  */
@@ -73,13 +73,11 @@
 #include "backends/keymapper/keymapper.h"
 
 #ifdef USE_CLOUD
-#ifdef USE_LIBCURL
 #include "backends/cloud/cloudmanager.h"
-#include "backends/networking/curl/connectionmanager.h"
+#include "backends/networking/http/connectionmanager.h"
 #endif
 #ifdef USE_SDL_NET
 #include "backends/networking/sdl_net/localwebserver.h"
-#endif
 #endif
 
 #if defined(__DC__)
@@ -94,6 +92,10 @@
 
 #ifdef ANDROID_BACKEND
 #include "backends/fs/android/android-fs-factory.h"
+#endif
+
+#ifdef PLAYSTATION3
+#include "backends/platform/sdl/ps3/ps3.h"
 #endif
 
 #include "gui/dump-all-dialogs.h"
@@ -164,6 +166,13 @@ static Common::Error identifyGame(const Common::String &debugLevels, const Plugi
 	Common::Error result = metaEngine.identifyGame(game, descriptor);
 	if (result.getCode() != Common::kNoError) {
 		warning("Couldn't identify game '%s' for the engine '%s'.", gameId.c_str(), engineId.c_str());
+
+		// If a temporary target failed to launch, remove it from the configuration manager
+		// so it not visible in the launcher.
+		// Temporary targets are created when starting games from the command line using the game id.
+		if (ConfMan.hasKey("id_came_from_command_line")) {
+			ConfMan.removeGameDomain(ConfMan.getActiveDomainName().c_str());
+		}
 	}
 	return result;
 }
@@ -217,6 +226,12 @@ static Common::Error runGame(const Plugin *enginePlugin, OSystem &system, const 
 		err = metaEngine.createInstance(&system, &engine, game, meDescriptor);
 	}
 
+	if (err.getCode() == Common::kNoError) {
+		// Update add-on targets
+		if (engine != nullptr && engine->gameTypeHasAddOns())
+			err = engine->updateAddOns(&metaEngine);
+	}
+
 	// Check for errors
 	if (!engine || err.getCode() != Common::kNoError) {
 
@@ -235,6 +250,8 @@ static Common::Error runGame(const Plugin *enginePlugin, OSystem &system, const 
 		if (ConfMan.hasKey("id_came_from_command_line")) {
 			ConfMan.removeGameDomain(target.c_str());
 		}
+
+		metaEngine.deleteInstance(engine, game, meDescriptor);
 
 		return err;
 	}
@@ -346,6 +363,7 @@ static void setupGraphics(OSystem &system) {
 		system.setStretchMode(ConfMan.get("stretch_mode").c_str());
 		system.setScaler(ConfMan.get("scaler").c_str(), ConfMan.getInt("scale_factor"));
 		system.setShader(ConfMan.getPath("shader"));
+		system.setRotationMode(ConfMan.getInt("rotation_mode"));
 
 #if defined(OPENDINGUX) || defined(MIYOO) || defined(MIYOOMINI) || defined(ATARI)
 		// 0, 0 means "autodetect" but currently only SDL supports
@@ -465,6 +483,9 @@ extern "C" int scummvm_main(int argc, const char * const argv[]) {
 	// Update the config file
 	ConfMan.set("versioninfo", gScummVMVersion, Common::ConfigManager::kApplicationDomain);
 
+	// Immediately remove possible residue for Dump All Dialogs feature
+	ConfMan.removeKey("dumper_force_resize", Common::ConfigManager::kApplicationDomain);
+
 	// Load and setup the debuglevel and the debug flags. We do this at the
 	// soonest possible moment to ensure debug output starts early on, if
 	// requested.
@@ -576,9 +597,11 @@ extern "C" int scummvm_main(int argc, const char * const argv[]) {
 		}
 		ConfMan.set("gfx_mode", gfxModeSetting, Common::ConfigManager::kSessionDomain);
 	}
+#ifdef ENABLE_EVENTRECORDER
 	if (settings.contains("disable-display")) {
-		ConfMan.setInt("disable-display", 1, Common::ConfigManager::kTransientDomain);
+		ConfMan.setInt("disable_display", 1, Common::ConfigManager::kTransientDomain);
 	}
+#endif
 	setupGraphics(system);
 
 	if (!configLoadStatus) {
@@ -649,7 +672,7 @@ extern "C" int scummvm_main(int argc, const char * const argv[]) {
 				"Select the folder containing the game's files, then tap **Choose**. \n"
 				"\n"
 				"Repeat steps 1 and 6 for each game."
-				), _("Ok"),
+				), _("OK"),
 				// I18N: A button caption to dismiss a message and read it later
 				_("Read Later"), Graphics::kTextAlignLeft);
 
@@ -674,7 +697,7 @@ extern "C" int scummvm_main(int argc, const char * const argv[]) {
 				"Select the sub-folder containing the game's files, then tap **Choose**."
 				"\n"
 				"Repeat steps 1 and 6 for each game."
-				), _("Ok"),
+				), _("OK"),
 				// I18N: A button caption to dismiss a message and read it later
 				_("Read Later"), Graphics::kTextAlignLeft);
 
@@ -687,14 +710,14 @@ extern "C" int scummvm_main(int argc, const char * const argv[]) {
 	}
 #endif
 
-#if defined(USE_CLOUD) && defined(USE_LIBCURL)
+#ifdef USE_CLOUD
 	CloudMan.init();
 	CloudMan.syncSaves();
 #endif
 
-#if 0
-	GUI::dumpAllDialogs();
-#endif
+	if (ConfMan.hasKey("dump_all_dialogs")) {
+		GUI::dumpAllDialogs();
+	}
 
 // Print out CPU extension info
 // Separate block to keep the stack clean
@@ -729,13 +752,13 @@ extern "C" int scummvm_main(int argc, const char * const argv[]) {
 	}
 
 	// Unless a game was specified, show the launcher dialog
-	if (nullptr == ConfMan.getActiveDomain())
+	if (nullptr == ConfMan.getActiveDomain() && !ConfMan.hasKey("dump_all_dialogs"))
 		launcherDialog();
 
 	// FIXME: We're now looping the launcher. This, of course, doesn't
 	// work as well as it should. In theory everything should be destroyed
 	// cleanly, so this is now enabled to encourage people to fix bits :)
-	while (nullptr != ConfMan.getActiveDomain()) {
+	while (nullptr != ConfMan.getActiveDomain() && !ConfMan.hasKey("dump_all_dialogs")) {
 		saveLastLaunchedTarget(ConfMan.getActiveDomainName());
 
 		EngineMan.upgradeTargetIfNecessary(ConfMan.getActiveDomainName());
@@ -757,6 +780,10 @@ extern "C" int scummvm_main(int argc, const char * const argv[]) {
 			// Then, get the relevant Engine plugin from MetaEngine.
 			enginePlugin = PluginMan.findEnginePlugin(engineId);
 			if (enginePlugin == nullptr) {
+#ifdef PS3_MULTI_MODULES
+				Common::FSNode node((Common::String(PLUGIN_DIRECTORY "/") + engineId + ".self").c_str());
+				if (!node.exists())
+#endif
 				result = Common::kEnginePluginNotFound;
 			}
 		}
@@ -779,6 +806,9 @@ extern "C" int scummvm_main(int argc, const char * const argv[]) {
 				g_eventRec.init(recordFileName, GUI::EventRecorder::kRecorderUpdate);
 			} else if (recordMode == "playback") {
 				g_eventRec.init(recordFileName, GUI::EventRecorder::kRecorderPlayback);
+			} else if (recordMode == "fast_playback") {
+				g_eventRec.init(recordFileName, GUI::EventRecorder::kRecorderPlayback);
+				g_eventRec.setFastPlayback(true);
 			} else if ((recordMode == "info") && (!recordFileName.empty())) {
 				Common::PlaybackFile record;
 				record.openRead(recordFileName);
@@ -792,6 +822,20 @@ extern "C" int scummvm_main(int argc, const char * const argv[]) {
 			if (ttsMan != nullptr) {
 				ttsMan->pushState();
 			}
+
+#ifdef PS3_MULTI_MODULES
+			// For launcher instance, the process was called without additional params
+			// Launching an engine flow will spawn new process with <target-id> param
+			// New process path will be "<plugin-dir>/<engine-id>.self"
+			if (argc == 1) {
+				const char *spawnArgv[2]{};
+				Common::String enginePath = Common::String(PLUGIN_DIRECTORY "/") + plugin->getName() + ".self";
+				spawnArgv[0] = ConfMan.getActiveDomainName().c_str();
+				system.destroy();
+				OSystem_PS3::spawnProcess(enginePath.c_str(), spawnArgv);
+			}
+#endif
+
 			// Try to run the game
 			result = runGame(enginePlugin, system, game, meDescriptor);
 			if (ttsMan != nullptr) {
@@ -868,7 +912,7 @@ extern "C" int scummvm_main(int argc, const char * const argv[]) {
 		} else {
 			DebugMan.removeAllDebugChannels();
 
-			GUI::displayErrorDialog(_("Could not find any engine capable of running the selected game"));
+			GUI::displayErrorDialog(result, _("Error running game:"));
 
 			// Clear the active domain
 			ConfMan.setActiveDomain("");
@@ -877,18 +921,24 @@ extern "C" int scummvm_main(int argc, const char * const argv[]) {
 		// reset the graphics to default
 		setupGraphics(system);
 		if (nullptr == ConfMan.getActiveDomain()) {
+#ifdef PS3_MULTI_MODULES
+			// For engine instance, process was called with <target-id> param
+			// Return to launcher flow spawn new launcher process without params
+			if (argc > 1) {
+				system.destroy();
+				OSystem_PS3::spawnProcess(PREFIX "/scummvm.self", nullptr);
+			}
+#endif
 			launcherDialog();
 		}
 	}
-#ifdef USE_CLOUD
 #ifdef USE_SDL_NET
 	Networking::LocalWebserver::destroy();
 #endif
-#ifdef USE_LIBCURL
+#ifdef USE_CLOUD
 	Networking::ConnectionManager::destroy();
 	//I think it's important to destroy it after ConnectionManager
 	Cloud::CloudManager::destroy();
-#endif
 #endif
 	PluginManager::destroy();
 	GUI::GuiManager::destroy();

@@ -19,13 +19,15 @@
  *
  */
 
-#include "m4/graphics/gr_series.h"
-#include "m4/gui/gui_sys.h"
-#include "m4/platform/keys.h"
 #include "m4/riddle/rooms/section4/room494.h"
+#include "m4/riddle/inventory.h"
 #include "m4/riddle/vars.h"
 #include "m4/riddle/walker.h"
 #include "m4/riddle/riddle.h"
+#include "m4/adv_r/adv_control.h"
+#include "m4/graphics/gr_series.h"
+#include "m4/gui/gui_sys.h"
+#include "m4/platform/keys.h"
 
 namespace M4 {
 namespace Riddle {
@@ -48,7 +50,7 @@ void Room494::init() {
 
 	RemoveSystemHotkey(KEY_F2);
 	AddSystemHotkey(KEY_ESCAPE, escapeFn);
-	AddSystemHotkey(KEY_F3, escapeFn);
+	AddSystemHotkey(KEY_F3, loadFn);
 	_machine1 = _machine2 = nullptr;
 	_selectedBtn1 = _selectedBtn2 = -1;
 	midi_stop();
@@ -86,8 +88,7 @@ void Room494::daemon() {
 
 	case 304:
 		restoreHotkeys();
-		conv_reset_all();
-		player_reset_been();
+		setupInventory();
 
 		_G(flags)[V001] = 1;
 		interface_show();
@@ -107,7 +108,8 @@ void Room494::daemon() {
 
 	case 901:
 		restoreHotkeys();
-
+		setupInventory();
+		
 		_G(flags)[V001] = 1;
 		digi_stop(1);
 		_G(game).setRoom(901);
@@ -194,7 +196,7 @@ void Room494::daemon() {
 			disable_player_commands_and_fade_init(111);
 			break;
 		case 3:
-			escapeFn(nullptr, nullptr);
+			loadFn(nullptr, nullptr);
 			break;
 		case 4:
 			player_set_commands_allowed(false);
@@ -219,6 +221,10 @@ void Room494::pre_parser() {
 void Room494::escapeFn(void *, void *) {
 	//TODO room 494 escapeFn
 	warning("TODO: room 494 escapeFn");
+}
+
+void Room494::loadFn(void *, void *) {
+	g_engine->showLoadScreen(M4Engine::kLoadFromGameDialog);
 }
 
 int Room494::getSelectedButton() const {
@@ -246,6 +252,13 @@ void Room494::restoreHotkeys() {
 	AddSystemHotkey(KEY_ESCAPE, _hotkeyEscape);
 	AddSystemHotkey(KEY_F2, _hotkeySave);
 	AddSystemHotkey(KEY_F3, _hotkeyLoad);
+}
+
+void Room494::setupInventory() {
+	_G(flags).reset();
+	static_cast<Inventory *>(_G(inventory))->reset();
+	conv_reset_all();
+	player_reset_been();
 }
 
 } // namespace Rooms

@@ -46,21 +46,24 @@ public:
 	void handleInput(NancyInput &input) override;
 
 protected:
-	enum WallType { kWallLeft = 1, kWallUp = 2, kWallRight = 3, kWallDown = 4, kWallLeftRight = 6, kWallUpDown = 6 };
+	enum WallType { kWallLeft = 1, kWallUp = 2, kWallRight = 3, kWallDown = 4, kWallLeftRight = 5, kWallUpDown = 6 };
+
+	enum ExitBehavior { kExitDisappear = 0, kExitSlideLeft = 1, kExitSlideRight = 2, kExitStay = 3 };
 
 	class Piece : public RenderObject {
 	public:
 		Piece(uint z) : RenderObject(z) {}
 		virtual ~Piece() {}
 
+		Piece(Piece &&) = default;
+
 		Common::Point _gridPos;
 		Common::Point _lastPos;
 
-	protected:
 		bool isViewportRelative() const override { return true; }
 	};
 
-	Common::String getRecordTypeName() const override { return "MazeChasePuzzle"; };
+	Common::String getRecordTypeName() const override { return "MazeChasePuzzle"; }
 	bool isViewportRelative() const override { return true; }
 
 	Common::Rect getScreenPosition(Common::Point gridPos);
@@ -115,6 +118,10 @@ protected:
 	Common::Array<Piece> _pieces;
 
 	int _currentAnimFrame = -1;
+
+	// How the player piece leaves the board once it reaches the exit. nancy10
+	// added a byte selecting this; older games always slide off the edge.
+	ExitBehavior _exitBehavior = kExitSlideRight;
 
 	uint32 _solveSoundPlayTime = 0;
 	bool _solved = false;

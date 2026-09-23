@@ -1,3 +1,24 @@
+/* ScummVM - Graphic Adventure Engine
+ *
+ * ScummVM is the legal property of its developers, whose names
+ * are too numerous to list here. Please refer to the COPYRIGHT
+ * file distributed with this source distribution.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ */
+
 package org.scummvm.scummvm;
 
 import android.content.Context;
@@ -261,7 +282,7 @@ public class BackupManager {
 				ZipEntry entry = new ZipEntry(folderName + component);
 
 				zos.putNextEntry(entry);
-				copyStream(zos, new FileInputStream(pfd.getFileDescriptor()));
+				copyStream(zos, new ParcelFileDescriptor.AutoCloseInputStream(pfd));
 				zos.closeEntry();
 			} catch(FileNotFoundException ignored) {
 				return false;
@@ -310,6 +331,7 @@ public class BackupManager {
 		}
 
 		if (parsedIniMap == null) {
+			//noinspection ResultOfMethodCallIgnored
 			configurationTmp.delete();
 			return ERROR_INVALID_BACKUP;
 		}
@@ -347,6 +369,7 @@ public class BackupManager {
 			} catch(IOException ignored) {
 				return ERROR_INVALID_BACKUP;
 			}
+			//noinspection ResultOfMethodCallIgnored
 			configurationTmp.delete();
 		}
 
@@ -443,7 +466,7 @@ public class BackupManager {
 		// This version check is only to make Android Studio linter happy
 		if (pr == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
 			// This is a standard filesystem path
-			if (!folder.mkdirs()) {
+			if (!folder.isDirectory() && !folder.mkdirs()) {
 				return false;
 			}
 

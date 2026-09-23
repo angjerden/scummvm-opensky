@@ -73,7 +73,7 @@ public:
 
 	// ImageDecoder API
 	void destroy() override;
-	virtual bool loadStream(Common::SeekableReadStream &stream) override;
+	bool loadStream(Common::SeekableReadStream &stream) override;
 	const Graphics::Surface *getSurface() const override { return _surface; }
 	const Graphics::Palette &getPalette() const override { return _palette; }
 
@@ -85,8 +85,23 @@ private:
 
 /**
  * Outputs an uncompressed BMP stream of the given input surface.
+ *
+ *  @param out  Stream to which to write the BMP image.
+ *  @param input The surface to save as a BMP image..
+ *  @param palette    The palette (in RGB888), if the source format has a bpp of 1.
+ *  @param paletteCount Number of colors in the palette (default: 256).
  */
-bool writeBMP(Common::WriteStream &out, const Graphics::Surface &input, const byte *palette = nullptr);
+bool writeBMP(Common::WriteStream &out, const Graphics::Surface &input, const byte *palette = nullptr, uint paletteCount = 256);
+
+/**
+ * Outputs an uncompressed BMP stream of the given input surface.
+ *
+ *  @param out  Stream to which to write the BMP image.
+ *  @param input The surface to save as a BMP image..
+ *  @param palette    The palette if the source format has a bpp of 1.
+ */
+bool writeBMP(Common::WriteStream &out, const Graphics::Surface &input, const Graphics::Palette &palette);
+
 /** @} */
 } // End of namespace Image
 

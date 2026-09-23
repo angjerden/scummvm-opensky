@@ -25,7 +25,6 @@
 #include "ultima/ultima4/map/direction.h"
 #include "ultima/ultima4/core/types.h"
 #include "ultima/ultima4/map/tileset.h"
-#include "ultima/shared/std/containers.h"
 
 namespace Ultima {
 namespace Ultima4 {
@@ -235,7 +234,7 @@ private:
 
 	Image *_image;       /**< The original image for this tile (with all of its frames) */
 	bool _tiledInDungeon;
-	Std::vector<Direction> _directions;
+	Common::Array<Direction> _directions;
 
 	Common::String _animationRule;
 

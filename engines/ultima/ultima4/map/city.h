@@ -23,7 +23,6 @@
 #define ULTIMA4_MAP_CITY_H
 
 #include "ultima/ultima4/map/map.h"
-#include "ultima/shared/std/containers.h"
 
 namespace Ultima {
 namespace Ultima4 {
@@ -36,7 +35,7 @@ struct PersonRole {
 	int _id;
 };
 
-typedef Std::vector<Person *> PersonList;
+typedef Common::Array<Person *> PersonList;
 typedef Common::List<PersonRole *> PersonRoleList;
 
 class City : public Map {
@@ -77,7 +76,7 @@ public:
 	PersonList _persons;
 	Common::Path _tlkFname;
 	PersonRoleList _personRoles;
-	Std::vector<Dialogue *> _extraDialogues;
+	Common::Array<Dialogue *> _extraDialogues;
 };
 
 /**

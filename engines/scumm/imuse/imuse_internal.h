@@ -302,7 +302,7 @@ public:
 	void send(uint32 b) override;
 	void sysEx(const byte *msg, uint16 length) override;
 	uint16 sysExNoDelay(const byte *msg, uint16 length) override;
-	void metaEvent(byte type, byte *data, uint16 length) override;
+	void metaEvent(byte type, const byte *data, uint16 length) override;
 };
 
 
@@ -363,7 +363,7 @@ struct Part : public Common::Serializable {
 	void init(bool useNativeMT32);
 	void setup(Player *player);
 	void uninit();
-	void off();
+	void off(bool releaseChannel);
 	void set_instrument(uint b);
 	void set_instrument(byte *data);
 	void load_global_instrument(byte b);

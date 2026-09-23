@@ -205,22 +205,24 @@ Common::KeymapArray HopkinsMetaEngine::initKeymaps(const char *target) const {
 
 	Keymap *engineKeyMap = new Keymap(Keymap::kKeymapTypeGame, "hopkins-default", _("Default keymappings"));
 	Keymap *gameKeyMap = new Keymap(Keymap::kKeymapTypeGame, "game-shortcuts", _("Game keymappings"));
+	Keymap *baseKeyMap = new Keymap(Keymap::kKeymapTypeGame, "hopkins-base", _("Underwater base shooter"));
+	baseKeyMap->setEnabled(false);
 
 	Action *act;
 
-	act = new Action(kStandardActionLeftClick, _("Left Click"));
+	act = new Action(kStandardActionLeftClick, _("Left click"));
 	act->setLeftClickEvent();
 	act->addDefaultInputMapping("MOUSE_LEFT");
 	act->addDefaultInputMapping("JOY_A");
 	engineKeyMap->addAction(act);
 
-	act = new Action(kStandardActionRightClick, _("Right Click"));
+	act = new Action(kStandardActionRightClick, _("Right click"));
 	act->setRightClickEvent();
 	act->addDefaultInputMapping("MOUSE_RIGHT");
 	act->addDefaultInputMapping("JOY_B");
 	engineKeyMap->addAction(act);
 
-	act = new Action("ESCAPE", _("Exit/Skip"));
+	act = new Action("ESCAPE", _("Exit / Skip"));
 	act->setCustomEngineActionEvent(kActionEscape);
 	act->addDefaultInputMapping("ESCAPE");
 	act->addDefaultInputMapping("JOY_BACK");
@@ -245,18 +247,68 @@ Common::KeymapArray HopkinsMetaEngine::initKeymaps(const char *target) const {
 	act->addDefaultInputMapping("JOY_RIGHT_SHOULDER");
 	gameKeyMap->addAction(act);
 
-	act = new Action("OPTIONS", _("Option dialog"));
+	act = new Action("OPTIONS", _("Options menu"));
 	act->setCustomEngineActionEvent(kActionOptions);
 	act->addDefaultInputMapping("o");
 	act->addDefaultInputMapping("F1");
 	act->addDefaultInputMapping("JOY_Y");
 	gameKeyMap->addAction(act);
 
+	act = new Action("BASE_FORWARD", _("Move forward"));
+	act->setCustomEngineActionEvent(kActionBaseForward);
+	act->addDefaultInputMapping("UP");
+	act->addDefaultInputMapping("JOY_UP");
+	baseKeyMap->addAction(act);
 
+	act = new Action("BASE_BACKWARD", _("Move backward"));
+	act->setCustomEngineActionEvent(kActionBaseBackward);
+	act->addDefaultInputMapping("DOWN");
+	act->addDefaultInputMapping("JOY_DOWN");
+	baseKeyMap->addAction(act);
 
-	KeymapArray keymaps(2);
+	act = new Action("BASE_TURN_LEFT", _("Turn left"));
+	act->setCustomEngineActionEvent(kActionBaseTurnLeft);
+	act->addDefaultInputMapping("LEFT");
+	act->addDefaultInputMapping("JOY_LEFT");
+	baseKeyMap->addAction(act);
+
+	act = new Action("BASE_TURN_RIGHT", _("Turn right"));
+	act->setCustomEngineActionEvent(kActionBaseTurnRight);
+	act->addDefaultInputMapping("RIGHT");
+	act->addDefaultInputMapping("JOY_RIGHT");
+	baseKeyMap->addAction(act);
+
+	act = new Action("BASE_FIRE", _("Fire"));
+	act->setCustomEngineActionEvent(kActionBaseFire);
+	act->addDefaultInputMapping("LCTRL");
+	act->addDefaultInputMapping("RCTRL");
+	act->addDefaultInputMapping("JOY_A");
+	baseKeyMap->addAction(act);
+
+	act = new Action("BASE_USE", _("Exit through base doorway"));
+	act->setCustomEngineActionEvent(kActionBaseUse);
+	act->addDefaultInputMapping("SPACE");
+	act->addDefaultInputMapping("JOY_X");
+	baseKeyMap->addAction(act);
+
+	act = new Action("BASE_TEXTURES", _("Toggle floor and ceiling textures"));
+	act->setCustomEngineActionEvent(kActionBaseToggleTextures);
+	// Hopkins used F5 here, but ScummVM reserves Ctrl+F5 for its global
+	// main menu. Use T so the WBASE action never competes with that shortcut.
+	act->addDefaultInputMapping("t");
+	act->addDefaultInputMapping("JOY_Y");
+	baseKeyMap->addAction(act);
+
+	act = new Action(kStandardActionOpenMainMenu, _("Open main menu"));
+	act->setCustomEngineActionEvent(kActionBaseMenu);
+	act->addDefaultInputMapping("ESCAPE");
+	act->addDefaultInputMapping("JOY_BACK");
+	baseKeyMap->addAction(act);
+
+	KeymapArray keymaps(3);
 	keymaps[0] = engineKeyMap;
 	keymaps[1] = gameKeyMap;
+	keymaps[2] = baseKeyMap;
 
 	return keymaps;
 }

@@ -22,8 +22,7 @@
 #ifndef NUVIE_CORE_GAME_H
 #define NUVIE_CORE_GAME_H
 
-#include "ultima/shared/std/containers.h"
-#include "ultima/shared/std/string.h"
+#include "common/str.h"
 #include "ultima/nuvie/core/nuvie_defs.h"
 
 namespace Ultima {

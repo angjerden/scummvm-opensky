@@ -84,10 +84,7 @@ bool VideoDecoder::loadFile(const Common::Path &filename) {
 		return false;
 	}
 
-	bool result = loadStream(file);
-	if (!result)
-		delete file;
-	return result;
+	return loadStream(file);
 }
 
 bool VideoDecoder::needsUpdate() const {
@@ -265,6 +262,17 @@ int VideoDecoder::getCurFrame() const {
 
 	return frame;
 }
+
+int VideoDecoder::getCurFrameDelay() const {
+	int32 frame = -1;
+
+	for (TrackList::const_iterator it = _tracks.begin(); it != _tracks.end(); it++)
+		if ((*it)->getTrackType() == Track::kTrackTypeVideo)
+			frame += ((VideoTrack *)*it)->getCurFrameDelay() + 1;
+
+	return frame;
+}
+
 
 uint32 VideoDecoder::getFrameCount() const {
 	int count = 0;

@@ -75,6 +75,9 @@ public:
 	/** Construct a string consisting of the given character. */
 	explicit constexpr DBCSString(value_type c) : BaseString<uint16>(c) {}
 
+	/** Construct a string consisting of n copies of the given character. */
+	DBCSString(size_t n, value_type c) : BaseString<uint16>(n, c) {}
+
 	/** Assign a given string to this string. */
 	DBCSString &operator=(const DBCSString &str);
 
@@ -101,21 +104,6 @@ public:
 
 	/** @overload */
 	DBCSString &operator+=(value_type c);
-
-	using BaseString<value_type>::operator==;
-	using BaseString<value_type>::operator!=;
-
-	/** Check whether this string is identical to string @p x. */
-	bool operator==(const String &x) const;
-
-	/** @overload */
-	bool operator==(const char *x) const;
-
-	/** Check whether this string is different than string @p x. */
-	bool operator!=(const String &x) const;
-
-	/** @overload */
-	bool operator!=(const char *x) const;
 
 	/** Convert the string to the standard String represantation. */
 	String convertToString() const;

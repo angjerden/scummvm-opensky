@@ -91,34 +91,18 @@ DBCSString &DBCSString::operator=(const char *str) {
 }
 
 DBCSString &DBCSString::operator=(value_type c) {
-	assign(c);
+	assign(1, c);
 	return *this;
 }
 
 DBCSString &DBCSString::operator+=(const DBCSString &str) {
-	assignAppend(str);
+	append(str);
 	return *this;
 }
 
 DBCSString &DBCSString::operator+=(value_type c) {
-	assignAppend(c);
+	push_back(c);
 	return *this;
-}
-
-bool DBCSString::operator==(const String &x) const {
-	return equalsC(x.c_str());
-}
-
-bool DBCSString::operator==(const char *x) const {
-	return equalsC(x);
-}
-
-bool DBCSString::operator!=(const String &x) const {
-	return !equalsC(x.c_str());
-}
-
-bool DBCSString::operator!=(const char *x) const {
-	return !equalsC(x);
 }
 
 DBCSString operator+(const DBCSString &x, const DBCSString &y) {

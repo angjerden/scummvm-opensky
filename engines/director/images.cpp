@@ -108,7 +108,23 @@ bool DIBDecoder::loadStream(Common::SeekableReadStream &stream) {
 	}
 
 	// For some reason, DIB cast members have the palette indices reversed
-	if (_bitsPerPixel == 8) {
+	if (_bitsPerPixel == 2) {
+		for (int y = 0; y < _surface->h; y++) {
+			for (int x = 0; x < _surface->w; x++) {
+				// We're not su[pposed to modify the image that is coming from the decoder
+				// However, in this case, we know what we're doing.
+				*const_cast<byte *>((const byte *)_surface->getBasePtr(x, y)) = 3 - *(const byte *)_surface->getBasePtr(x, y);
+			}
+		}
+	} else if (_bitsPerPixel == 4) {
+		for (int y = 0; y < _surface->h; y++) {
+			for (int x = 0; x < _surface->w; x++) {
+				// We're not su[pposed to modify the image that is coming from the decoder
+				// However, in this case, we know what we're doing.
+				*const_cast<byte *>((const byte *)_surface->getBasePtr(x, y)) = 15 - *(const byte *)_surface->getBasePtr(x, y);
+			}
+		}
+	} else if (_bitsPerPixel == 8) {
 		for (int y = 0; y < _surface->h; y++) {
 			for (int x = 0; x < _surface->w; x++) {
 				// We're not su[pposed to modify the image that is coming from the decoder
@@ -149,8 +165,8 @@ BITDDecoder::BITDDecoder(int w, int h, uint16 bitsPerPixel, uint16 pitch, const 
 		format = Graphics::PixelFormat(2, 5, 5, 5, 0, 10, 5, 0, 0);
 		break;
 	case 4:
-		// RGB888
-		format = Graphics::PixelFormat(4, 8, 8, 8, 0, 16, 8, 0, 0);
+		// RGB8888
+		format = Graphics::PixelFormat(4, 8, 8, 8, 8, 24, 16, 8, 0);
 		break;
 	default:
 		warning("BITDDecoder::BITDDecoder(): unsupported bpp %d", bitsPerPixel);
@@ -160,8 +176,8 @@ BITDDecoder::BITDDecoder(int w, int h, uint16 bitsPerPixel, uint16 pitch, const 
 	_surface->create(w, h, format);
 
 	// TODO: Bring this in from the main surface?
-	_palette.resize(255, false);
-	_palette.set(palette, 0, 255);
+	_palette.resize(256, false);
+	_palette.set(palette, 0, 256);
 
 	_bitsPerPixel = bitsPerPixel;
 }
@@ -183,7 +199,7 @@ void BITDDecoder::loadPalette(Common::SeekableReadStream &stream) {
 bool BITDDecoder::loadStream(Common::SeekableReadStream &stream) {
 	int x = 0, y = 0;
 
-	Common::Array<uint> pixels;
+	Common::Array<byte> pixels;
 	// Unpacking bodges for D3 and below
 	bool skipCompression = false;
 	uint32 bytesNeed = _pitch * _surface->h;
@@ -193,18 +209,14 @@ bool BITDDecoder::loadStream(Common::SeekableReadStream &stream) {
 			skipCompression = stream.size() >= bytesNeed;
 		} else if (_version < kFileVer400) {
 			bytesNeed = _surface->w * _surface->h * _bitsPerPixel / 8;
-			// for D3, looks like it will round up the _surface->w to align 2
-			// not sure whether D2 will have the same logic.
-			// check lzone-mac data/r-c/tank.a-1 and lzone-mac data/r-a/station-b.01.
-			if (_surface->w & 1)
-				bytesNeed += _surface->h * _bitsPerPixel / 8;
 			skipCompression = stream.size() == bytesNeed;
 		}
 	}
+	skipCompression |= (stream.size() == bytesNeed);
 
 	// If the stream has exactly the required number of bits for this image,
 	// we assume it is uncompressed.
-	if (stream.size() == bytesNeed || skipCompression) {
+	if (skipCompression) {
 		debugC(6, kDebugImages, "Skipping compression");
 		for (int i = 0; i < stream.size(); i++) {
 			pixels.push_back((int)stream.readByte());
@@ -255,6 +267,11 @@ bool BITDDecoder::loadStream(Common::SeekableReadStream &stream) {
 	if (offset)
 		offset = _surface->w % 2;
 
+	debugC(5, kDebugImages, "BITDDecoder::loadStream: unpacked %d bytes, width: %d, height: %d, pitch: %d, bitsPerPixel: %d", pixels.size(), _surface->w, _surface->h, _pitch, _bitsPerPixel);
+	if (debugChannelSet(8, kDebugImages)) {
+		Common::hexdump(pixels.data(), (int)pixels.size());
+	}
+
 	uint32 color;
 
 	if (pixels.size() > 0) {
@@ -285,7 +302,7 @@ bool BITDDecoder::loadStream(Common::SeekableReadStream &stream) {
 					break;
 
 				case 16:
-					if (_version < kFileVer400) {
+					if (skipCompression) {
 						color = (pixels[((y * _surface->w) * 2) + x * 2]) << 8 |
 							(pixels[((y * _surface->w) * 2) + x * 2 + 1]);
 					} else {
@@ -299,7 +316,7 @@ bool BITDDecoder::loadStream(Common::SeekableReadStream &stream) {
 				case 32:
 					// if we have the issue in D3 32bpp images, then the way to fix it should be the same as 16bpp images.
 					// check the code above, there is different behaviour between in D4 and D3. Currently we are only using D4.
-					if (_version < kFileVer400) {
+					if (skipCompression) {
 						color = pixels[(((y * _surface->w * 4)) + (x * 4 + 1))] << 16 |
 							pixels[(((y * _surface->w * 4)) + (x * 4 + 2))] << 8 |
 							pixels[(((y * _surface->w * 4)) + (x * 4 + 3))];
@@ -308,7 +325,7 @@ bool BITDDecoder::loadStream(Common::SeekableReadStream &stream) {
 							pixels[(((y * _surface->w * 4)) + (x + 2 * _surface->w))] << 8 |
 							pixels[(((y * _surface->w * 4)) + (x + 3 * _surface->w))];
 					}
-					*((uint32 *)_surface->getBasePtr(x, y)) = color;
+					*((uint32 *)_surface->getBasePtr(x, y)) = (color << 8) | 0xff;
 					x++;
 					break;
 
@@ -326,6 +343,14 @@ bool BITDDecoder::loadStream(Common::SeekableReadStream &stream) {
 void copyStretchImg(const Graphics::Surface *srcSurface, Graphics::Surface *targetSurface, const Common::Rect &srcRect, const Common::Rect &targetRect, const byte *pal) {
 	if (!(srcSurface) || !(targetSurface))
 		return;
+	if ((srcSurface->h <= 0) || (srcSurface->w <= 0)) {
+		// Source area is nonexistant
+		return;
+	}
+	if ((targetRect.width() <= 0) || (targetRect.height() <= 0)) {
+		// Target area is nonexistant
+		return;
+	}
 
 	Graphics::Surface *temp1 = nullptr;
 	Graphics::Surface *temp2 = nullptr;

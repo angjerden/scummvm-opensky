@@ -200,7 +200,7 @@ void Text::getText(uint32 textNr) { //load text #"textNr" into textBuffer
 	} while (textChar);
         
 	Common::Path skyPath = ConfMan.getPath("path");
-	Common::Path openSkySpeechFilePath = skyPath.appendComponent(OPENSKYPATH).appendComponent(OPENSKY_TEXTFILE);
+	Common::Path openSkySpeechFilePath = skyPath.appendComponent(OPENSKY_PATH).appendComponent(OPENSKY_TEXTFILE);
 	const char* openSkyTextFilename = openSkySpeechFilePath.toString(Common::Path::kNativeSeparator).c_str();
 
 	//read from own file into map

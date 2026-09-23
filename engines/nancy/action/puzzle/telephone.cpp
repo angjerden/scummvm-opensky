@@ -45,8 +45,15 @@ void Telephone::init() {
 	g_nancy->_resource->loadImage(_imageName, _image);
 	g_nancy->_resource->loadImage(_displayAnimName, _animImage);
 
-	if (_isNewPhone) {
+	if (_phoneType == kNewPhone) {
 		_font = g_nancy->_graphics->getFont(_displayFont);
+	}
+
+	// Set the phone tutorial flag to false for Nancy9, so that
+	// the actual phone interface is available after the tutorial.
+	// TODO: Is this the right place to set this flag?
+	if (g_nancy->getGameType() == kGameTypeNancy9) {
+		NancySceneState.setEventFlag(592, g_nancy->_false);
 	}
 }
 
@@ -54,9 +61,9 @@ void Telephone::readData(Common::SeekableReadStream &stream) {
 	readFilename(stream, _imageName);
 
 	uint16 numButtons = 12;
-	uint16 maxNumButtons = _isNewPhone ? 20 : 12;
+	uint16 maxNumButtons = _phoneType == kNewPhone ? 20 : 12;
 
-	if (_isNewPhone) {
+	if (_phoneType == kNewPhone) {
 		_hasDisplay = stream.readByte();
 		_displayFont = stream.readUint16LE();
 		readFilename(stream, _displayAnimName);
@@ -72,7 +79,7 @@ void Telephone::readData(Common::SeekableReadStream &stream) {
 	readRectArray(stream, _srcRects, numButtons, maxNumButtons);
 	readRectArray(stream, _destRects, numButtons, maxNumButtons);
 
-	if (_isNewPhone) {
+	if (_phoneType == kNewPhone) {
 		readRect(stream, _dirHighlightSrc);
 		readRect(stream, _dialHighlightSrc);
 
@@ -84,7 +91,7 @@ void Telephone::readData(Common::SeekableReadStream &stream) {
 		readRect(stream, _displayDialingSrc);
 	}
 
-	if (!_isNewPhone) {
+	if (_phoneType == kTelephone) {
 		_genericDialogueSound.readNormal(stream);
 		_genericButtonSound.readNormal(stream);
 		_ringSound.readNormal(stream);
@@ -103,7 +110,7 @@ void Telephone::readData(Common::SeekableReadStream &stream) {
 	stream.skip(33 * (maxNumButtons - numButtons));
 
 	char textBuf[200];
-	if (!_isNewPhone) {
+	if (_phoneType == kTelephone) {
 		stream.read(textBuf, 200);
 		textBuf[199] = '\0';
 		_addressBookString = textBuf;
@@ -121,14 +128,19 @@ void Telephone::readData(Common::SeekableReadStream &stream) {
 	stream.skip(1);
 	readRect(stream, _exitHotspot);
 
+	if (_phoneType == kTelephone && g_nancy->getGameType() >= kGameTypeNancy14) {
+		_numberLength = stream.readUint16LE();
+		_longDistanceNumberLength = stream.readUint16LE();
+	}
+
 	uint numCalls = stream.readUint16LE();
 
 	_calls.resize(numCalls);
 	for (uint i = 0; i < numCalls; ++i) {
 		PhoneCall &call = _calls[i];
 
-		if (_isNewPhone) {
-			call.eventFlagCondition = stream.readSint16LE();
+		if (_phoneType == kNewPhone) {
+			call.directoryDisplayCondition = stream.readSint16LE();
 		}
 
 		call.phoneNumber.resize(11);
@@ -136,7 +148,7 @@ void Telephone::readData(Common::SeekableReadStream &stream) {
 			call.phoneNumber[j] = stream.readByte();
 		}
 
-		if (!_isNewPhone) {
+		if (_phoneType == kTelephone) {
 			readFilename(stream, call.soundName);
 			stream.read(textBuf, 200);
 			textBuf[199] = '\0';
@@ -164,7 +176,7 @@ void Telephone::execute() {
 	case kRun:
 		switch (_callState) {
 		case kWaiting:
-			if (_isNewPhone && !_animIsStopped) {
+			if (_phoneType == kNewPhone && !_animIsStopped) {
 				if (g_nancy->getTotalPlayTime() > _displayAnimEnd) {
 					if (_displayAnimEnd == 0) {
 						_displayAnimEnd = g_nancy->getTotalPlayTime() + _displayAnimFrameTime;
@@ -186,18 +198,22 @@ void Telephone::execute() {
 				// Pressed a new button, check all numbers for match
 				// We do this before going to the ringing state to support nancy4's voice mail system,
 				// where call numbers can be 1 digit long
+				// Phones without automatic dialing leave it to the dial button to decide when
+				// to place a call, so the whole number gets matched, with digits that were
+				// never entered counting as zeroes
+				bool matchWholeNumber = !_dialAutomatically;
+				uint numberLength = (_calledNumber.size() && _calledNumber[0] == 1) ? _longDistanceNumberLength : _numberLength;
+				bool isNumberComplete = matchWholeNumber || _calledNumber.size() >= numberLength;
+
 				for (uint i = 0; i < _calls.size(); ++i) {
-					// Do not evaluate phone calls whose condition isn't met
-					if (_calls[i].eventFlagCondition != kEvNoEvent) {
-						if (NancySceneState.getEventFlag(_calls[i].eventFlagCondition, g_nancy->_false)) {
-							continue;
-						}
-					}
-
+					auto &call = _calls[i];
 					bool invalid = false;
+					uint numDigits = matchWholeNumber ? call.phoneNumber.size() : _calledNumber.size();
 
-					for (uint j = 0; j < _calledNumber.size(); ++j) {
-						if (_calledNumber[j] != _calls[i].phoneNumber[j]) {
+					for (uint j = 0; j < numDigits; ++j) {
+						byte dialedDigit = j < _calledNumber.size() ? _calledNumber[j] : 0;
+
+						if (dialedDigit != call.phoneNumber[j]) {
 							// Invalid number, move onto next
 							invalid = true;
 							break;
@@ -205,13 +221,8 @@ void Telephone::execute() {
 					}
 
 					// We do not want to check for a terminator if the dialed number is of
-					// appropriate size (7 digits, or 11 when the number starts with '1')
-					bool checkNextDigit = true;
-					if (_calledNumber.size() >= 11 || (_calledNumber.size() >= 7 && (_calledNumber[0] != 1))) {
-						checkNextDigit = false;
-					}
-
-					if (!invalid && checkNextDigit) {
+					// appropriate size
+					if (!invalid && !isNumberComplete) {
 						// Check if the next digit in the phone number is '10' (star). Presumably, that will never
 						// be contained in a valid phone number
 						if (_calls[i].phoneNumber[_calledNumber.size()] != 10) {
@@ -229,7 +240,7 @@ void Telephone::execute() {
 
 				if (_selected == -1) {
 					// Did not find a suitable match, check if the dialed number is above allowed size
-					if (_calledNumber.size() >= 11 || (_calledNumber.size() >= 7 && (_calledNumber[0] != 1))) {
+					if (isNumberComplete) {
 						shouldRing = true;
 					}
 				} else {
@@ -410,6 +421,11 @@ void Telephone::handleInput(NancyInput &input) {
 			continue;
 		}
 
+		// So are the directory buttons when there is only a single entry to show
+		if ((i == _upDirButtonID || i == _downDirButtonID) && _calls.size() == 1) {
+			continue;
+		}
+
 		if (NancySceneState.getViewport().convertViewportToScreen(_destRects[i]).contains(input.mousePos)) {
 			g_nancy->_cursor->setCursorType(CursorManager::kHotspot);
 			buttonNr = i;
@@ -417,16 +433,21 @@ void Telephone::handleInput(NancyInput &input) {
 		}
 	}
 
-	if (_callState != kWaiting && _callState != kRinging) {
-		return;
-	}
-
+	// The exit hotspot stays active for as long as the record is running, even
+	// while ringing, talking, or playing the bad number message. Only the
+	// buttons are limited to the states where the phone accepts input.
 	if (NancySceneState.getViewport().convertViewportToScreen(_exitHotspot).contains(input.mousePos)) {
 		g_nancy->_cursor->setCursorType(g_nancy->_cursor->_puzzleExitCursor);
 
 		if (input.input & NancyInput::kLeftMouseButtonUp) {
-			g_nancy->_sound->loadSound(_hangUpSound);
-			g_nancy->_sound->playSound(_hangUpSound);
+			if (_phoneType == kTelephone) {
+				g_nancy->_sound->loadSound(_hangUpSound);
+				g_nancy->_sound->playSound(_hangUpSound);
+			} else {
+				// The new phone hangs up without a sound, and without waiting for
+				// whatever is currently playing to finish
+				_state = kActionTrigger;
+			}
 
 			_callState = kHangUp;
 		}
@@ -449,9 +470,11 @@ void Telephone::handleInput(NancyInput &input) {
 			bool changeDirectoryEntry = false;
 			int dirEntryDelta = 1;
 			if (_dialButtonID != -1 && buttonNr == _dialButtonID) {
-				_calledNumber = _calls[_displayedDirectory].phoneNumber;
-				while (_calledNumber.back() == 10) {
-					_calledNumber.pop_back();
+				if (_isShowingDirectory) {
+					_calledNumber = _calls[_displayedDirectory].phoneNumber;
+					while (_calledNumber.back() == 10) {
+						_calledNumber.pop_back();
+					}
 				}
 
 				_checkNumbers = true;
@@ -463,6 +486,7 @@ void Telephone::handleInput(NancyInput &input) {
 					_drawSurface.fillRect(_destRects[_dirButtonID], _drawSurface.getTransparentColor());
 				}
 
+				_animIsStopped = true;
 				return;
 			} else if (_upDirButtonID != -1 && buttonNr == _upDirButtonID) {
 				if (!_isShowingDirectory) {
@@ -471,6 +495,7 @@ void Telephone::handleInput(NancyInput &input) {
 					++_displayedDirectory;
 					changeDirectoryEntry = true;
 				}
+				_animIsStopped = true;
 			} else if (_downDirButtonID != -1 && buttonNr == _downDirButtonID) {
 				if (!_isShowingDirectory) {
 					directorySwitch = true;
@@ -479,10 +504,12 @@ void Telephone::handleInput(NancyInput &input) {
 					dirEntryDelta = -1;
 					changeDirectoryEntry = true;
 				}
+				_animIsStopped = true;
 			} else if (_dirButtonID != -1 && buttonNr == _dirButtonID) {
 				if (!_isShowingDirectory) {
 					directorySwitch = true;
 				}
+				_animIsStopped = true;
 			} else {
 				if (_isShowingDirectory || !_calledNumber.size()) {
 					_isShowingDirectory = false;
@@ -499,14 +526,14 @@ void Telephone::handleInput(NancyInput &input) {
 
 					if (_hasDisplay) {
 						_drawSurface.fillRect(_displayDest, _drawSurface.getTransparentColor());
-					} else if (_isNewPhone) {
+					} else if (_phoneType == kNewPhone) {
 						NancySceneState.getTextbox().clear();
 					}
 
 					_checkNumbers = false;
 				}
 
-				if (_isNewPhone && _calledNumber.size()) {
+				if (_phoneType == kNewPhone && _calledNumber.size()) {
 					Common::String numberString;
 					for (uint j = 0; j < _calledNumber.size(); ++j) {
 						numberString += '0' + _calledNumber[j];
@@ -539,21 +566,31 @@ void Telephone::handleInput(NancyInput &input) {
 						_displayedDirectory = _calls.size() - 1;
 					}
 
-					if (_calls[_displayedDirectory].eventFlagCondition == kEvNoEvent) {
+					if (_calls[_displayedDirectory].directoryDisplayCondition == kEvNoEvent) {
 						break;
 					}
 
-					if (NancySceneState.getEventFlag(_calls[_displayedDirectory].eventFlagCondition, g_nancy->_true)) {
+					if (NancySceneState.getEventFlag(_calls[_displayedDirectory].directoryDisplayCondition, g_nancy->_true)) {
 						break;
 					}
 
 					_displayedDirectory += dirEntryDelta;
 				} while (_displayedDirectory != start);
+
+				// The display follows the button press immediately, and does not
+				// wait for the button sound to finish
+				if (_isShowingDirectory) {
+					_drawSurface.blitFrom(_image, _calls[_displayedDirectory].displaySrc, _displayDest);
+				}
 			}
 
 			_genericButtonSound.name = _buttonSoundNames[buttonNr];
-			g_nancy->_sound->loadSound(_genericButtonSound);
-			g_nancy->_sound->playSound(_genericButtonSound);
+
+			// Buttons without a sound do not hold up the keypad
+			if (!_genericButtonSound.name.empty() && _genericButtonSound.name != "NO SOUND") {
+				g_nancy->_sound->loadSound(_genericButtonSound);
+				g_nancy->_sound->playSound(_genericButtonSound);
+			}
 
 			_drawSurface.blitFrom(_image, _srcRects[buttonNr], _destRects[buttonNr]);
 			_needsRedraw = true;

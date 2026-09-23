@@ -39,19 +39,19 @@ public:
 	/**
 	 * Initialize and setups the mixer
 	 */
-	virtual void init();
+	void init() override;
 
 	// Used by Event recorder
 
 	/**
 	 * Pauses the audio system
 	 */
-	virtual void suspendAudio();
+	void suspendAudio() override;
 
 	/**
 	 * Resumes the audio system
 	 */
-	virtual int resumeAudio();
+	int resumeAudio() override;
 
 protected:
 	/**
@@ -79,9 +79,10 @@ protected:
 	 * The mixer callback entry point. Static functions can't be overridden
 	 * by subclasses, so it invokes the non-static function callbackHandler()
 	 */
-	static void sdlCallback(void *this_, byte *samples, int len);
 #if SDL_VERSION_ATLEAST(3, 0, 0)
-	static void sdl3Callback(void *userdata, SDL_AudioStream *stream, int additional_amount, int total_amount);
+	static void sdlCallback(void *userdata, SDL_AudioStream *stream, int additional_amount, int total_amount);
+#else
+	static void sdlCallback(void *this_, byte *samples, int len);
 #endif
 
 	bool _isSubsystemInitialized;

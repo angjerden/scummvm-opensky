@@ -24,7 +24,6 @@
 
 #include "common/rect.h"
 #include "graphics/surface.h"
-
 #include "zvision/scripting/scripting_effect.h"
 #include "zvision/text/text.h"
 #include "zvision/text/truetype_font.h"
@@ -67,7 +66,7 @@ private:
 
 	void newline();
 	void scroll();
-	void outchar(uint16 chr);
+	void outchar(uint32 chr);
 };
 
 } // End of namespace ZVision

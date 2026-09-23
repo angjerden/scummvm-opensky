@@ -101,6 +101,11 @@ public:
 		// static/dynamic plugin, like it's done for the engines
 		LINK_PLUGIN(AUTO)
 		LINK_PLUGIN(NULL)
+
+		#if defined(__LIBRETRO__)
+		LINK_PLUGIN(LIBRETRO_MIDI)
+		#else
+
 		#if defined(WIN32)
 		LINK_PLUGIN(WINDOWS)
 		#endif
@@ -125,10 +130,21 @@ public:
 		#if defined(RISCOS)
 		LINK_PLUGIN(RISCOS)
 		#endif
+		#if defined(ANDROID_BACKEND)
+		LINK_PLUGIN(ANDROID)
+		#endif
 		#if defined(MACOSX)
 		LINK_PLUGIN(COREAUDIO)
+		#endif
+		#if defined(MACOSX) || defined(IPHONE) && !defined(IPHONE_TVOS)
 		LINK_PLUGIN(COREMIDI)
 		#endif
+		#if defined(EMSCRIPTEN)
+		LINK_PLUGIN(WEBMIDI)
+		#endif
+
+		#endif // defined(__LIBRETRO__)
+
 		#ifdef USE_FLUIDSYNTH
 		LINK_PLUGIN(FLUIDSYNTH)
 		#endif
@@ -308,7 +324,11 @@ void PluginManagerUncached::init() {
 	unloadPluginsExcept(PLUGIN_TYPE_ENGINE, nullptr, false); // empty the engine plugins
 
 #ifndef DETECTION_STATIC
-	Common::String detectPluginName = "detection";
+#ifdef PLUGIN_DETECTION_NAME
+Common::String detectPluginName = PLUGIN_DETECTION_NAME;
+#else
+Common::String detectPluginName = "detection";
+#endif
 #ifdef PLUGIN_SUFFIX
 	detectPluginName += PLUGIN_SUFFIX;
 #endif
@@ -415,7 +435,7 @@ void PluginManagerUncached::updateConfigWithFileName(const Common::String &engin
 
 		Common::ConfigManager::Domain *domain = ConfMan.getDomain("engine_plugin_files");
 		assert(domain);
-		(*domain).setVal(engineId, (*_currentPlugin)->getFileName().toConfig());
+		domain->setVal(engineId, (*_currentPlugin)->getFileName().toConfig());
 
 		ConfMan.flushToDisk();
 	}

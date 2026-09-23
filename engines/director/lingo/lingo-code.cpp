@@ -47,6 +47,7 @@
 
 #include "director/director.h"
 #include "director/debugger.h"
+#include "director/cast.h"
 #include "director/movie.h"
 #include "director/score.h"
 #include "director/sprite.h"
@@ -258,6 +259,18 @@ void Lingo::pushContext(const Symbol funcSym, bool allowRetVal, Datum defaultRet
 		_state->context->incRefCount();
 	}
 
+	// Run the handler in the window that owns its script (MIAW scoping); mirrors c_tell()
+	if (funcSym.ctx && funcSym.ctx->getCast() && funcSym.ctx->getCast()->getMovie()) {
+		Window *targetWindow = funcSym.ctx->getCast()->getMovie()->getWindow();
+		Window *currentWindow = _vm->getCurrentWindow();
+		if (targetWindow && targetWindow != currentWindow) {
+			fp->retWindow = currentWindow;
+			currentWindow->incRefCount();
+			currentWindow->moveLingoState(targetWindow);
+			_vm->setCurrentWindow(targetWindow);
+		}
+	}
+
 	DatumHash *localvars = new DatumHash;
 	if (funcSym.anonymous && _state->localVars) {
 		// Execute anonymous functions within the current var frame.
@@ -316,8 +329,10 @@ void Lingo::popContext(bool aborting) {
 
 	if (_state->stack.size() == fp->stackSizeBefore + 1) {
 		if (!fp->allowRetVal) {
-			debugC(5, kDebugLingoExec, "dropping return value");
-			pop();
+			debugC(5, kDebugLingoExec, "dropping return value, storing as the result");
+			Datum res = pop();
+			if (res.type != VOID)
+				g_lingo->_theResult = res;
 		}
 	} else if (_state->stack.size() == fp->stackSizeBefore) {
 		if (fp->allowRetVal) {
@@ -362,7 +377,19 @@ void Lingo::popContext(bool aborting) {
 		printCallStack(_state->pc);
 	}
 
+	// Undo the pushContext window switch.
+	Window *retWindow = fp->retWindow;
+
 	delete fp;
+
+	if (retWindow) {
+		// If the window was closed while the handler ran, don't switch back.
+		if (_vm->getCurrentWindow() != retWindow && _vm->isWindowRegistered(retWindow)) {
+			_vm->getCurrentWindow()->moveLingoState(retWindow);
+			_vm->setCurrentWindow(retWindow);
+		}
+		retWindow->decRefCount();
+	}
 
 	g_debugger->popContextHook();
 }
@@ -378,6 +405,15 @@ void Lingo::freezePlayState() {
 	window->freezeLingoPlayState();
 	switchStateFromWindow();
 }
+
+void Lingo::requeuePlayState() {
+	Window *window = _vm->getCurrentWindow();
+	if (window->requeueLingoPlayState()) {
+		window->thawLingoState();
+		switchStateFromWindow();
+	}
+}
+
 
 void LC::c_constpush() {
 	Common::String name(g_lingo->readString());
@@ -748,7 +784,8 @@ Datum LC::addData(Datum &d1, Datum &d2) {
 	} else if (alignedType == INT) {
 		res = Datum(d1.asInt() + d2.asInt());
 	} else {
-		g_lingo->lingoError("LC::addData(): not supported between types %s and %s", d1.type2str(), d2.type2str());
+		res = Datum(d1.asInt() + d2.asInt());
+		warning("LC::addData(): not supported between types %s and %s", d1.type2str(), d2.type2str());
 	}
 	return res;
 }
@@ -777,7 +814,8 @@ Datum LC::subData(Datum &d1, Datum &d2) {
 	} else if (alignedType == INT) {
 		res = Datum(d1.asInt() - d2.asInt());
 	} else {
-		g_lingo->lingoError("LC::subData(): not supported between types %s and %s", d1.type2str(), d2.type2str());
+		res = Datum(d1.asInt() - d2.asInt());
+		warning("LC::subData(): not supported between types %s and %s", d1.type2str(), d2.type2str());
 	}
 	return res;
 }
@@ -806,7 +844,8 @@ Datum LC::mulData(Datum &d1, Datum &d2) {
 	} else if (alignedType == INT) {
 		res = Datum(d1.asInt() * d2.asInt());
 	} else {
-		g_lingo->lingoError("LC::mulData(): not supported between types %s and %s", d1.type2str(), d2.type2str());
+		res = Datum(d1.asInt() * d2.asInt());
+		warning("LC::mulData(): not supported between types %s and %s", d1.type2str(), d2.type2str());
 	}
 	return res;
 }
@@ -829,7 +868,7 @@ Datum LC::divData(Datum &d1, Datum &d2) {
 
 	if ((d2.type == INT && d2.u.i == 0) ||
 			(d2.type == FLOAT && d2.u.f == 0.0)) {
-		warning("LC::divData(): division by zero");
+		g_lingo->lingoError("LC::divData(): division by zero");
 		d2 = Datum(1);
 	}
 
@@ -844,7 +883,12 @@ Datum LC::divData(Datum &d1, Datum &d2) {
 	} else if (alignedType == INT) {
 		res = Datum(d1.asInt() / d2.asInt());
 	} else {
-		g_lingo->lingoError("LC::divData(): not supported between types %s and %s", d1.type2str(), d2.type2str());
+		int denom = d2.asInt();
+		if (denom == 0) {
+			g_lingo->lingoError("LC::divData(): division by zero");
+		}
+		res = Datum(d1.asInt() / d2.asInt());
+		warning("LC::divData(): not supported between types %s and %s", d1.type2str(), d2.type2str());
 	}
 
 	return res;
@@ -864,8 +908,8 @@ Datum LC::modData(Datum &d1, Datum &d2) {
 	int i1 = d1.asInt();
 	int i2 = d2.asInt();
 	if (i2 == 0) {
-		g_lingo->lingoError("LC::modData(): division by zero");
-		i2 = 1;
+		warning("LC::modData(): division by zero");
+		return Datum(0);
 	}
 
 	Datum res(i1 % i2);
@@ -898,7 +942,8 @@ Datum LC::negateData(Datum &d) {
 	} else if (d.type == VOID) {
 		res = Datum(0);
 	} else {
-		g_lingo->lingoError("LC::negateData(): not supported for type %s", d.type2str());
+		warning("LC::negateData(): not supported for type %s", d.type2str());
+		res = Datum(-d.asInt());
 	}
 
 	return res;
@@ -990,9 +1035,22 @@ void LC::c_intersects() {
 		return;
 	}
 
+	// tested in D6:
+	// both sprites matte: do a matte-on-matte intersection
+	// just S1 matte: do a box-on-box intersection
+	// just S2 matte: do a box-on-matte intersection
+	// neither sprite matte: do a box-on-box intersection
+	// If the cast member is not a bitmap, always treat it as a bounding box collision,
+	// even if the ink type is matte and there's visibly no overlap (e.g a kCastShape circle).
+
+	bool s1IsBitmap = sprite1->_sprite->_cast && sprite1->_sprite->_cast->_type == kCastBitmap;
+	bool s2IsBitmap = sprite2->_sprite->_cast && sprite2->_sprite->_cast->_type == kCastBitmap;
+
 	// don't regard quick draw shape as matte type
-	if ((!sprite1->_sprite->isQDShape() && sprite1->_sprite->_ink == kInkTypeMatte) && (!sprite2->_sprite->isQDShape() && sprite2->_sprite->_ink == kInkTypeMatte)) {
+	if ((s1IsBitmap && sprite1->_sprite->_ink == kInkTypeMatte) && (s2IsBitmap && sprite2->_sprite->_ink == kInkTypeMatte)) {
 		g_lingo->push(Datum(sprite2->isMatteIntersect(sprite1)));
+	} else if ((s2IsBitmap && sprite2->_sprite->_ink == kInkTypeMatte)) {
+		g_lingo->push(Datum(sprite2->isMatteBoxIntersect(sprite1)));
 	} else {
 		g_lingo->push(Datum(sprite2->getBbox().intersects(sprite1->getBbox())));
 	}
@@ -1154,6 +1212,9 @@ Datum LC::chunkRef(ChunkType type, int startChunk, int endChunk, const Datum &sr
 	Datum res;
 	res.u.cref = new ChunkReference(src, type, startChunk, endChunk, exprStartIdx, exprEndIdx);
 	res.type = CHUNKREF;
+	if (debugChannelSet(5, kDebugLingoExec)) {
+		debugC(5, kDebugLingoExec, "LC::chunkRef: type: %d, startChunk: %d, endChunk: %d, exprStartIdx: %d, exprEndIdx: %d -> %s", type, startChunk, endChunk, exprStartIdx, exprEndIdx, res.asString(true).c_str());
+	}
 	return res;
 }
 
@@ -1310,6 +1371,13 @@ Datum LC::compareArrays(Datum (*compareFunc)(Datum, Datum), Datum d1, Datum d2, 
 	// At least one of d1 and d2 must be an array
 	bool d1isArr = d1.isArray() || d1.type == PARRAY;
 	bool d2isArr = d2.isArray() || d2.type == PARRAY;
+	// In D6 and higher, direct relational comparison no longer does partial array or
+	// element-to-array coercion. However, location mode still needs
+	// scalar-to-element checks while scanning array entries.
+	if ((g_director->getVersion() >= 600) && !location && (!(d1isArr && d2isArr))) {
+		return Datum(0);
+	}
+
 	uint32 d1size = d1.isArray() ? d1.u.farr->arr.size() : d1.type == PARRAY ? d1.u.parr->arr.size() : 0;
 	uint32 d2size = d2.isArray() ? d2.u.farr->arr.size() : d2.type == PARRAY ? d2.u.parr->arr.size() : 0;
 	// The calling convention of this checking function is a bit weird:
@@ -1767,6 +1835,14 @@ void LC::call(const Symbol &funcSym, int nargs, bool allowRetVal) {
 			(*funcSym.u.bltin)(nargs);
 			g_lingo->_state->me = retMe;
 		} else {
+			// sendSprite/sendAllSprites/call/send can be used both as a command and
+			// as a function (returning the handler's result).
+			if (funcSym.name && (funcSym.name->equalsIgnoreCase("sendSprite") ||
+					funcSym.name->equalsIgnoreCase("sendAllSprites") ||
+					funcSym.name->equalsIgnoreCase("call") ||
+					funcSym.name->equalsIgnoreCase("send")))
+				g_lingo->push(Datum(allowRetVal));
+
 			(*funcSym.u.bltin)(nargs);
 		}
 
@@ -1842,10 +1918,15 @@ void LC::c_delete() {
 	Datum field;
 	int start, end;
 	if (d.type == CHUNKREF) {
+		// bail out if the chunk is invalid
+		if (d.u.cref->start == -1)
+			return;
 		start = d.u.cref->start;
 		end = d.u.cref->end;
 		field = d.u.cref->source;
 		while (field.type == CHUNKREF) {
+			if (field.u.cref->start == -1)
+				return;
 			start += field.u.cref->start;
 			end += field.u.cref->start;
 			field = field.u.cref->source;
@@ -1877,12 +1958,19 @@ void LC::c_delete() {
 			break;
 		case kChunkItem:
 		case kChunkLine:
-			// when deleting the first item, include the delimiter after the item
-			// deleting another item, remove the delimiter in front
-			if (start == 0) {
-				end++;
-			} else {
-				start--;
+			{
+				Common::u32char_type_t split = (d.u.cref->type == kChunkItem) ? g_lingo->_itemDelimiter : '\r';
+				bool isFirstItem = (start == 0) || ((start > 0) && (text[start-1] != split));
+				bool isLastItem = (end == ((int)text.size())) || ((end < ((int)text.size())) && (text[end] != split));
+				if (isFirstItem && isLastItem) {
+					// if the target is a whole line, change nothing
+				} else if (isFirstItem) {
+					// when deleting the first item, include the delimiter after the item
+					end++;
+				} else {
+					// deleting another item, remove the delimiter in front
+					start--;
+				}
 			}
 			break;
 		}

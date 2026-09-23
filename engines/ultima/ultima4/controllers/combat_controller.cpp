@@ -46,7 +46,6 @@
 #include "ultima/ultima4/views/stats.h"
 #include "ultima/ultima4/game/weapon.h"
 #include "ultima/ultima4/gfx/screen.h"
-#include "ultima/shared/std/containers.h"
 #include "ultima/ultima4/ultima4.h"
 #include "common/system.h"
 
@@ -906,7 +905,7 @@ void CombatController::attack(Direction dir, int distance) {
 	soundPlay(SOUND_PC_ATTACK, false);                                        // PC_ATTACK, melee and ranged
 
 
-	Std::vector<Coords> path = gameGetDirectionalActionPath(MASK_DIR(dir), MASK_DIR_ALL,
+	Common::Array<Coords> path = gameGetDirectionalActionPath(MASK_DIR(dir), MASK_DIR_ALL,
 	                           attacker->getCoords(), 1, range,
 	                           weapon->canAttackThroughObjects() ? nullptr : &Tile::canAttackOverTile,
 	                           false);

@@ -113,6 +113,7 @@ void Framebuffer::applyBlendState() {
 			GL_CALL(glDisable(GL_BLEND));
 			break;
 		case kBlendModeOpaque:
+#if !USE_FORCED_GLES
 			if (!glBlendColor) {
 				// If glBlendColor is not available (old OpenGL) fallback on disabling blending
 				GL_CALL(glDisable(GL_BLEND));
@@ -121,6 +122,10 @@ void Framebuffer::applyBlendState() {
 			GL_CALL(glEnable(GL_BLEND));
 			GL_CALL(glBlendColor(1.f, 1.f, 1.f, 0.f));
 			GL_CALL(glBlendFunc(GL_CONSTANT_COLOR, GL_ONE_MINUS_CONSTANT_COLOR));
+#else
+			// GLES has no glBlendColor
+			GL_CALL(glDisable(GL_BLEND));
+#endif
 			break;
 		case kBlendModeTraditionalTransparency:
 			GL_CALL(glEnable(GL_BLEND));
@@ -189,7 +194,7 @@ void Backbuffer::activateInternal() {
 #endif
 }
 
-bool Backbuffer::setSize(uint width, uint height, Common::RotationMode rotation) {
+bool Backbuffer::setSize(uint width, uint height) {
 	// Set viewport dimensions.
 	_viewport[0] = 0;
 	_viewport[1] = 0;
@@ -216,41 +221,6 @@ bool Backbuffer::setSize(uint width, uint height, Common::RotationMode rotation)
 	_projectionMatrix(3, 1) =  1.0f;
 	_projectionMatrix(3, 2) =  0.0f;
 	_projectionMatrix(3, 3) =  1.0f;
-
-	switch (rotation) {
-	default:
-		_projectionMatrix(0, 0) =  2.0f / width;
-		_projectionMatrix(0, 1) =  0.0f;
-		_projectionMatrix(1, 0) =  0.0f;
-		_projectionMatrix(1, 1) = -2.0f / height;
-		_projectionMatrix(3, 0) = -1.0f;
-		_projectionMatrix(3, 1) =  1.0f;
-		break;
-	case Common::kRotation90:
-		_projectionMatrix(0, 0) =  0.0f;
-		_projectionMatrix(0, 1) =  -2.0f / height;
-		_projectionMatrix(1, 0) =  -2.0f / width;
-		_projectionMatrix(1, 1) =  0.0f;
-		_projectionMatrix(3, 0) =  1.0f;
-		_projectionMatrix(3, 1) =  1.0f;
-		break;
-	case Common::kRotation180:
-		_projectionMatrix(0, 0) =  -2.0f / width;
-		_projectionMatrix(0, 1) =  0.0f;
-		_projectionMatrix(1, 0) =  0.0f;
-		_projectionMatrix(1, 1) =  2.0f / height;
-		_projectionMatrix(3, 0) =  1.0f;
-		_projectionMatrix(3, 1) = -1.0f;
-		break;
-	case Common::kRotation270:
-		_projectionMatrix(0, 0) =  0.0f;
-		_projectionMatrix(0, 1) =  2.0f / height;
-		_projectionMatrix(1, 0) =  2.0f / width;
-		_projectionMatrix(1, 1) =  0.0f;
-		_projectionMatrix(3, 0) = -1.0f;
-		_projectionMatrix(3, 1) = -1.0f;
-		break;
-	}
 
 	// Directly apply changes when we are active.
 	if (isActive()) {
@@ -304,7 +274,7 @@ void TextureTarget::create() {
 	_needUpdate = true;
 }
 
-bool TextureTarget::setSize(uint width, uint height, Common::RotationMode rotation) {
+bool TextureTarget::setSize(uint width, uint height) {
 	if (!_texture->setSize(width, height)) {
 		return false;
 	}

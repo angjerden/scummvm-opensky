@@ -29,6 +29,7 @@
 #include "common/bufferedstream.h"
 #include "common/substream.h"
 #include "common/formats/winexe.h"
+#include "director/detection.h"
 #include "director/types.h"
 #include "graphics/wincursor.h"
 
@@ -66,14 +67,14 @@ Common::Error Window::loadInitialMovie() {
 	}
 	loadINIStream();
 	Common::Path path = findPath(movie);
-	Archive *mainArchive = g_director->openArchive(path);
+	Common::SharedPtr<Archive> mainArchive = g_director->openArchive(path);
 
 	if (!mainArchive) {
 		warning("Window::loadInitialMovie: Cannot open main movie");
 		return Common::kNoGameDataFoundError;
 	}
 	g_director->setMainArchive(mainArchive);
-	probeResources(mainArchive);
+	probeResources(mainArchive.get());
 
 	// Load multiple-resources based executable file (Projector)
 	Common::String rawEXE = _vm->getRawEXEName();
@@ -145,9 +146,25 @@ void Window::probeResources(Archive *archive) {
 			}
 		}
 
+		// Mac Director will check resource STR# id 200 from the projector
+		// executable, and use the second string in the list.
+		// Usually this is "Shared Cast", but Journeyman Project
+		// has this set to "Mars ESG Upper 03"??
+		if (archive->hasResource(MKTAG('S', 'T', 'R', '#'), 200)) {
+			Common::SeekableReadStreamEndian *name = archive->getResource(MKTAG('S', 'T', 'R', '#'), 200);
+			int num = name->readUint16();
+			if (num < 2) {
+				warning("Window::probeResources: Missing data in the Filenames resource of the Projector file");
+				delete name;
+			} else {
+				_soundsFilenameHint = decodePlatformEncoding(name->readPascalString());
+				_sharedCastFilenameHint = decodePlatformEncoding(name->readPascalString());
+			}
+		}
+
 		if (archive->hasResource(MKTAG('S', 'T', 'R', '#'), 0)) {
-			if (_currentMovie)
-				_currentMovie->setArchive(archive);
+			//if (_currentMovie)
+			//	_currentMovie->setArchive(archive);
 
 			Common::SeekableReadStreamEndian *name = archive->getResource(MKTAG('S', 'T', 'R', '#'), 0);
 			int num = name->readUint16();
@@ -169,9 +186,9 @@ void Window::probeResources(Archive *archive) {
 					_currentMovie = nullptr;
 				}
 
-				Archive *subMovie = g_director->openArchive(moviePath);
+				Common::SharedPtr<Archive> subMovie = g_director->openArchive(moviePath);
 				if (subMovie) {
-					probeResources(subMovie);
+					probeResources(subMovie.get());
 				}
 			} else {
 				warning("Window::probeResources: Couldn't find score with name: %s", sname.c_str());
@@ -181,6 +198,9 @@ void Window::probeResources(Archive *archive) {
 	}
 
 	if (g_director->getPlatform() == Common::kPlatformMacintosh) {
+		// Load any fonts from the projector resource fork
+		_vm->_wm->_fontMan->loadFonts(archive->getPathName());
+
 		// On Macintosh, you can add additional chunks to the resource
 		// fork of the file to state which XObject or HyperCard XCMD/XFCNs
 		// need to be loaded in.
@@ -224,7 +244,7 @@ void DirectorEngine::addArchiveToOpenList(const Common::Path &path) {
 	_allOpenResFiles.push_front(path);
 }
 
-Archive *DirectorEngine::openArchive(const Common::Path &path) {
+Common::SharedPtr<Archive> DirectorEngine::openArchive(const Common::Path &path) {
 	debug(1, "DirectorEngine::openArchive(\"%s\")", path.toString().c_str());
 
 	// If the archive is already open, don't reopen it;
@@ -249,11 +269,12 @@ Archive *DirectorEngine::openArchive(const Common::Path &path) {
 		}
 	}
 	result->setPathName(path);
-	_allSeenResFiles.setVal(path, result);
+	Common::SharedPtr<Archive> arch(result);
+	_allSeenResFiles.setVal(path, arch);
 
 	addArchiveToOpenList(path);
 
-	return result;
+	return arch;
 }
 
 void Window::loadINIStream() {
@@ -311,6 +332,12 @@ Archive *DirectorEngine::loadEXE(const Common::Path &movie) {
 		const Common::Array<Common::WinResourceID> versions = exe->getIDList(Common::kWinVersion);
 		for (uint i = 0; i < versions.size(); i++) {
 			Common::WinResources::VersionInfo *info = exe->getVersionResource(versions[i]);
+
+			Common::String gameName = info->hash["FileDescription"];
+			Common::String versionInfo = Common::String::format("v%d.%d.%dr%d", info->fileVersion[0], info->fileVersion[1], info->fileVersion[2], info->fileVersion[3]);
+
+			debugC(5, kDebugLoading, "DirectorEngine::loadEXE(): Game name from resources: \"%s\"", gameName.c_str());
+			debugC(5, kDebugLoading, "DirectorEngine::loadEXE(): Executable version: %s", versionInfo.c_str());
 
 			for (Common::WinResources::VersionHash::const_iterator it = info->hash.begin(); it != info->hash.end(); ++it)
 				debugC(5, kDebugLoading, "DirectorEngine::loadEXE(): info <%s>: <%s>", it->_key.c_str(), it->_value.encode().c_str());
@@ -578,6 +605,7 @@ void Window::loadXtrasFromPath() {
 	// and they'll still be recognized.
 	Common::ArchiveMemberList targets;
 	SearchMan.listMatchingMembers(targets, Common::Path("xtras/*"), true);
+	SearchMan.listMatchingMembers(targets, Common::Path("*/xtras/*"), false);
 	for (auto &it : targets) {
 		if (it->isDirectory())
 			continue;
@@ -590,11 +618,21 @@ void Window::loadStartMovieXLibs() {
 	if (strcmp(g_director->getGameId(), "warlock") == 0 && g_director->getPlatform() != Common::kPlatformWindows) {
 		g_lingo->openXLib("FPlayXObj", kXObj, Common::Path());
 	}
-	g_lingo->openXLib("SerialPort", kXObj, Common::Path());
+
+	// After D5 we always have list of Xlibs to load
+	if (g_director->getVersion() < 500 && g_director->getPlatform() == Common::kPlatformMacintosh) {
+		// SerialPort is Mac-only
+		g_lingo->openXLib("SerialPort", kXObj, Common::Path());
+	}
 }
 
 ProjectorArchive::ProjectorArchive(Common::Path path)
 	: _path(path), _files() {
+
+	if (path.empty()) {
+		_isLoaded = false;
+		return;
+	}
 
 	// Buffer 100K into memory
 	Common::SeekableReadStream *stream = createBufferedReadStream();
@@ -731,7 +769,7 @@ bool ProjectorArchive::loadArchive(Common::SeekableReadStream *stream) {
 		tag = stream->readUint32BE();
 		size = bigEndian ? stream->readUint32BE() : stream->readUint32LE();
 
-		Common::Path path = toSafePath(arr[i]);
+		Common::Path path = toSafePath(arr[i]).getLastComponent();
 
 		debugC(1, kDebugLoading, "Entry: %s offset %lX (%ld) tag %s size %d", path.toString().c_str(), long(stream->pos() - 8), long(stream->pos() - 8), tag2str(tag), size);
 

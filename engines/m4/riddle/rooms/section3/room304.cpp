@@ -19,12 +19,15 @@
  *
  */
 
-#include "m4/graphics/gr_series.h"
-#include "m4/gui/gui_sys.h"
-#include "m4/platform/keys.h"
 #include "m4/riddle/rooms/section3/room304.h"
 #include "m4/riddle/vars.h"
 #include "m4/riddle/riddle.h"
+
+#include "m4/adv_r/adv_control.h"
+#include "m4/adv_r/other.h"
+#include "m4/graphics/gr_series.h"
+#include "m4/gui/gui_sys.h"
+#include "m4/platform/keys.h"
 
 namespace M4 {
 namespace Riddle {
@@ -60,7 +63,7 @@ void Room304::init() {
 	switch (_G(game).previous_room) {
 	case KERNEL_RESTORING_GAME:
 		if (_G(flags)[V001])
-			midi_play("thinker2", 255, 1, -1, 949);
+			midi_play("thinker2", 255, true, -1, 949);
 
 		if (_G(flags)[V084] == 2 || player_been_here(201))
 			_sword = series_show_sprite("one frame sword", 0, 0xa00);
@@ -72,12 +75,12 @@ void Room304::init() {
 		player_set_commands_allowed(false);
 		ws_demand_location(_G(my_walker), 458, 263, 8);
 
-		if (_G(flags)[V084] == 2 || player_been_here(201)) {
+		if (_G(flags)[V084] == 2 || player_been_here(201))
 			_sword = series_show_sprite("one frame sword", 0, 0xa00);
-			kernel_timing_trigger(1, 51);
-		} else {
+		else
 			hotspot_set_active("SAMURAI SWORD", false);
-		}
+
+		kernel_timing_trigger(1, 51);
 		break;
 
 	default:
@@ -94,7 +97,7 @@ void Room304::init() {
 			player_set_commands_allowed(false);
 
 			_useSword = _useHandlingStick = false;
-			_val4 = 0;
+			_cobraKillingFl = false;
 			ws_demand_location(_G(my_walker), 452, 285, 9);
 			kernel_timing_trigger(1, 49);
 			_trunk = series_show_sprite("one frame trunk", 0, 0);
@@ -157,7 +160,7 @@ void Room304::daemon() {
 		break;
 
 	case 60:
-		midi_play("thinker2", 255, 1, -1, 949);
+		midi_play("thinker2", 255, true, -1, 949);
 		break;
 
 	default:
@@ -206,7 +209,43 @@ void Room304::parser() {
 	const bool takeFlag = player_said("take");
 	const bool useFlag = player_said_any("push", "pull", "gear", "open", "close");
 
-	if (lookFlag && player_said("cartoon")) {
+	if (_G(flags)[V001] && _cobraKillingFl && _G(kernel).trigger >= 49 && _G(kernel).trigger <= 54) {
+		switch (_G(kernel).trigger) {
+		case 49:
+			ws_hide_walker();
+			_cobraKills = series_ranged_play("COBRA KILLS RIP AND LF",
+											 1, 0, 1, 4, 100, 0x200, 5, 50);
+			break;
+		case 50:
+			_cobraKills = series_ranged_play("COBRA KILLS RIP AND LF",
+											 1, 0, 5, 19, 100, 0x200, 5, 51);
+			digi_play("304_s07", 1);
+			break;
+		case 51:
+			_cobraKills = series_ranged_play("COBRA KILLS RIP AND LF",
+											 1, 0, 20, 41, 100, 0x200, 5, 54);
+			digi_play("304_s07", 1);
+			break;
+		case 52:
+			_cobraKills = series_ranged_play("COBRA KILLS RIP AND LF",
+											 1, 0, 51, 51, 100, 0x200, 3000, -1);
+			disable_player_commands_and_fade_init(-1);
+			midi_fade_volume(0, 120);
+			kernel_timing_trigger(120, 53);
+			break;
+		case 53:
+			other_save_game_for_resurrection();
+			_G(game).setRoom(413);
+			break;
+		case 54:
+			_cobraKills = series_ranged_play("COBRA KILLS RIP AND LF",
+											 1, 0, 42, 51, 100, 0x200, 5, 52);
+			digi_play("304_s12", 2);
+			break;
+		default:
+			break;
+		}
+	} else if (lookFlag && player_said("cartoon")) {
 		if (_G(flags)[V001]) {
 			digi_play("304r13", 1);
 
@@ -222,42 +261,6 @@ void Room304::parser() {
 		}
 	} else if (_G(kernel).trigger == 749) {
 		midi_stop();
-	} else if (_G(flags)[V001] && _val4
-		&& _G(kernel).trigger >= 49 && _G(kernel).trigger <= 54) {
-		switch (_G(kernel).trigger) {
-		case 49:
-			ws_hide_walker();
-			_cobraKills = series_ranged_play("COBRA KILLS RIP AND LF",
-				1, 0, 1, 4, 100, 0x200, 5, 50);
-			break;
-		case 50:
-			_cobraKills = series_ranged_play("COBRA KILLS RIP AND LF",
-				1, 0, 5, 19, 100, 0x200, 5, 51);
-			digi_play("304_s07", 1);
-			break;
-		case 51:
-			_cobraKills = series_ranged_play("COBRA KILLS RIP AND LF",
-				1, 0, 20, 41, 100, 0x200, 5, 54);
-			digi_play("304_s07", 1);
-			break;
-		case 52:
-			_cobraKills = series_ranged_play("COBRA KILLS RIP AND LF",
-				1, 0, 51, 51, 100, 0x200, 3000, -1);
-			disable_player_commands_and_fade_init(-1);
-			midi_fade_volume(0, 120);
-			kernel_timing_trigger(120, 53);
-			break;
-		case 53:
-			_G(game).setRoom(413);
-			break;
-		case 54:
-			_cobraKills = series_ranged_play("COBRA KILLS RIP AND LF",
-				1, 0, 42, 51, 100, 0x200, 5, 52);
-			digi_play("304_s12", 2);
-			break;
-		default:
-			break;
-		}
 	} else if (_G(flags)[V001] && (takeFlag || useFlag) && player_said("samurai sword")) {
 		if (_G(flags)[V001]) {
 			switch (_G(kernel).trigger) {
@@ -427,7 +430,7 @@ void Room304::intrMsg(frac16 myMessage, struct machine *sender) {
 			_G(kernel).trigger_mode = oldMode;
 
 			digi_play("304_s06", 1);
-			r->_val4 = 1;
+			r->_cobraKillingFl = true;
 			sendWSMessage(0x200000, 0, r->_mei, 0, nullptr, 1);
 			return;
 		}

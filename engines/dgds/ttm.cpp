@@ -252,6 +252,7 @@ const char *TTMInterpreter::ttmOpName(uint16 op) {
 	case 0xc0e0: return "FADE SONG";
 	case 0xc0f0: return "SONG CONTROLLER??";
 	case 0xc100: return "SAMPLE VOL";
+	case 0xc200: return "UNKNOWN 0xC200 RAW SFX ??";
 	case 0xc210: return "LOAD RAW SFX";
 	case 0xc220: return "PLAY RAW SFX";
 	case 0xc240: return "STOP RAW SFX";
@@ -627,6 +628,11 @@ void TTMInterpreter::doFadeOutOp(int16 colorno, int16 ncolors, int16 targetcol, 
 			g_system->updateScreen();
 			g_system->delayMillis(5);
 		}
+
+		// Slight hack - the above loop took some time, so update frame millis
+		// to make sure times calculated for dialogs are still right, as they
+		// happen after this
+		_vm->updateThisFrameMillis();
 	}
 
 	// Logic here is different in Dragon + HOC.  They clear all buffers after fade
@@ -644,6 +650,7 @@ void TTMInterpreter::doFadeOutOp(int16 colorno, int16 ncolors, int16 targetcol, 
 
 	// Reset to previous palette.
 	_vm->getGamePals()->setPalette();
+
 }
 
 void TTMInterpreter::doFadeInOp(int16 colorno, int16 ncolors, int16 targetcol, int16 speed) {
@@ -660,6 +667,11 @@ void TTMInterpreter::doFadeInOp(int16 colorno, int16 ncolors, int16 targetcol, i
 			g_system->updateScreen();
 			g_system->delayMillis(5);
 		}
+
+		// Slight hack - the above loop took some time, so update frame millis
+		// to make sure times calculated for dialogs are still right, as they
+		// happen after this
+		_vm->updateThisFrameMillis();
 	}
 }
 

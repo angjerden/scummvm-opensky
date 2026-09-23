@@ -58,6 +58,15 @@ scummvmAssert("2000" < "25")
 scummvmAssert("abc" < "abcd")
 scummvmAssert("abc" < "def")
 
+-- Non-coercable string is always bigger than a number or void
+scummvmAssert("test" > 3000)
+scummvmAssert(3000 < "test")
+scummvmAssert("test" > 300.0)
+scummvmAssert(300.0 < "test")
+scummvmAssert("test" > VOID)
+scummvmAssert(VOID < "test")
+
+
 -- Mimic an object
 scummvmAssert("<Object:#FileIO" > 0)
 
@@ -132,6 +141,17 @@ scummvmAssert([1, 2, 3] = [1, "2", 3.0])
 scummvmAssert(not([1, 2, 3] <> [1, "2", 3.0]))
 scummvmAssert(["testa", "testb"] = ["testa", "TESTB"])
 scummvmAssert([#a: "testa", #b: "testb"] = [#a: "testa", #b: "TESTB"])
+
+scummvmAssert(("" = []))
+scummvmAssert(("sausages" = []))
+scummvmAssert(not("" = ["sausages"]))
+scummvmAssert(("sausages" = ["sausages"]))
+
+set the scummvmVersion to 600
+scummvmAssert(not("" = []))
+scummvmAssert(not("sausages" = []))
+scummvmAssert(not("" = ["sausages"]))
+scummvmAssert(not("sausages" = ["sausages"]))
 
 -- D4 has a quirk where only the left side list elements are checked
 set the scummvmVersion to 400

@@ -21,7 +21,6 @@
 
 #include "ultima/ultima4/conversation/conversation.h"
 #include "ultima/ultima4/conversation/dialogueloader_tlk.h"
-#include "ultima/shared/std/containers.h"
 #include "common/stream.h"
 
 namespace Ultima {
@@ -45,7 +44,7 @@ Dialogue *U4TlkDialogueLoader::load(Common::SeekableReadStream *source) {
 		return nullptr;
 
 	char *ptr = &tlk_buffer[3];
-	Std::vector<Common::String> strings;
+	Common::Array<Common::String> strings;
 	for (int i = 0; i < 12; i++) {
 		strings.push_back(ptr);
 		ptr += strlen(ptr) + 1;

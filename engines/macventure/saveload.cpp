@@ -48,10 +48,17 @@ Common::Error MacVentureEngine::loadGameState(int slot) {
 
 	_world->loadGameFrom(saveFile);
 	reset();
+	setInitialFlags(kGameStatePlaying);
+	_world->setObjAttr(_world->getObjAttr(1, kAttrParentObject), kAttrContainerOpen, true);
 
 	ExtendedSavegameHeader header;
 	if (MetaEngine::readSavegameHeader(saveFile, &header))
 		setTotalPlayTime(header.playtime);
+
+	// Set description as window name for console window
+	if (header.description.size()) {
+		_gui->setWindowTitle(kOutConsoleWindow, header.description);
+	}
 
 	res = Common::kNoError;
 
@@ -80,7 +87,7 @@ Common::Error MacVentureEngine::saveGameState(int slot, const Common::String &de
 bool MacVentureEngine::scummVMSaveLoadDialog(bool isSave) {
 	if (!isSave) {
 		// do loading
-		GUI::SaveLoadChooser dialog = GUI::SaveLoadChooser(Common::String("Load game:"), Common::String("Load"), false);
+		GUI::SaveLoadChooser dialog = GUI::SaveLoadChooser(false);
 		int slot = dialog.runModalWithCurrentTarget();
 
 		if (slot < 0)
@@ -90,7 +97,7 @@ bool MacVentureEngine::scummVMSaveLoadDialog(bool isSave) {
 	}
 
 	// do saving
-	GUI::SaveLoadChooser dialog = GUI::SaveLoadChooser(Common::String("Save game:"), Common::String("Save"), true);
+	GUI::SaveLoadChooser dialog = GUI::SaveLoadChooser(true);
 	int slot = dialog.runModalWithCurrentTarget();
 	Common::String desc = dialog.getResultString();
 
@@ -110,11 +117,11 @@ bool MacVentureEngine::scummVMSaveLoadDialog(bool isSave) {
 }
 
 bool MacVentureEngine::canLoadGameStateCurrently(Common::U32String *msg) {
-	return true;
+	return _gameState != kGameStateWinning;
 }
 
 bool MacVentureEngine::canSaveGameStateCurrently(Common::U32String *msg) {
-	return true;
+	return _gameState != kGameStateWinning;
 }
 
 } // End of namespace MacVenture

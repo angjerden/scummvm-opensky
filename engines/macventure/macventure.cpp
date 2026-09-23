@@ -46,6 +46,10 @@ enum {
 	kMaxMenuTitleLength = 30
 };
 
+enum {
+	kFrameDelay = 20
+};
+
 MacVentureEngine::MacVentureEngine(OSystem *syst, const ADGameDescription *gameDesc) : Engine(syst) {
 	_gameDescription = gameDesc;
 	_rnd = new Common::RandomSource("macventure");
@@ -65,6 +69,8 @@ MacVentureEngine::MacVentureEngine(OSystem *syst, const ADGameDescription *gameD
 	_soundManager = nullptr;
 
 	_dataBundle = nullptr;
+
+	_nextFrameTime = 0;
 
 	debug("MacVenture::MacVentureEngine()");
 }
@@ -138,6 +144,8 @@ Common::Error MacVentureEngine::run() {
 	_decodingNamingArticles = new StringTable(this, _resourceManager, kNamingArticlesStringTableID);
 	_decodingIndirectArticles = new StringTable(this, _resourceManager, kIndirectArticlesStringTableID);
 
+	SearchMan.addSubDirectoryMatching(_gamePath, _filenames->getString(3));
+
 	loadDataBundle();
 
 	// Big class instantiation
@@ -154,6 +162,7 @@ Common::Error MacVentureEngine::run() {
 		}
 	} else {
 		setNewGameState();
+		_gui->drawTitle();
 	}
 	selectControl(kStartOrResume);
 
@@ -163,10 +172,14 @@ Common::Error MacVentureEngine::run() {
 	while (_gameState != kGameStateQuitting) {
 		processEvents();
 
-		if (_gameState != kGameStateQuitting && !_gui->isDialogOpen()) {
+		if (!_enginePaused && _gameState != kGameStateQuitting && !_gui->isDialogOpen()) {
 
 			if (_prepared) {
 				_prepared = false;
+
+				bool busy = _cmdReady || _halted;
+				if (busy)
+					_gui->setWaitCursor(true);
 
 				if (!_halted)
 					updateState(false);
@@ -184,9 +197,14 @@ Common::Error MacVentureEngine::run() {
 					}
 				}
 
-				if (_gameState == kGameStateWinnig || _gameState == kGameStateLosing) {
+				if (_gameState == kGameStateLosing) {
 					endGame();
 				}
+
+				if (busy)
+					_gui->setWaitCursor(false);
+
+				_gui->markRedraw();
 			}
 		}
 		refreshScreen();
@@ -198,7 +216,11 @@ Common::Error MacVentureEngine::run() {
 void MacVentureEngine::refreshScreen() {
 	_gui->draw();
 	g_system->updateScreen();
-	g_system->delayMillis(50);
+
+	uint32 now = g_system->getMillis();
+	if (now < _nextFrameTime)
+		g_system->delayMillis(_nextFrameTime - now);
+	_nextFrameTime = g_system->getMillis() + kFrameDelay;
 }
 
 void MacVentureEngine::newGame() {
@@ -208,16 +230,18 @@ void MacVentureEngine::newGame() {
 	setNewGameState();
 }
 
-void MacVentureEngine::setInitialFlags() {
+void MacVentureEngine::setInitialFlags(GameState gameState) {
 	_paused = false;
 	_halted = false;
 	_cmdReady = false;
 	_haltedAtEnd = false;
 	_haltedInSelection = false;
 	_clickToContinue = true;
-	_gameState = kGameStateInit;
+	_gameState = gameState;
 	_destObject = 0;
 	_prepared = true;
+	_enginePaused = false;
+	_consoleRowsSincePause = 0;
 }
 
 void MacVentureEngine::setNewGameState() {
@@ -233,6 +257,7 @@ void MacVentureEngine::reset() {
 }
 
 void MacVentureEngine::resetInternals() {
+	_gui->resetWindows();
 	_scriptEngine->reset();
 	_currentSelection.clear();
 	_objQueue.clear();
@@ -241,12 +266,9 @@ void MacVentureEngine::resetInternals() {
 
 void MacVentureEngine::resetGui() {
 	_gui->reloadInternals();
-	_gui->updateWindowInfo(kMainGameWindow, getParent(1), _world->getChildren(getParent(1), true));
-	// HACK! should update all inventories
-	_gui->ensureInventoryOpen(kInventoryStart, 1);
-	_gui->updateWindowInfo(kInventoryStart, 1, _world->getChildren(1, true));
 	updateControls();
 	updateExits();
+	_gui->markRedraw();
 	refreshScreen();
 }
 
@@ -263,10 +285,22 @@ void MacVentureEngine::requestUnpause() {
 void MacVentureEngine::selectControl(ControlAction id) {
 	debugC(2, kMVDebugMain, "Select control %x", id);
 	if (id == kClickToContinue) {
+		if (_consoleRowsSincePause > _gui->getConsoleVisibleRows()) {
+			_consoleRowsSincePause -= _gui->getConsoleVisibleRows();
+			clickToContinue();
+			return;
+		}
+
+		_consoleRowsSincePause = 0;
 		_clickToContinue = false;
+		_enginePaused = false;
 		_paused = true;
+		_prepared = true;
 		return;
 	}
+
+	if (!_clickToContinue)
+		_consoleRowsSincePause = 0;
 
 	_selectedControl = id;
 	refreshReady();
@@ -298,8 +332,9 @@ void MacVentureEngine::gameChanged() {
 }
 
 void MacVentureEngine::winGame() {
-	_gui->showPrebuiltDialog(kWinGameDialog);
-	_gameState = kGameStateWinnig;
+	_paused = true;
+	_gui->loadDiploma();
+	_gameState = kGameStateWinning;
 }
 
 void MacVentureEngine::loseGame() {
@@ -309,7 +344,11 @@ void MacVentureEngine::loseGame() {
 }
 
 void MacVentureEngine::clickToContinue() {
+	uint rowCount = _gui->getConsoleRowCount();
+
+	_gui->scrollConsoleToRow(rowCount > _consoleRowsSincePause ? rowCount - _consoleRowsSincePause : 0);
 	_clickToContinue = true;
+	_enginePaused = true;
 }
 
 void MacVentureEngine::enqueueObject(ObjectQueueID type, ObjID objID, ObjID target) {
@@ -362,7 +401,18 @@ void MacVentureEngine::handleObjectSelect(ObjID objID, WindowReference win, bool
 	const WindowData &windata = _gui->getWindowData(win);
 
 	if (shiftPressed) {
-		// TODO: Implement shift functionality.
+		if (objID == 0) {
+			objID = windata.objRef;
+		}
+		if (objID > 0) {
+			if (findObjectInArray(objID, _currentSelection) != -1) {
+				unselectObject(objID);
+			} else {
+				selectObject(objID);
+			}
+			refreshReady();
+			preparedToRun();
+		}
 	} else {
 		if (_selectedControl && _currentSelection.size() > 0 && getInvolvedObjects() > 1) {
 			if (objID == 0) {
@@ -374,12 +424,12 @@ void MacVentureEngine::handleObjectSelect(ObjID objID, WindowReference win, bool
 		} else {
 			if (objID == 0) {
 				unselectAll();
-				objID = win;
+				objID = windata.objRef;
 			}
 			if (objID > 0) {
 				int currentObjectIndex = findObjectInArray(objID, _currentSelection);
 
-				if (currentObjectIndex >= 0)
+				if (currentObjectIndex == -1)
 					unselectAll();
 
 				if (isDoubleClick) {
@@ -416,17 +466,14 @@ void MacVentureEngine::setDeltaPoint(Common::Point newPos) {
 	_deltaPoint = newPos;
 }
 
-void MacVentureEngine::focusObjWin(ObjID objID) {
-	_gui->bringToFront(getObjWindow(objID));
-}
-
 void MacVentureEngine::updateWindow(WindowReference winID) {
 	_gui->updateWindow(winID, true);
 }
 
 bool MacVentureEngine::showTextEntry(ObjID text, ObjID srcObj, ObjID destObj) {
 	debugC(3, kMVDebugMain, "Showing speech dialog, asset %d from %d to %d", text, srcObj, destObj);
-	_gui->getTextFromUser();
+	Common::String title = _world->getText(text, srcObj, destObj);
+	_gui->getTextFromUser(title);
 
 	_prepared = false;
 	warning("Show text entry: not fully tested");
@@ -437,12 +484,31 @@ void MacVentureEngine::setTextInput(const Common::String &content) {
 	_prepared = true;
 	_userInput = content;
 	_clickToContinue = false;
+	_enginePaused = false;
 }
 
 Common::String MacVentureEngine::getUserInput() {
 	return _userInput;
 }
 
+Common::Path MacVentureEngine::getDiplomaFileName() {
+	Common::SeekableReadStream *res;
+	res = _resourceManager->getResource(MKTAG('S', 'T', 'R', ' '), kDiplomaFilenameID);
+	if (!res)
+		return "";
+
+	byte length = res->readByte();
+	char *fileName = new char[length + 1];
+	res->read(fileName, length);
+	fileName[length] = '\0';
+
+	Common::U32String result(fileName, Common::kMacRoman);
+
+	delete[] fileName;
+	delete res;
+
+	return Common::Path(result);
+}
 
 Common::Path MacVentureEngine::getStartGameFileName() {
 	Common::SeekableReadStream *res;
@@ -591,26 +657,37 @@ void MacVentureEngine::runObjQueue() {
 }
 
 void MacVentureEngine::printTexts() {
-	for (uint i = 0; i < _textQueue.size(); i++) {
+	while (!_textQueue.empty()) {
+		if (_consoleRowsSincePause >= _gui->getConsoleVisibleRows()) {
+			clickToContinue();
+			return;
+		}
 		QueuedText text = _textQueue.front();
 		_textQueue.remove_at(0);
 		switch (text.id) {
 		case kTextNumber:
-			_gui->printText(Common::String(text.asset));
+			_currentConsoleText += Common::String::format("%d", text.asset);
 			gameChanged();
 			break;
-		case kTextNewLine:
-			_gui->printText(Common::String(""));
+		case kTextNewLine: {
+			uint rows = _gui->getConsoleRowCount();
+			_gui->printText(_currentConsoleText);
+			_consoleRowsSincePause += _gui->getConsoleRowCount() - rows;
+			_currentConsoleText.clear();
 			gameChanged();
 			break;
+		}
 		case kTextPlain:
-			_gui->printText(_world->getText(text.asset, text.source, text.destination));
+			_currentConsoleText += _world->getText(text.asset, text.source, text.destination);
 			gameChanged();
 			break;
 		default:
 			break;
 		}
 	}
+
+	if (_consoleRowsSincePause > _gui->getConsoleVisibleRows())
+		clickToContinue();
 }
 
 void MacVentureEngine::playSounds(bool pause) {
@@ -637,6 +714,189 @@ void MacVentureEngine::playSounds(bool pause) {
 		g_system->delayMillis(delay);
 		preparedToRun();
 	}
+}
+
+Item MacVentureEngine::removeOutlier(Layout &layout, bool flag, Common::Rect rect) {
+	int max = flag ? 0x7fff : -0x8000;
+	bool first = true;
+	int outlier = -1;
+
+	for (int i = 0; i < (int)layout.size(); i++) {
+		Common::Rect childBounds = layout.at(i).bounds;
+		bool oob = (childBounds.bottom > rect.bottom || childBounds.top > rect.top);
+		if (flag)
+			oob = !oob;
+		if (first && oob) {
+			first = false;
+			max = flag ? 0x7fff : -0x8000;
+		}
+		if (first || oob) {
+			int center = childBounds.width() / 2;
+			bool over = false;
+			if (flag) {
+				over = (max >= center);
+			} else {
+				over = (max <= center);
+			}
+			if (over) {
+				outlier = i;
+				max = center;
+			}
+		}
+	}
+
+	return layout.remove(outlier);
+}
+
+void MacVentureEngine::cleanUp(WindowReference reference) {
+	const WindowData &data = _gui->getWindowData(reference);
+	Common::Rect innerDims = _gui->findWindow(reference)->getInnerDimensions();
+	Common::Rect windowBounds(0, 0, innerDims.width(), innerDims.height());
+	Common::Array<Item> items;
+
+	Layout onScreen, offScreen;
+	Layout line, overflow;
+
+	for (int i = data.children.size() - 1; i >= 0; i--) {
+		DrawableObject child = data.children[i];
+		Common::Rect childBounds = getObjBounds(child.obj);
+		if (childBounds.bottom > windowBounds.bottom || childBounds.top < windowBounds.top) {
+			offScreen.append(Item{child.obj, childBounds});
+		} else if (16 + childBounds.width() > windowBounds.width()) {
+			offScreen.append(Item{child.obj, childBounds});
+		} else {
+			onScreen.append(Item{child.obj, childBounds});
+		}
+	}
+
+	int y = windowBounds.top + 8;
+
+	while (onScreen.size() || offScreen.size()) {
+		int min = 0x7fff;
+		int minIdx = -1;
+		int height = 0;
+
+		// Find highest element onscreen
+		for (int i = onScreen.size() - 1; i >= 0; i--) {
+			Item child = onScreen.at(i);
+			if (child.bounds.top < min) {
+				min = child.bounds.top;
+				height = child.bounds.height();
+				minIdx = i;
+			}
+		}
+
+		if (minIdx != -1) {
+			// Remove it and put it on line
+			line.append(onScreen.remove(minIdx));
+			// along with all elements in same line
+			bool done;
+			do {
+				done = true;
+				for (int i = onScreen.size() - 1; i >= 0; i--) {
+					Item child = onScreen.at(i);
+					if (child.bounds.top < min + height) {
+						if (height < child.bounds.height()) {
+							done = false;
+							height = child.bounds.height();
+						}
+						line.append(onScreen.remove(i));
+					}
+				}
+			} while (!done);
+		}
+		// Line is too long? Put items back onscreen
+		while (line.size() && line.width() > windowBounds.width()) {
+			onScreen.append(removeOutlier(line, false, windowBounds));
+		}
+		// Find line height
+		height = 0;
+		for (int i = line.size() - 1; i >= 0; i--) {
+			Item child = line.at(i);
+			if (height < child.bounds.height())
+				height = child.bounds.height();
+		}
+		// While there's room, add offscreen items
+		while (offScreen.size() && line.width() < windowBounds.width()) {
+			Item outlier = removeOutlier(offScreen, true, windowBounds);
+
+			if (onScreen.size() && outlier.bounds.height() > height) {
+				overflow.append(outlier);
+			} else if (line.width() + 8 + outlier.bounds.width() <= windowBounds.width()) {
+				// Adjust line height
+				if (height < outlier.bounds.height())
+					height = outlier.bounds.height();
+				line.append(outlier);
+			} else {
+				overflow.append(outlier);
+			}
+		}
+		// Move all overflow back offscreen
+		while (overflow.size()) {
+			offScreen.append(overflow.remove(0));
+		}
+		// Is line empty? Put one offscreen item on there
+		if (!line.size() && offScreen.size()) {
+			Item offscreenItem = offScreen.remove(0);
+
+			if (height < offscreenItem.bounds.height())
+				height = offscreenItem.bounds.height();
+			line.append(offscreenItem);
+		}
+		int x = windowBounds.left + 8;
+		// Now add line to new positions
+		while (line.size()) {
+			Item outlier = removeOutlier(line, true, windowBounds);
+
+			Item toAdd;
+			toAdd.id = outlier.id;
+			toAdd.bounds = Common::Rect(Common::Point(x, y + (height - outlier.bounds.height()) / 2),
+										outlier.bounds.width(), outlier.bounds.height());
+			items.push_back(toAdd);
+
+			x += outlier.bounds.width() + 8;
+		}
+
+		y += height + 8;
+	}
+
+	moveItems(items, reference);
+}
+
+void MacVentureEngine::messUp(WindowReference reference) {
+	const WindowData &data = _gui->getWindowData(reference);
+	Common::Array<Item> items;
+
+	for (auto &child : data.children) {
+		Common::Point childMeasures = _gui->getObjMeasures(child.obj);
+		int scale = data.bounds.height() - childMeasures.y;
+		if (scale < 0)
+			scale = 0;
+		float f = randBetween(0, 10) / 10.0f;
+		int y = (int)(f * scale) + data.bounds.top;
+
+		scale = data.bounds.width() - childMeasures.x;
+		if (scale < 0)
+			scale = 0;
+		f = randBetween(0, 10) / 10.0f;
+		int x = (int)(f * scale) + data.bounds.left;
+
+		items.push_back(Item{child.obj, Common::Rect(Common::Point(x, y), childMeasures.x, childMeasures.y)});
+	}
+
+	moveItems(items, reference);
+}
+
+void MacVentureEngine::moveItems(Common::Array<Item> &items, WindowReference reference) {
+	for (auto &item : items) {
+		Common::Point pt = _gui->getObjMeasures(item.id);
+		if (pt.y != item.bounds.top || pt.x != item.bounds.left) {
+			_world->setObjAttr(item.id, kAttrPosX, item.bounds.left);
+			_world->setObjAttr(item.id, kAttrPosY, item.bounds.top);
+		}
+	}
+
+	updateWindow(reference);
 }
 
 void MacVentureEngine::updateControls() {
@@ -669,14 +929,20 @@ void MacVentureEngine::selectObject(ObjID objID) {
 	}
 	if (findObjectInArray(objID, _currentSelection) == -1) {
 		_currentSelection.push_back(objID);
+	}
+	if (findObjectInArray(objID, _selectedObjs) == -1) {
+		_selectedObjs.push_back(objID);
 		highlightExit(objID);
 	}
 }
 
 void MacVentureEngine::unselectObject(ObjID objID) {
-	int idxCur = findObjectInArray(objID, _currentSelection);
-	if (idxCur != -1) {
-		_currentSelection.remove_at(idxCur);
+	int idx = findObjectInArray(objID, _currentSelection);
+	if (idx != -1) {
+		_currentSelection.remove_at(idx);
+	}
+	if ((idx = findObjectInArray(objID, _selectedObjs)) != -1) {
+		_selectedObjs.remove_at(idx);
 		highlightExit(objID);
 	}
 }
@@ -690,6 +956,7 @@ void MacVentureEngine::updateExits() {
 	for (uint i = 0; i < exits.size(); i++)
 		_gui->updateExit(exits[i]);
 
+	_gui->resetExitBackgroundPattern();
 }
 
 int MacVentureEngine::findObjectInArray(ObjID objID, const Common::Array<ObjID> &list) {
@@ -721,10 +988,20 @@ Common::String MacVentureEngine::getNoun(ObjID ndx) {
 	return _decodingIndirectArticles->getString(ndx);
 }
 
+Common::String MacVentureEngine::getConsoleText() const {
+	Common::String consoleText = _gui->getConsoleText();
+	if (consoleText.size() > kMaxConsoleTextLength) {
+		consoleText = consoleText.substr(consoleText.size() - kMaxConsoleTextLength);
+	}
+	return consoleText;
+}
+
+void MacVentureEngine::setConsoleText(const Common::String &text) {
+	_gui->setConsoleText(text);
+}
+
 void MacVentureEngine::highlightExit(ObjID objID) {
-	// TODO: It seems unnecessary since the GUI checks whether an object
-	//		is selected, which includes exits.
-	warning("STUB: highlightExit");
+	_gui->highlightExitButton(objID);
 }
 
 void MacVentureEngine::selectPrimaryObject(ObjID objID) {
@@ -734,12 +1011,15 @@ void MacVentureEngine::selectPrimaryObject(ObjID objID) {
 	int idx;
 	debugC(4, kMVDebugMain, "Select primary object (%d)", objID);
 	if (_destObject > 0 &&
-		(idx = findObjectInArray(_destObject, _currentSelection)) != -1) {
-		unselectAll();
+		(idx = findObjectInArray(_destObject, _selectedObjs)) != -1 &&
+		findObjectInArray(_destObject, _currentSelection) == -1) {
+		_selectedObjs.remove_at(idx);
+		highlightExit(_destObject);
 	}
 	_destObject = objID;
-	if (findObjectInArray(_destObject, _currentSelection) == -1) {
-		selectObject(_destObject);
+	if (findObjectInArray(_destObject, _selectedObjs) == -1) {
+		_selectedObjs.push_back(_destObject);
+		highlightExit(_destObject);
 	}
 
 	_cmdReady = true;
@@ -767,15 +1047,11 @@ void MacVentureEngine::openObject(ObjID objID) {
 		_gui->updateWindowInfo(kMainGameWindow, objID, _world->getChildren(objID, true));
 		_gui->updateWindow(kMainGameWindow, _world->getObjAttr(objID, kAttrContainerOpen));
 		updateExits();
-		_gui->setWindowTitle(kMainGameWindow, _world->getText(objID, objID, objID)); // it ignores source and target in the original
+		_gui->setWindowTitle(kMainGameWindow, capitalize(_world->getText(objID, objID, objID))); // it ignores source and target in the original
 	} else { // Open inventory window
 		Common::Point p(_world->getObjAttr(objID, kAttrPosX), _world->getObjAttr(objID, kAttrPosY));
 		WindowReference invID = _gui->createInventoryWindow(objID);
 		Common::String title = _world->getText(objID, objID, objID);
-		// HACK, trim titletext to fit initial inventory size
-		while (title.size() > 6) {
-			title.deleteLastChar();
-		}
 		_gui->setWindowTitle(invID, title);
 		_gui->updateWindowInfo(invID, objID, _world->getChildren(objID, true));
 		_gui->updateWindow(invID, _world->getObjAttr(objID, kAttrContainerOpen));
@@ -876,10 +1152,9 @@ void MacVentureEngine::reflectSwap(ObjID fromID, ObjID toID) {
 }
 
 void MacVentureEngine::toggleExits() {
-	Common::Array<ObjID> exits = _currentSelection;
-	while (!exits.empty()) {
-		ObjID obj = exits.front();
-		exits.remove_at(0);
+	while (!_selectedObjs.empty()) {
+		ObjID obj = _selectedObjs.back();
+		_selectedObjs.pop_back();
 		highlightExit(obj);
 		updateWindow(findParentWindow(obj));
 	}
@@ -892,7 +1167,7 @@ void MacVentureEngine::zoomObject(ObjID objID) {
 bool MacVentureEngine::isObjEnqueued(ObjID objID) {
 	Common::Array<QueuedObject>::const_iterator it;
 	for (it = _objQueue.begin(); it != _objQueue.end(); it++) {
-		if ((*it).object == objID) {
+		if (it->id == kUpdateObject && it->object == objID) {
 			return true;
 		}
 	}
@@ -943,13 +1218,7 @@ Common::String MacVentureEngine::getCommandsPausedString() const {
 }
 
 Common::Path MacVentureEngine::getFilePath(FilePathID id) const {
-	if (id <= 3) { // We don't want a file in the subdirectory
-		return Common::Path(_filenames->getString(id));
-	} else { // We want a game file
-		Common::Path path(_filenames->getString(3));
-		path.joinInPlace(_filenames->getString(id));
-		return path;
-	}
+	return Common::Path(_filenames->getString(id));
 }
 
 bool MacVentureEngine::isOldText() const {
@@ -982,8 +1251,12 @@ bool MacVentureEngine::isObjClickable(ObjID objID) {
 	return _world->getObjAttr(objID, kAttrUnclickable) == 0;
 }
 
+bool MacVentureEngine::isObjDraggable(ObjID objID) {
+	return _world->isObjDraggable(objID);
+}
+
 bool MacVentureEngine::isObjSelected(ObjID objID) {
-	int idx = findObjectInArray(objID, _currentSelection);
+	int idx = findObjectInArray(objID, _selectedObjs);
 	return idx != -1;
 }
 
@@ -1115,6 +1388,23 @@ bool MacVentureEngine::loadTextHuffman() {
 		return true;
 	}
 	return false;
+}
+
+Common::String MacVentureEngine::capitalize(const Common::String &str) const {
+	Common::String out(str);
+	bool shouldCapitalize = true;
+
+	for (char &c : out) {
+		if (shouldCapitalize) {
+			c = toupper(c);
+			shouldCapitalize = false;
+		} else {
+			if (c == ' ')
+				shouldCapitalize = true;
+		}
+	}
+
+	return out;
 }
 
 // Global Settings

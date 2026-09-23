@@ -43,6 +43,7 @@ class ImGuiLogger {
 	bool _showInfo = true;
 	bool _showdebug = true;
 
+public: // Added for ScummVM
 	struct {
 		ImVec4 _logger_error_b = ImVec4(1.f, 0.f, 0.f, 1.f);
 		ImVec4 _logger_warning_b = ImVec4(1.f, 1.f, 0.f, 1.f);
@@ -62,6 +63,7 @@ public:
 	void addLog(const char *fmt, ...) IM_FMTARGS(2);
 	void drawColorOptions();
 	void draw(const char *title, bool *p_open);
+	ImVector<char *> getItems() { return _items; }
 };
 
 } // namespace ImGuiEx

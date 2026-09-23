@@ -118,9 +118,9 @@ static const uint32 turnTableOffsets[] = {
 	MK32_A5(TurnTable, turnTableTalk),
 };
 
-#define COMPACT_SIZE (sizeof(compactOffsets)/sizeof(uint32))
-#define MEGASET_SIZE (sizeof(megaSetOffsets)/sizeof(uint32))
-#define TURNTABLE_SIZE (sizeof(turnTableOffsets)/sizeof(uint32))
+#define COMPACT_SIZE (ARRAYSIZE(compactOffsets))
+#define MEGASET_SIZE (ARRAYSIZE(megaSetOffsets))
+#define TURNTABLE_SIZE (ARRAYSIZE(turnTableOffsets))
 
 SkyCompact::SkyCompact() {
 	_cptFile = new Common::File();
@@ -137,7 +137,7 @@ SkyCompact::SkyCompact() {
 		error("unknown \"sky.cpt\" version");
 
 	if (SKY_CPT_SIZE != _cptFile->size()) {
-		GUI::MessageDialog dialog(_("The \"sky.cpt\" engine data file has an incorrect size."), _("OK"));
+		GUI::MessageDialog dialog(_("The \"sky.cpt\" engine data file has an incorrect size."));
 		dialog.runModal();
 		error("Incorrect sky.cpt size (%d, expected: %d)", (int)_cptFile->size(), SKY_CPT_SIZE);
 	}

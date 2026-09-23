@@ -34,6 +34,7 @@ Sensor::Sensor(
 	uint8 flags_,
 	FCLInstructionVector condition_,
 	Common::String conditionSource_) {
+	_type = kSensorType;
 	_objectID = objectID_;
 	_origin = origin_;
 	_rotation = rotation_;
@@ -67,7 +68,8 @@ Sensor::Sensor(
 void Sensor::scale(int factor) {
 	_origin = _origin / factor;
 	_size = _size / factor;
-};
+	_firingRange = _firingRange / factor;
+}
 
 Object *Sensor::duplicate() {
 	Sensor *sensor = new Sensor(_objectID, _origin, _rotation, (*_colours)[0], _firingInterval, _firingRange, _axis, _flags, _condition, _conditionSource);
@@ -104,7 +106,8 @@ bool Sensor::playerDetected(const Math::Vector3d &position, Area *area) {
 	}
 
 	if (detected) {
-		detected = ABS(diff.x() + ABS(diff.y())) + ABS(diff.z()) <= _firingRange;
+		float distance = ABS(diff.x()) + ABS(diff.y()) + ABS(diff.z());
+		detected = distance < _firingRange;
 	}
 
 	return detected;

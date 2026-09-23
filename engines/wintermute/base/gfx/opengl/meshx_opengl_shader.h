@@ -41,23 +41,23 @@ namespace Wintermute {
 
 class XMeshOpenGLShader : public XMesh {
 public:
-	XMeshOpenGLShader(BaseGame *inGame, OpenGL::Shader *shader);
+	XMeshOpenGLShader(BaseGame *inGame, OpenGL::Shader *shader, OpenGL::Shader *flatShadowShader);
 	~XMeshOpenGLShader() override;
 
-	bool loadFromXData(const Common::String &filename, XFileData *xobj) override;
+	bool loadFromXData(const char *filename, XFileData *xobj) override;
 	bool render(XModel *model) override;
-	bool renderFlatShadowModel() override;
+	bool renderFlatShadowModel(uint32 shadowColor) override;
 	bool update(FrameNode *parentFrame) override;
 
 private:
-	void renderEffect(Material *material);
+	bool setupEffect(Material *material, bool secondPassNeeded);
 
 protected:
 	GLuint _vertexBuffer;
 	GLuint _indexBuffer;
 
 	OpenGL::Shader *_shader;
-	OpenGL::Shader *_flatShadowShader{};
+	OpenGL::Shader *_flatShadowShader;
 };
 
 } // namespace Wintermute

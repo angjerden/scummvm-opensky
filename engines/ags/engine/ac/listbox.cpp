@@ -77,7 +77,7 @@ static void FillSaveList(std::set<String> &files, const String &filePattern) {
 	if ((strcmp(_GP(game).guid, "{a46a9171-f6f9-456c-9b2b-a509b560ddc0}") == 0) && _G(displayed_room) == 1) {
 		::GUI::MessageDialog dialog(_("The game will now list characters exported from the Sierra games that can be imported:\n"
 									  "1. Save files named qfg1*.sav or qfg1vga*.sav inside ScummVM save directory, or\n"
-									  "2. Any .sav file inside the QfG2 Remake game directory"), "Ok");
+									  "2. Any .sav file inside the QfG2 Remake game directory"));
 		dialog.runModal();
 
 		matches = g_system->getSavefileManager()->listSavefiles("qfg1*.sav");
@@ -390,8 +390,10 @@ void ListBox_ScrollUp(GUIListBox *listbox) {
 
 
 GUIListBox *is_valid_listbox(int guin, int objn) {
-	if ((guin < 0) | (guin >= _GP(game).numgui)) quit("!ListBox: invalid GUI number");
-	if ((objn < 0) | (objn >= _GP(guis)[guin].GetControlCount())) quit("!ListBox: invalid object number");
+	if ((guin < 0) || (guin >= _GP(game).numgui))
+		quit("!ListBox: invalid GUI number");
+	if ((objn < 0) || (objn >= _GP(guis)[guin].GetControlCount()))
+		quit("!ListBox: invalid object number");
 	if (_GP(guis)[guin].GetControlType(objn) != kGUIListBox)
 		quit("!ListBox: specified control is not a list box");
 	return (GUIListBox *)_GP(guis)[guin].GetControl(objn);

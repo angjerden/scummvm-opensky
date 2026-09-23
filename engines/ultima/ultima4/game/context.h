@@ -29,7 +29,6 @@
 #include "ultima/ultima4/game/script.h"
 #include "ultima/ultima4/core/types.h"
 #include "ultima/ultima4/filesys/savegame.h"
-#include "ultima/shared/std/containers.h"
 
 namespace Ultima {
 namespace Ultima4 {
@@ -80,7 +79,7 @@ public:
 	/**
 	 * Provides scripts with information
 	 */
-	Common::String translate(Std::vector<Common::String> &parts) override {
+	Common::String translate(Common::Array<Common::String> &parts) override {
 		if (parts.size() == 1) {
 			if (parts[0] == "wind")
 				return getDirectionName(static_cast<Direction>(_windDirection));

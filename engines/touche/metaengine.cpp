@@ -24,6 +24,7 @@
 #include "common/savefile.h"
 #include "common/system.h"
 #include "common/translation.h"
+#include "common/events.h"
 
 #include "backends/keymapper/action.h"
 #include "backends/keymapper/keymapper.h"
@@ -119,26 +120,31 @@ Common::KeymapArray ToucheMetaEngine::initKeymaps(const char *target) const {
 	Keymap *gameKeyMap = new Keymap(Keymap::kKeymapTypeGame, "game-shortcuts", _("Game keymappings"));
 	Action *act;
 
-	act = new Action(kStandardActionLeftClick, _("Left Click"));
+	act = new Action(kStandardActionLeftClick, _("Left click"));
 	act->setLeftClickEvent();
 	act->addDefaultInputMapping("MOUSE_LEFT");
 	act->addDefaultInputMapping("JOY_A");
 	engineKeyMap->addAction(act);
 
-	act = new Action(kStandardActionRightClick, _("Right Click"));
+	act = new Action(kStandardActionRightClick, _("Right click"));
 	act->setRightClickEvent();
 	act->addDefaultInputMapping("MOUSE_RIGHT");
 	act->addDefaultInputMapping("JOY_B");
 	engineKeyMap->addAction(act);
 
+	act = new Action(kStandardActionToggleHotspots, _("Show hotspots"));
+	act->setEvent(Common::EVENT_HOTSPOTS_SHOW);
+	act->addDefaultInputMapping("h");
+	gameKeyMap->addAction(act);
+
 	{
-		act = new Action("SKIPORQUIT", _("Skip sequence/open quit dialogue"));
+		act = new Action("SKIPORQUIT", _("Skip sequence / open quit dialog"));
 		act->setCustomEngineActionEvent(kToucheActionSkipOrQuit);
 		act->addDefaultInputMapping("ESCAPE");
 		act->addDefaultInputMapping("JOY_LEFT_SHOULDER");
 		gameKeyMap->addAction(act);
 
-		act = new Action("SKIPDILOG", _("Skip Dialogue"));
+		act = new Action("SKIPDILOG", _("Skip dialog"));
 		act->setCustomEngineActionEvent(kToucheActionSkipDialogue);
 		act->addDefaultInputMapping("SPACE");
 		act->addDefaultInputMapping("JOY_X");
@@ -170,7 +176,7 @@ Common::KeymapArray ToucheMetaEngine::initKeymaps(const char *target) const {
 		act->addDefaultInputMapping("JOY_RIGHT_STICK");
 		gameKeyMap->addAction(act);
 
-		act = new Action("TGGLTALKTEXT", _("Toggle between voice/text/text and voice"));
+		act = new Action("TGGLTALKTEXT", _("Toggle between voice / text / text and voice"));
 		act->setCustomEngineActionEvent(kToucheActionToggleTalkTextMode);
 		act->addDefaultInputMapping("t");
 		act->addDefaultInputMapping("JOY_RIGHT");

@@ -35,6 +35,7 @@
 #include "engines/wintermute/base/scriptables/script_value.h"
 #include "engines/wintermute/base/scriptables/script_stack.h"
 #include "engines/wintermute/base/font/base_font_storage.h"
+#include "engines/wintermute/dcgf.h"
 
 namespace Wintermute {
 
@@ -71,7 +72,7 @@ UIObject::UIObject(BaseGame *inGame) : BaseObject(inGame) {
 
 //////////////////////////////////////////////////////////////////////////
 UIObject::~UIObject() {
-	if (!_gameRef->_loadInProgress) {
+	if (!_game->_loadInProgress) {
 		SystemClassRegistry::getInstance()->enumInstances(BaseGame::invalidateValues, "ScValue", (void *)this);
 	}
 
@@ -79,7 +80,7 @@ UIObject::~UIObject() {
 		delete _back;
 	}
 	if (_font && !_sharedFonts) {
-		_gameRef->_fontStorage->removeFont(_font);
+		_game->_fontStorage->removeFont(_font);
 	}
 
 	if (_image && !_sharedImages) {
@@ -96,6 +97,14 @@ UIObject::~UIObject() {
 
 //////////////////////////////////////////////////////////////////////////
 void UIObject::setText(const char *text) {
+	if (text == nullptr) {
+		// W/A for null text from diary text in 5MA game.
+		// Font drawing width is not the same as in original engine,
+		// this makes last page of diary empty and make text null from scripts.
+		if (_text)
+			_text[0] = '\0';
+		return;
+	}
 	if (_text) {
 		delete[] _text;
 	}
@@ -126,7 +135,7 @@ void UIObject::setListener(BaseScriptHolder *object, BaseScriptHolder *listenerO
 
 //////////////////////////////////////////////////////////////////////////
 void UIObject::correctSize() {
-	Rect32 rect;
+	Common::Rect32 rect;
 
 	if (_width <= 0) {
 		if (_image) {
@@ -149,8 +158,6 @@ void UIObject::correctSize() {
 	}
 }
 
-
-
 //////////////////////////////////////////////////////////////////////////
 // high level scripting interface
 //////////////////////////////////////////////////////////////////////////
@@ -163,13 +170,13 @@ bool UIObject::scCallMethod(ScScript *script, ScStack *stack, ScStack *thisStack
 		ScValue *val = stack->pop();
 
 		if (_font) {
-			_gameRef->_fontStorage->removeFont(_font);
+			_game->_fontStorage->removeFont(_font);
 		}
 		if (val->isNULL()) {
 			_font = nullptr;
 			stack->pushBool(true);
 		} else {
-			_font = _gameRef->_fontStorage->addFont(val->getString());
+			_font = _game->_fontStorage->addFont(val->getString());
 			stack->pushBool(_font != nullptr);
 		}
 		return STATUS_OK;
@@ -182,19 +189,17 @@ bool UIObject::scCallMethod(ScScript *script, ScStack *stack, ScStack *thisStack
 		stack->correctParams(1);
 		ScValue *val = stack->pop();
 
-		/* const char *filename = */ val->getString();
+		const char *filename = val->getString();
 
-		delete _image;
-		_image = nullptr;
+		SAFE_DELETE(_image);
 		if (val->isNULL()) {
 			stack->pushBool(true);
 			return STATUS_OK;
 		}
 
-		_image = new BaseSprite(_gameRef);
-		if (!_image || DID_FAIL(_image->loadFile(val->getString()))) {
-			delete _image;
-			_image = nullptr;
+		_image = new BaseSprite(_game);
+		if (!_image || DID_FAIL(_image->loadFile(filename))) {
+			SAFE_DELETE(_image);
 			stack->pushBool(false);
 		} else {
 			stack->pushBool(true);
@@ -208,10 +213,10 @@ bool UIObject::scCallMethod(ScScript *script, ScStack *stack, ScStack *thisStack
 	//////////////////////////////////////////////////////////////////////////
 	else if (strcmp(name, "GetImage") == 0) {
 		stack->correctParams(0);
-		if (!_image || !_image->getFilename()) {
+		if (!_image || !_image->_filename || !_image->_filename[0]) {
 			stack->pushNULL();
 		} else {
-			stack->pushString(_image->getFilename());
+			stack->pushString(_image->_filename);
 		}
 
 		return STATUS_OK;
@@ -250,13 +255,13 @@ bool UIObject::scCallMethod(ScScript *script, ScStack *stack, ScStack *thisStack
 		if (_parent && _parent->_type == UI_WINDOW) {
 			UIWindow *win = (UIWindow *)_parent;
 
-			uint32 i;
+			int32 i;
 			bool found = false;
 			ScValue *val = stack->pop();
 			// find directly
 			if (val->isNative()) {
 				UIObject *widget = (UIObject *)val->getNative();
-				for (i = 0; i < win->_widgets.size(); i++) {
+				for (i = 0; i < win->_widgets.getSize(); i++) {
 					if (win->_widgets[i] == widget) {
 						found = true;
 						break;
@@ -266,8 +271,8 @@ bool UIObject::scCallMethod(ScScript *script, ScStack *stack, ScStack *thisStack
 			// find by name
 			else {
 				const char *findName = val->getString();
-				for (i = 0; i < win->_widgets.size(); i++) {
-					if (scumm_stricmp(win->_widgets[i]->getName(), findName) == 0) {
+				for (i = 0; i < win->_widgets.getSize(); i++) {
+					if (scumm_stricmp(win->_widgets[i]->_name, findName) == 0) {
 						found = true;
 						break;
 					}
@@ -276,7 +281,7 @@ bool UIObject::scCallMethod(ScScript *script, ScStack *stack, ScStack *thisStack
 
 			if (found) {
 				bool done = false;
-				for (uint32 j = 0; j < win->_widgets.size(); j++) {
+				for (int32 j = 0; j < win->_widgets.getSize(); j++) {
 					if (win->_widgets[j] == this) {
 						if (strcmp(name, "MoveAfter") == 0) {
 							i++;
@@ -285,8 +290,8 @@ bool UIObject::scCallMethod(ScScript *script, ScStack *stack, ScStack *thisStack
 							j++;
 						}
 
-						win->_widgets.insert_at(i, this);
-						win->_widgets.remove_at(j);
+						win->_widgets.insertAt(i, this);
+						win->_widgets.removeAt(j);
 
 						done = true;
 						stack->pushBool(true);
@@ -315,10 +320,10 @@ bool UIObject::scCallMethod(ScScript *script, ScStack *stack, ScStack *thisStack
 
 		if (_parent && _parent->_type == UI_WINDOW) {
 			UIWindow *win = (UIWindow *)_parent;
-			for (uint32 i = 0; i < win->_widgets.size(); i++) {
+			for (int32 i = 0; i < win->_widgets.getSize(); i++) {
 				if (win->_widgets[i] == this) {
-					win->_widgets.remove_at(i);
-					win->_widgets.insert_at(0, this);
+					win->_widgets.removeAt(i);
+					win->_widgets.insertAt(0, this);
 					break;
 				}
 			}
@@ -338,9 +343,9 @@ bool UIObject::scCallMethod(ScScript *script, ScStack *stack, ScStack *thisStack
 
 		if (_parent && _parent->_type == UI_WINDOW) {
 			UIWindow *win = (UIWindow *)_parent;
-			for (uint32 i = 0; i < win->_widgets.size(); i++) {
+			for (int32 i = 0; i < win->_widgets.getSize(); i++) {
 				if (win->_widgets[i] == this) {
-					win->_widgets.remove_at(i);
+					win->_widgets.removeAt(i);
 					win->_widgets.add(this);
 					break;
 				}
@@ -358,13 +363,13 @@ bool UIObject::scCallMethod(ScScript *script, ScStack *stack, ScStack *thisStack
 
 
 //////////////////////////////////////////////////////////////////////////
-ScValue *UIObject::scGetProperty(const Common::String &name) {
+ScValue *UIObject::scGetProperty(const char *name) {
 	_scValue->setNULL();
 
 	//////////////////////////////////////////////////////////////////////////
 	// Type
 	//////////////////////////////////////////////////////////////////////////
-	if (name == "Type") {
+	if (strcmp(name, "Type") == 0) {
 		_scValue->setString("ui_object");
 		return _scValue;
 	}
@@ -372,15 +377,15 @@ ScValue *UIObject::scGetProperty(const Common::String &name) {
 	//////////////////////////////////////////////////////////////////////////
 	// Name
 	//////////////////////////////////////////////////////////////////////////
-	else if (name == "Name") {
-		_scValue->setString(getName());
+	else if (strcmp(name, "Name") == 0) {
+		_scValue->setString(_name);
 		return _scValue;
 	}
 
 	//////////////////////////////////////////////////////////////////////////
 	// Parent (RO)
 	//////////////////////////////////////////////////////////////////////////
-	else if (name == "Parent") {
+	else if (strcmp(name, "Parent") == 0) {
 		_scValue->setNative(_parent, true);
 		return _scValue;
 	}
@@ -388,7 +393,7 @@ ScValue *UIObject::scGetProperty(const Common::String &name) {
 	//////////////////////////////////////////////////////////////////////////
 	// ParentNotify
 	//////////////////////////////////////////////////////////////////////////
-	else if (name == "ParentNotify") {
+	else if (strcmp(name, "ParentNotify") == 0) {
 		_scValue->setBool(_parentNotify);
 		return _scValue;
 	}
@@ -396,7 +401,7 @@ ScValue *UIObject::scGetProperty(const Common::String &name) {
 	//////////////////////////////////////////////////////////////////////////
 	// Width
 	//////////////////////////////////////////////////////////////////////////
-	else if (name == "Width") {
+	else if (strcmp(name, "Width") == 0) {
 		_scValue->setInt(_width);
 		return _scValue;
 	}
@@ -404,7 +409,7 @@ ScValue *UIObject::scGetProperty(const Common::String &name) {
 	//////////////////////////////////////////////////////////////////////////
 	// Height
 	//////////////////////////////////////////////////////////////////////////
-	else if (name == "Height") {
+	else if (strcmp(name, "Height") == 0) {
 		_scValue->setInt(_height);
 		return _scValue;
 	}
@@ -412,7 +417,7 @@ ScValue *UIObject::scGetProperty(const Common::String &name) {
 	//////////////////////////////////////////////////////////////////////////
 	// Visible
 	//////////////////////////////////////////////////////////////////////////
-	else if (name == "Visible") {
+	else if (strcmp(name, "Visible") == 0) {
 		_scValue->setBool(_visible);
 		return _scValue;
 	}
@@ -420,7 +425,7 @@ ScValue *UIObject::scGetProperty(const Common::String &name) {
 	//////////////////////////////////////////////////////////////////////////
 	// Disabled
 	//////////////////////////////////////////////////////////////////////////
-	else if (name == "Disabled") {
+	else if (strcmp(name, "Disabled") == 0) {
 		_scValue->setBool(_disable);
 		return _scValue;
 	}
@@ -428,7 +433,7 @@ ScValue *UIObject::scGetProperty(const Common::String &name) {
 	//////////////////////////////////////////////////////////////////////////
 	// Text
 	//////////////////////////////////////////////////////////////////////////
-	else if (name == "Text") {
+	else if (strcmp(name, "Text") == 0) {
 		_scValue->setString(_text);
 		return _scValue;
 	}
@@ -436,14 +441,14 @@ ScValue *UIObject::scGetProperty(const Common::String &name) {
 	//////////////////////////////////////////////////////////////////////////
 	// NextSibling (RO) / PrevSibling (RO)
 	//////////////////////////////////////////////////////////////////////////
-	else if (name == "NextSibling" || name == "PrevSibling") {
+	else if (strcmp(name, "NextSibling") == 0 || strcmp(name, "PrevSibling") == 0) {
 		_scValue->setNULL();
 		if (_parent && _parent->_type == UI_WINDOW) {
 			UIWindow *win = (UIWindow *)_parent;
-			for (uint32 i = 0; i < win->_widgets.size(); i++) {
+			for (int32 i = 0; i < win->_widgets.getSize(); i++) {
 				if (win->_widgets[i] == this) {
-					if (name == "NextSibling") {
-						if (i < win->_widgets.size() - 1) {
+					if (strcmp(name, "NextSibling") == 0) {
+						if (i < win->_widgets.getSize() - 1) {
 							_scValue->setNative(win->_widgets[i + 1], true);
 						}
 					} else {
@@ -532,14 +537,14 @@ const char *UIObject::scToString() {
 
 //////////////////////////////////////////////////////////////////////////
 bool UIObject::isFocused() {
-	if (!_gameRef->_focusedWindow) {
+	if (!_game->_focusedWindow) {
 		return false;
 	}
-	if (_gameRef->_focusedWindow == this) {
+	if (_game->_focusedWindow == this) {
 		return true;
 	}
 
-	UIObject *obj = _gameRef->_focusedWindow;
+	UIObject *obj = _game->_focusedWindow;
 	while (obj) {
 		if (obj == this) {
 			return true;
@@ -581,7 +586,7 @@ bool UIObject::focus() {
 				}
 			} else {
 				if (obj->_type == UI_WINDOW) {
-					_gameRef->focusWindow((UIWindow *)obj);
+					_game->focusWindow((UIWindow *)obj);
 				}
 			}
 
@@ -642,86 +647,20 @@ bool UIObject::persist(BasePersistenceManager *persistMgr) {
 }
 
 //////////////////////////////////////////////////////////////////////////
+const char *UIObject::getAccessCaption() {
+	if (_accessCaption)
+		return _accessCaption;
+	else {
+		if (_text && _text[0])
+			return _text;
+		else
+			return getCaption();
+	}
+}
+
+//////////////////////////////////////////////////////////////////////////
 bool UIObject::saveAsText(BaseDynamicBuffer *buffer, int indent) {
 	return STATUS_FAILED;
 }
-
-int32 UIObject::getWidth() const {
-	return _width;
-}
-
-// Has to be non-const to allow the virtual override to work,
-// as other getHeight()-functions currently have the potential
-// of having side-effects.
-int32 UIObject::getHeight() {
-	return _height;
-}
-
-void UIObject::setWidth(int32 width) {
-	assert(width >= 0);
-	_width = width;
-}
-
-void UIObject::setHeight(int32 height) {
-	assert(height >= 0);
-	_height = height;
-}
-
-bool UIObject::isDisabled() const {
-	return _disable;
-}
-
-bool UIObject::isVisible() const {
-	return _visible;
-}
-
-void UIObject::setVisible(bool visible) {
-	_visible = visible;
-}
-
-void UIObject::setDisabled(bool disable) {
-	_disable = disable;
-}
-
-bool UIObject::hasSharedFonts() const {
-	return _sharedFonts;
-}
-
-void UIObject::setSharedFonts(bool shared) {
-	_sharedFonts = shared;
-}
-
-bool UIObject::hasSharedImages() const {
-	return _sharedImages;
-}
-
-void UIObject::setSharedImages(bool shared) {
-	_sharedImages = shared;
-}
-
-BaseSprite *UIObject::getImage() const {
-	return _image;
-}
-
-void UIObject::setImage(BaseSprite *image) {
-	_image = image;
-}
-
-bool UIObject::canFocus() const {
-	return _canFocus;
-}
-
-void UIObject::setFont(BaseFont *font) {
-	_font = font;
-}
-
-BaseFont *UIObject::getFont() {
-	return _font;
-}
-
-BaseScriptHolder *UIObject::getListener() const {
-	return _listenerObject;
-}
-
 
 } // End of namespace Wintermute

@@ -88,6 +88,22 @@ else ifeq ($(platform), rpi4_64)
    HAVE_OPENGLES2 := 1
    HAVE_NEON := 1
 
+# webOS (32/64 bit)
+else ifeq ($(platform), webos)
+   TARGET = $(TARGET_NAME)_libretro.so
+   DEFINES += -fPIC -D_ARM_ASSEM_ -DUSE_CXX11 -DARM
+   LDFLAGS += -shared -Wl,--version-script=$(ROOT_PATH)/link.T -fPIC -static-libgcc -static-libstdc++
+   CFLAGS += -fPIC -fomit-frame-pointer -ffast-math
+   CXXFLAGS = $(CFLAGS) -frtti -std=c++11
+   HAVE_OPENGLES2 := 1
+   HAVE_NEON := 1
+   ifneq (,$(findstring aarch64,$(CROSS_COMPILE)))
+      CFLAGS += -mcpu=cortex-a53 -mtune=cortex-a76
+   else
+      DEFINES += -marm
+      CFLAGS += -mcpu=cortex-a9 -mtune=cortex-a53 -mfloat-abi=softfp
+   endif
+
 # iOS
 else ifneq (,$(findstring ios,$(platform)))
    TARGET  := $(TARGET_NAME)_libretro_ios.dylib
@@ -166,9 +182,11 @@ else ifneq (,$(filter $(platform), ps3 psl1ght))
    CC = $(PS3DEV)/ppu/bin/ppu-$(COMMONLV)gcc$(EXE_EXT)
    CXX = $(PS3DEV)/ppu/bin/ppu-$(COMMONLV)g++$(EXE_EXT)
    AR = $(PS3DEV)/ppu/bin/ppu-$(COMMONLV)ar$(EXE_EXT) rcs
-   DEFINES := -DPLAYSTATION3 -D__PS3__ -DRETRO_IS_BIG_ENDIAN=1 -DRETRO_IS_LITTLE_ENDIAN=0 -DWORDS_BIGENDIAN=1 -mcpu=cell -mno-fp-in-toc -I$(PS3DEV)/ppu/include
+   DEFINES := -D__PS3__ -DRETRO_IS_BIG_ENDIAN=1 -DRETRO_IS_LITTLE_ENDIAN=0 -DWORDS_BIGENDIAN=1 -mcpu=cell -mno-fp-in-toc -I$(PS3DEV)/ppu/include
    ifeq ($(platform), psl1ght)
       DEFINES += -D__PSL1GHT__
+      CFLAGS   += -mvsx -mvsx-timode
+      CXXFLAGS += -mvsx -mvsx-timode
       HAVE_OPENGL := 1
    endif
    STATIC_LINKING = 1
@@ -194,7 +212,7 @@ else ifeq ($(platform), libnx)
     DEFINES   += -g -O3 -fPIE -I$(LIBNX)/include/ -ffunction-sections -fdata-sections -ftls-model=local-exec -ffast-math -mcpu=cortex-a57+crc+fp+simd -march=armv8-a -mtune=cortex-a57 -mtp=soft
     DEFINES += $(INCDIRS)
     DEFINES += -D__SWITCH__ -DHAVE_LIBNX -D__arm64__ -D__ARM_NEON__
-    CXXFLAGS := $(ASFLAGS) -std=gnu++11 -fpermissive
+    CXXFLAGS += $(ASFLAGS) -std=gnu++11 -fpermissive
     STATIC_LINKING = 1
     HAVE_OPENGL := 1
     HAVE_NEON := 1
@@ -206,7 +224,7 @@ else ifeq ($(platform), wiiu)
    CXX = $(DEVKITPPC)/bin/powerpc-eabi-g++$(EXE_EXT)
    AR = $(DEVKITPPC)/bin/powerpc-eabi-ar$(EXE_EXT) rcs
    AR_ALONE = $(DEVKITPPC)/bin/powerpc-eabi-ar$(EXE_EXT)
-   DEFINES += -mwup -mcpu=750 -meabi -mhard-float -D__POWERPC__ -D__ppc__ -DRETRO_IS_BIG_ENDIAN=1 -DRETRO_IS_LITTLE_ENDIAN=0 -DWORDS_BIGENDIAN=1
+   DEFINES += -D__wiiu__ -mcpu=750 -meabi -mhard-float -D__POWERPC__ -D__ppc__ -DRETRO_IS_BIG_ENDIAN=1 -DRETRO_IS_LITTLE_ENDIAN=0 -DWORDS_BIGENDIAN=1
    DEFINES += -U__INT32_TYPE__ -U __UINT32_TYPE__ -D__INT32_TYPE__=int
    DEFINES += -DHAVE_STRTOUL -DWIIU
    CXXFLAGS := -fpermissive
@@ -375,7 +393,6 @@ else ifeq ($(platform), emscripten)
    CXXFLAGS += -std=c++11
    STATIC_LINKING = 1
    USE_LIBCO  = 0
-   USE_CLOUD = 0
 
 # Windows MSVC 2017 all architectures
 else ifneq (,$(findstring windows_msvc2017,$(platform)))
@@ -552,6 +569,8 @@ ifneq (,$(findstring $(platform), wiiu vita))
    DEFINES += -Os
 else ifneq (,$(findstring $(platform), ios osx))
    DEFINES += -O1
+else ifneq (,$(findstring armv7, $(platform))) # fixes a GCC 15.1 internal compiler error. TODO check if it is fixed in GCC newer releases.
+   DEFINES += -O1
 else ifneq (,$(findstring $(platform), msvc genode rpi))
    DEFINES += -O2
 else
@@ -602,6 +621,8 @@ CFLAGS += $(DEFINES) $(INCLUDES)
 
 # Include the build instructions for all modules
 include $(addprefix $(SCUMMVM_PATH)/, $(addsuffix /module.mk,$(MODULES)))
+
+include $(ROOT_PATH)/overrides.mk
 
 # Depdir information
 DEPDIRS := $(addsuffix $(DEPDIR),$(MODULE_PATHS))

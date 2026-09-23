@@ -134,7 +134,7 @@ void GfxView::initData() {
 	case kViewAmiga: // Amiga ECS (32 colors)
 	case kViewAmiga64: // Amiga AGA (64 colors)
 	case kViewVga: { // View-format SCI1
-		// LoopCount:WORD MirrorMask:WORD Version:WORD PaletteOffset:WORD LoopOffset0:WORD LoopOffset1:WORD...
+		// LoopCount:BYTE Flags:BYTE MirrorMask:WORD Version:WORD PaletteOffset:WORD LoopOffset0:WORD LoopOffset1:WORD...
 
 		_loop.resize(_resource->getUint8At(0));
 		// bit 0x8000 of _resourceData[1] means palette is set
@@ -458,6 +458,7 @@ void unpackCelData(const SciSpan<const byte> &inBuffer, SciSpan<byte> &celBitmap
 	const byte *literalPtr = inBuffer.getUnsafeDataAt(literalPos, inBuffer.size() - literalPos);
 	const byte *const endOfResource = inBuffer.getUnsafeDataAt(inBuffer.size(), 0);
 	int pixelNr = 0;
+	(void)endOfResource;
 
 	memset(celBitmap.getUnsafeDataAt(0), clearColor, celBitmap.size());
 
