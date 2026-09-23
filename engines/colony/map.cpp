@@ -84,6 +84,13 @@ void resetObjectLayout(Common::Array<Thing> &objects) {
 }
 
 void ColonyEngine::loadMap(int mnum) {
+	// _levelData has room for 8 levels; reject anything else before
+	// initRobots() indexes _levelData[mnum - 1] (CID 1653437)
+	if (mnum < 1 || mnum > 8) {
+		warning("loadMap: invalid level %d", mnum);
+		return;
+	}
+
 	saveLevelState();
 
 	Common::Path mapPath(Common::String::format("MAP.%d", mnum));
@@ -157,15 +164,18 @@ void ColonyEngine::loadMap(int mnum) {
 	delete[] buffer;
 	_dynamicObjectBase = kStaticObjectStartIndex;
 	_robotNum = MAX<int>(_robotNum, (int)_objects.size() + 1);
+	_bumpedObject = 0; // object numbers are per-level
 	_level = mnum;
+	// gamefile.c load_mapnum(): coreindex follows the map, so every route into a
+	// level picks up the right reactor.
+	_coreIndex = (mnum == 1) ? 0 : 1;
 	_me.type = kMeNum;
 
 	getWall();  // restore saved wall state changes (airlocks)
 	doPatch();  // apply object relocations from patch table
 	initRobots();  // spawn robot objects for this level
 
-	if (_me.xindex >= 0 && _me.xindex < 32 && _me.yindex >= 0 && _me.yindex < 32)
-		_robotArray[_me.xindex][_me.yindex] = kMeNum;
+	setPlayerCellMarker();
 	debugC(1, kColonyDebugMap, "Successfully loaded map %d (objects: %d)", mnum, (int)_objects.size());
 }
 

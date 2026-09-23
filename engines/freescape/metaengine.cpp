@@ -23,7 +23,6 @@
 #include "backends/keymapper/action.h"
 #include "backends/keymapper/keymap.h"
 #include "backends/keymapper/standard-actions.h"
-#include "graphics/thumbnail.h"
 #include "graphics/scaler.h"
 
 
@@ -32,10 +31,12 @@
 #include "freescape/games/dark/dark.h"
 #include "freescape/games/driller/driller.h"
 #include "freescape/games/eclipse/eclipse.h"
+#include "freescape/games/3dck/3dck.h"
+#include "freescape/games/3dck/8bit.h"
 #include "freescape/detection.h"
 
 
-static const ADExtraGuiOptionsMap optionsList[] = {
+const ADExtraGuiOptionsMap optionsList[] = {
 	{
 		GAMEOPTION_PRERECORDED_SOUNDS,
 		{
@@ -209,6 +210,11 @@ Common::Error FreescapeMetaEngine::createInstance(OSystem *syst, Engine **engine
 		*engine = (Engine *)new Freescape::EclipseEngine(syst, gd);
 	} else if (Common::String(gd->gameId) == "castlemaster" || Common::String(gd->gameId) == "castlemaster2") {
 		*engine = (Engine *)new Freescape::CastleEngine(syst, gd);
+	} else if (Common::String(gd->gameId) == "3dkit") {
+		if (gd->platform == Common::kPlatformAmstradCPC || gd->platform == Common::kPlatformZX || gd->platform == Common::kPlatformC64)
+			*engine = new Freescape::Kit8Engine(syst, gd);
+		else
+			*engine = new Freescape::KitEngine(syst, gd);
 	} else
 		*engine = new Freescape::FreescapeEngine(syst, gd);
 
@@ -235,7 +241,7 @@ Common::KeymapArray FreescapeMetaEngine::initKeymaps(const char *target) const {
 void FreescapeMetaEngine::getSavegameThumbnail(Graphics::Surface &thumb) {
 	Freescape::FreescapeEngine *engine = (Freescape::FreescapeEngine *)g_engine;
 	assert(engine->_savedScreen);
-	Graphics::Surface *scaledSavedScreen = scale(*engine->_savedScreen, kThumbnailWidth, kThumbnailHeight2);
+	Graphics::Surface *scaledSavedScreen = engine->_savedScreen->scale(kThumbnailWidth, kThumbnailHeight2);
 	assert(scaledSavedScreen);
 	thumb.copyFrom(*scaledSavedScreen);
 

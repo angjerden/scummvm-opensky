@@ -29,9 +29,11 @@
 #include "common/system.h"
 
 #include "graphics/thumbnail.h"
+#include "avalanche/outro.h"
 
 #include "avalanche/avalanche.h"
 #include "avalanche/intro.h"
+#include "avalanche/titlescreen.h"
 
 namespace Avalanche {
 
@@ -57,6 +59,8 @@ AvalancheEngine::AvalancheEngine(OSystem *syst, const AvalancheGameDescription *
 	_help = nullptr;
 	_highscore = nullptr;
 	_intro = nullptr;
+	_outro = nullptr;
+	_titleScreen = nullptr;
 
 	initVariables();
 }
@@ -81,6 +85,8 @@ AvalancheEngine::~AvalancheEngine() {
 	delete _help;
 	delete _highscore;
 	delete _intro;
+	delete _outro;
+	delete _titleScreen;
 
 	for (int i = 0; i < 31; i++) {
 		for (int j = 0; j < 2; j++) {
@@ -167,6 +173,8 @@ Common::ErrorCode AvalancheEngine::initialize() {
 	_help = new Help(this);
 	_highscore = new HighScore(this);
 	_intro = new Intro(this);
+	_outro = new Outro(this);
+	_titleScreen = new TitleScreen(this);
 
 	_graphics->init();
 	_dialogs->init();
@@ -177,7 +185,7 @@ Common::ErrorCode AvalancheEngine::initialize() {
 }
 
 bool AvalancheEngine::hasFeature(EngineFeature f) const {
-	return (f == kSupportsSavingDuringRuntime) || (f == kSupportsLoadingDuringRuntime);
+	return (f == kSupportsSavingDuringRuntime) || (f == kSupportsLoadingDuringRuntime) || (f == kSupportsReturnToLauncher);
 }
 
 const char *AvalancheEngine::getCopyrightString() const {
@@ -436,7 +444,7 @@ bool AvalancheEngine::loadGame(const int16 slot) {
 	_alive = true;
 	refreshObjectList();
 	_animation->updateSpeed();
-	drawDirection();
+	drawToolbar();
 	_animation->animLink();
 	_background->update();
 

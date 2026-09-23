@@ -43,7 +43,7 @@ public:
 	~Sound();
 
 	void init();
-	void play(int soundID);
+	void play(int soundID, bool loop = false);
 	void stop();
 	bool isPlaying() const;
 
@@ -62,11 +62,13 @@ public:
 		kPShot,
 		kTest,
 		kDit,
+		kDiDit,
 		kSink,
 		kClatter,
 		kStop,
 		kTeleport,
 		kSlug,
+		kTunnel1,
 		kTunnel2,
 		kLift,
 		kDrop,
@@ -79,7 +81,8 @@ public:
 		kToilet,
 		kBath,
 		kMars,
-		kBeamMe
+		kBeamMe,
+		kDave
 	};
 
 private:
@@ -90,8 +93,8 @@ private:
 	Audio::SoundHandle _handle;
 
 	void playPCSpeaker(int soundID);
-	bool playMacSound(int soundID);
-	bool playResource(int resID);
+	bool playMacSound(int soundID, bool loop);
+	bool playResource(int resID, bool loop);
 };
 
 } // End of namespace Colony

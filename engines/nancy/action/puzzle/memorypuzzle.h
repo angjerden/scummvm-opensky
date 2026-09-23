@@ -40,12 +40,14 @@ public:
 	void init() override;
 
 	void readData(Common::SeekableReadStream &stream) override;
+	void readDataNancy11(Common::SeekableReadStream &stream);
 	void execute() override;
 	void handleInput(NancyInput &input) override;
 
+	bool isViewportRelative() const override { return true; }
+
 protected:
 	Common::String getRecordTypeName() const override { return "MemoryPuzzle"; }
-	bool isViewportRelative() const override { return true; }
 
 	// File data
 
@@ -61,16 +63,25 @@ protected:
 	Common::Rect _cardRects[kCardsPerTab];   // viewport-relative screen positions (shared across tabs)
 	Common::Rect _tabRect;                   // screen rect where the active tab indicator is drawn
 	Common::Rect _tabHotspots[kNumTabs][3];  // [currentTab][targetTab]: hit-test rects for tab switching
-	Common::Rect _exitHotspot;
 
-	uint32 _numPairs      = 12;    // pairs in the shuffled layout (clamped [4..36])
+	uint32 _numPairs      = 12;    // distinct faces dealt out (clamped [4..36])
 	uint32 _requiredPairs = 12;    // pairs needed to win (clamped [2..36])
 	uint32 _flipDelay     = 1500;  // ms before non-matching cards flip back
 
-	bool _shuffleGlobal = false;  // false = pairs stay within same tab; true = can cross tabs
+	// Counts are fixed in the Nancy 9 layout but configurable from Nancy 11 onwards
+	int _numTabs      = kNumTabs;
+	int _cardsPerTab  = kCardsPerTab;
+	int _numTypes     = kMaxTypes;
 
-	SoundDescription _cardFlipSound; // played when a card is flipped face-up
+	bool _shuffleGlobal = false;  // false = pairs stay within same tab; true = can cross tabs
+	bool _hasPageTabs   = true;   // Nancy 11 onwards can lay the puzzle out without page tabs
+
+	// Nancy 11 onwards has a sound for each of the two card flips; before that the first
+	// flip uses the generic button click and the second one is silent
+	SoundDescription _firstFlipSound;
+	SoundDescription _secondFlipSound;
 	SoundDescription _matchSound;    // played when a matching pair is found
+	SoundDescription _noMatchSound;  // pre-Nancy 11: played when a pair doesn't match
 	SceneChangeWithFlag _winScene;
 	SoundDescription _winSound;
 
@@ -84,6 +95,7 @@ protected:
 
 	// _cards[tab * kCardsPerTab + i] = state of card i on tab `tab`
 	CardState _cards[kNumTabs * kCardsPerTab];
+	bool _typeUsed[kMaxTypes];  // faces already handed out while filling _cards
 
 	Graphics::ManagedSurface _image;
 
@@ -104,6 +116,7 @@ protected:
 
 	// Internal methods
 
+	int  pickCardType();  // next face to place, preferring unused ones
 	void initCards();     // shuffle types into all 72 card slots
 	void checkIfSolved();
 	void flipBackCards(); // unflip non-matching pair after timer expires

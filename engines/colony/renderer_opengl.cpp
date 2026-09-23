@@ -48,7 +48,6 @@ public:
 	void drawRect(const Common::Rect &rect, uint32 color) override;
 	void fillRect(const Common::Rect &rect, uint32 color) override;
 	void drawString(const Graphics::Font *font, const Common::String &str, int x, int y, uint32 color, Graphics::TextAlign align) override;
-	void scroll(int dx, int dy, uint32 background) override;
 	void drawEllipse(int x, int y, int rx, int ry, uint32 color) override;
 	void fillEllipse(int x, int y, int rx, int ry, uint32 color) override;
 	void fillDitherRect(const Common::Rect &rect, uint32 color1, uint32 color2) override;
@@ -94,27 +93,62 @@ public:
 	void setDepthRange(float nearVal, float farVal) override {
 		glDepthRange(nearVal, farVal);
 	}
+
+	void applyScissorRect(const Common::Rect &logical) {
+		const float scaleX = (float)_screenViewport.width() / (float)_width;
+		const float scaleY = (float)_screenViewport.height() / (float)_height;
+		const int sysH = _system->getHeight();
+		const int vpX = _screenViewport.left + (int)(logical.left * scaleX);
+		const int vpY = sysH - (_screenViewport.top + (int)(logical.bottom * scaleY));
+		const int vpW = (int)(logical.width() * scaleX);
+		const int vpH = (int)(logical.height() * scaleY);
+		glScissor(vpX, vpY, vpW > 0 ? vpW : 0, vpH > 0 ? vpH : 0);
+	}
+	void setFeatureClipX(int left, int right) override {
+		Common::Rect clipped = _active3DViewport;
+		if (left > clipped.left)
+			clipped.left = left;
+		if (right < clipped.right)
+			clipped.right = right;
+		if (clipped.left >= clipped.right)
+			clipped.right = clipped.left;
+		applyScissorRect(clipped);
+	}
+	void clearFeatureClipX() override {
+		applyScissorRect(_active3DViewport);
+	}
+	void setSquarePixelViewport(bool enable) override;
 	void computeScreenViewport() override;
 	void drawSurface(const Graphics::Surface *surf, int x, int y) override;
 	Graphics::Surface *getScreenshot() override;
+	Graphics::PixelFormat getPixelFormat() override {
+		return Graphics::PixelFormat::createFormatRGBA32();
+	}
 
 private:
 	void useColor(uint32 color);
+	// Set glLineWidth scaled to window/logical ratio. Mirrors Freescape
+	// (gfx_opengl_shaders.cpp:692). Cached so back-to-back same-width
+	// line draws don't re-issue the GL call.
+	void applyLineWidthForLines();
+	float _lineWidth = 1.0f;
 	GLuint _overlayTexId = 0;
 
 	OSystem *_system = nullptr;
+	Common::Rect _active3DViewport;
 	int _width = 0;
 	int _height = 0;
+	bool _squarePixelViewport = false;
 	byte _palette[256 * 3] = {};
 	bool _wireframe = true;
 	int64_t _wireframeFillColor = 0; // -1 = no fill (outline only)
 	const byte *_stippleData = nullptr; // GL_POLYGON_STIPPLE pattern (128 bytes), null = disabled
 	uint32 _stippleFgColor = 0;
 	uint32 _stippleBgColor = 0;
-	Common::Rect _screenViewport;
 };
 
 OpenGLRenderer::OpenGLRenderer(OSystem *system, int width, int height) : _system(system), _width(width), _height(height) {
+	debug(1, "Colony: using OpenGL fixed-function renderer");
 	_wireframe = true;
 	_wireframeFillColor = 0;
 	_stippleData = nullptr;
@@ -166,6 +200,17 @@ void OpenGLRenderer::useColor(uint32 color) {
 	}
 }
 
+void OpenGLRenderer::applyLineWidthForLines() {
+	const int sysW = _system ? _system->getWidth() : 0;
+	float w = 1.0f;
+	if (sysW > _width)
+		w = MAX(1.0f, (float)sysW / (float)_width);
+	if (w != _lineWidth) {
+		glLineWidth(w);
+		_lineWidth = w;
+	}
+}
+
 void OpenGLRenderer::clear(uint32 color) {
 	float r, g, b;
 	if (color & 0xFF000000) {
@@ -184,6 +229,7 @@ void OpenGLRenderer::clear(uint32 color) {
 
 void OpenGLRenderer::drawLine(int x1, int y1, int x2, int y2, uint32 color) {
 	useColor(color);
+	applyLineWidthForLines();
 	glBegin(GL_LINES);
 	glVertex2i(x1, y1);
 	glVertex2i(x2, y2);
@@ -192,6 +238,7 @@ void OpenGLRenderer::drawLine(int x1, int y1, int x2, int y2, uint32 color) {
 
 void OpenGLRenderer::drawRect(const Common::Rect &rect, uint32 color) {
 	useColor(color);
+	applyLineWidthForLines();
 	glBegin(GL_LINE_LOOP);
 	glVertex2i(rect.left, rect.top);
 	glVertex2i(rect.right, rect.top);
@@ -254,6 +301,7 @@ void OpenGLRenderer::begin3D(int camX, int camY, int camZ, int angle, int angleY
  
 	glViewport(vpX, vpY, vpW, vpH);
 	glScissor(vpX, vpY, vpW, vpH);
+	_active3DViewport = viewport;
 	glEnable(GL_SCISSOR_TEST);
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LEQUAL);
@@ -262,15 +310,12 @@ void OpenGLRenderer::begin3D(int camX, int camY, int camZ, int angle, int angleY
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
 	
-	// Use a proper FOV-based perspective projection (like Freescape).
-	// A fixed vertical FOV ensures the forward direction stays centered
-	// regardless of viewport dimensions (e.g. when dashboard narrows it).
-	float aspectRatio = (float)viewport.width() / (float)viewport.height();
-	float fov = 75.0f; // vertical FOV in degrees
-	float nearClip = 1.0f;
-	float farClip = 10000.0f;
-	float ymax = nearClip * tanf(fov * M_PI / 360.0f);
-	float xmax = ymax * aspectRatio;
+	// The original projection is center + (coordinate << 8) / depth, so
+	// derive the frustum from its fixed 256-logical-pixel focal length.
+	const float nearClip = 1.0f;
+	const float farClip = 10000.0f;
+	const float xmax = nearClip * viewport.width() * 0.5f / kProjectionFocalLength;
+	const float ymax = nearClip * viewport.height() * 0.5f / kProjectionFocalLength;
 	glFrustum(-xmax, xmax, -ymax, ymax, nearClip, farClip);
  
 	glMatrixMode(GL_MODELVIEW);
@@ -328,6 +373,7 @@ void OpenGLRenderer::draw3DWall(int x1, int y1, int x2, int y2, uint32 color) {
 
 		// Draw colored wireframe edges
 		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+		applyLineWidthForLines();
 		useColor(color);
 		glBegin(GL_QUADS);
 		glVertex3f(fx1, fy1, -160.0f);
@@ -528,14 +574,38 @@ void OpenGLRenderer::end3D() {
 	glOrtho(0, _width, _height, 0, -1, 1);
 }
 
+void OpenGLRenderer::setSquarePixelViewport(bool enable) {
+	if (_squarePixelViewport == enable)
+		return;
+
+	_squarePixelViewport = enable;
+	computeScreenViewport();
+}
+
 void OpenGLRenderer::computeScreenViewport() {
 	int32 screenWidth = _system->getWidth();
 	int32 screenHeight = _system->getHeight();
 
 	bool widescreen = ConfMan.getBool("widescreen_mod");
 
-	if (widescreen) {
-		_screenViewport = Common::Rect(screenWidth, screenHeight);
+	if (_squarePixelViewport) {
+		// Animation bitmaps use square pixels. Fit the uncorrected logical
+		// canvas so their authored 416x264 geometry matches the Mac version.
+		const int32 viewportWidth = MIN<int32>(screenWidth,
+			(screenHeight * _width + _height / 2) / _height);
+		const int32 viewportHeight = MIN<int32>(screenHeight,
+			(screenWidth * _height + _width / 2) / _width);
+		_screenViewport = Common::Rect(viewportWidth, viewportHeight);
+		_screenViewport.translate((screenWidth - viewportWidth) / 2,
+			(screenHeight - viewportHeight) / 2);
+	} else if (widescreen) {
+		// Widescreen is a 16:9 presentation even when fullscreen uses a
+		// taller or wider display. Keep it centered instead of stretching it.
+		const int32 viewportWidth = MIN<int32>(screenWidth, (screenHeight * 16 + 4) / 9);
+		const int32 viewportHeight = MIN<int32>(screenHeight, (screenWidth * 9 + 8) / 16);
+		_screenViewport = Common::Rect(viewportWidth, viewportHeight);
+		_screenViewport.translate((screenWidth - viewportWidth) / 2,
+			(screenHeight - viewportHeight) / 2);
 	} else if (_system->getFeatureState(OSystem::kFeatureAspectRatioCorrection)) {
 		// Aspect ratio correction (4:3)
 		int32 viewportWidth = MIN<int32>(screenWidth, screenHeight * 4 / 3);
@@ -551,9 +621,6 @@ void OpenGLRenderer::computeScreenViewport() {
 
 	glViewport(_screenViewport.left, screenHeight - _screenViewport.bottom, _screenViewport.width(), _screenViewport.height());
 	glScissor(_screenViewport.left, screenHeight - _screenViewport.bottom, _screenViewport.width(), _screenViewport.height());
-}
-
-void OpenGLRenderer::scroll(int dx, int dy, uint32 background) {
 }
 
 void OpenGLRenderer::drawEllipse(int x, int y, int rx, int ry, uint32 color) {
@@ -575,6 +642,7 @@ void OpenGLRenderer::drawEllipse(int x, int y, int rx, int ry, uint32 color) {
 	glDisable(GL_DEPTH_TEST);
 
 	useColor(color);
+	applyLineWidthForLines();
 	glBegin(GL_LINE_LOOP);
 	for (int i = 0; i < 360; i += 10) {
 		float rad = i * M_PI / 180.0f;
@@ -639,9 +707,18 @@ void OpenGLRenderer::fillDitherRect(const Common::Rect &rect, uint32 color1, uin
 }
 
 void OpenGLRenderer::setPixel(int x, int y, uint32 color) {
+	// Draw as a 1×1 GL_QUADS instead of GL_POINTS. With kSupportsArbitrary
+	// Resolutions the viewport stretches logical coords to window pixels:
+	// a single GL_POINT renders as 1 framebuffer pixel (leaving gaps on
+	// HiDPI), while a 1×1 quad in logical coords gets scaled to cover the
+	// full logical-pixel cell — matching what the shader renderer does
+	// (renderer_opengl_shaders.cpp setPixel implementation).
 	useColor(color);
-	glBegin(GL_POINTS);
+	glBegin(GL_QUADS);
 	glVertex2i(x, y);
+	glVertex2i(x + 1, y);
+	glVertex2i(x + 1, y + 1);
+	glVertex2i(x, y + 1);
 	glEnd();
 }
 
@@ -655,6 +732,7 @@ void OpenGLRenderer::drawQuad(int x1, int y1, int x2, int y2, int x3, int y3, in
 	glEnd();
 	
 	glColor3ub(255, 255, 255);
+	applyLineWidthForLines();
 	glBegin(GL_LINE_LOOP);
 	glVertex2i(x1, y1);
 	glVertex2i(x2, y2);
@@ -672,8 +750,9 @@ void OpenGLRenderer::drawPolygon(const int *x, const int *y, int count, uint32 c
 		glVertex2i(x[i], y[i]);
 	}
 	glEnd();
-	
+
 	glColor3ub(255, 255, 255);
+	applyLineWidthForLines();
 	glBegin(GL_LINE_LOOP);
 	for (int i = 0; i < count; i++) {
 		glVertex2i(x[i], y[i]);
@@ -719,11 +798,8 @@ void OpenGLRenderer::drawSurface(const Graphics::Surface *surf, int x, int y) {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	// The surface uses PixelFormat(4,8,8,8,8,24,16,8,0) = R at bit 24, A at bit 0.
-	// GL_UNSIGNED_INT_8_8_8_8 reads a uint32 and maps bits 24..31→R, 16..23→G,
-	// 8..15→B, 0..7→A, matching our pixel layout regardless of endianness.
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, surf->w, surf->h, 0,
-		GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, surf->getPixels());
+		GL_RGBA, GL_UNSIGNED_BYTE, surf->getPixels());
 
 	// Draw textured quad covering the specified region
 	float dx = x * scaleX;
