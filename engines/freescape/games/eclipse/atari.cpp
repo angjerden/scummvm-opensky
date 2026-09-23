@@ -25,9 +25,11 @@
 
 #include "freescape/freescape.h"
 #include "freescape/games/eclipse/eclipse.h"
-#include "freescape/language/8bitDetokeniser.h"
+#include "freescape/wb.h"
+#include "freescape/language/variables.h"
 
 namespace Freescape {
+
 
 extern const int kAtariCompassPhaseCount = 72;
 extern const int kAtariCompassBaseFrames = 19;
@@ -841,7 +843,7 @@ void EclipseEngine::loadAssetsAtariFullGame() {
 		memcpy(pal, kBorderPalette, 6 * 3);
 	}
 
-	loadSoundsFx(stream, 0x3030c, 6);
+	_sound = loadSoundsFx(stream, 0x3030c, 6);
 
 	// Load TEMUSIC.ST (GEMDOS executable at file offset $11F5A, skip $1C header, TEXT size $11E8)
 	static const uint32 kTEMusicOffset = 0x11F5A;
@@ -850,6 +852,8 @@ void EclipseEngine::loadAssetsAtariFullGame() {
 	stream->seek(kTEMusicOffset + kGemdosHeaderSize);
 	_musicData.resize(kTEMusicTextSize);
 	stream->read(_musicData.data(), kTEMusicTextSize);
+	_playerMusic = makeWallyBebenAtariPlayer(_musicData.data(), _musicData.size(),
+		kEclipseAtariOffsets);
 	debug(3, "TE-Atari: Loaded TEMUSIC.ST TEXT segment (%d bytes)", kTEMusicTextSize);
 
 	// UI font (Font A): 4-plane 16-color bordered font at prog $24C3E (file offset $24C5A)

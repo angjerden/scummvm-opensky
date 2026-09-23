@@ -32,7 +32,6 @@
 #include "common/system.h"
 #include "common/translation.h"
 #include "graphics/scaler.h"
-#include "graphics/thumbnail.h"
 
 #include "colony/colony.h"
 #include "colony/detection.h"
@@ -46,6 +45,17 @@ const ADExtraGuiOptionsMap optionsList[] = {
 			_s("Widescreen mod"),
 			_s("Enable widescreen rendering in fullscreen mode."),
 			"widescreen_mod",
+			true,
+			0,
+			0
+		}
+	},
+	{
+		GAMEOPTION_INVERT_Y,
+		{
+			_s("Invert Y-axis on mouse"),
+			_s("Use alternative camera controls"),
+			"invert_y",
 			false,
 			0,
 			0
@@ -84,7 +94,7 @@ void ColonyMetaEngine::getSavegameThumbnail(Graphics::Surface &thumb) {
 	if (!engine || !engine->getSavedScreen())
 		return;
 
-	Graphics::Surface *scaledSavedScreen = scale(*engine->getSavedScreen(), kThumbnailWidth, kThumbnailHeight2);
+	Graphics::Surface *scaledSavedScreen = engine->getSavedScreen()->scale(kThumbnailWidth, kThumbnailHeight2);
 	if (!scaledSavedScreen)
 		return;
 
@@ -150,6 +160,11 @@ Common::KeymapArray ColonyMetaEngine::initKeymaps(const char *target) const {
 	act->addDefaultInputMapping("x");
 	engineKeyMap->addAction(act);
 
+	act = new Common::Action("FACEFRWARD", _("Face forward"));
+	act->setCustomEngineActionEvent(kActionFaceForward);
+	act->addDefaultInputMapping("f");
+	engineKeyMap->addAction(act);
+
 	act = new Common::Action("MOUSE", _("Toggle mouselook"));
 	act->setCustomEngineActionEvent(kActionToggleMouselook);
 	act->addDefaultInputMapping("SPACE");
@@ -171,13 +186,7 @@ Common::KeymapArray ColonyMetaEngine::initKeymaps(const char *target) const {
 	act->addDefaultInputMapping("F11");
 	engineKeyMap->addAction(act);
 
-	act = new Common::Action("SKIP", _("Skip intro"));
-	act->setCustomEngineActionEvent(kActionSkipIntro);
-	act->addDefaultInputMapping("S+s");
-	act->addDefaultInputMapping("JOY_X");
-	engineKeyMap->addAction(act);
-
-	act = new Common::Action("ESCAPE", _("Menu"));
+	act = new Common::Action("ESCAPE", _("Menu / Skip intro"));
 	act->setCustomEngineActionEvent(kActionEscape);
 	act->addDefaultInputMapping("ESCAPE");
 	act->addDefaultInputMapping("JOY_BACK");
@@ -185,8 +194,21 @@ Common::KeymapArray ColonyMetaEngine::initKeymaps(const char *target) const {
 
 	act = new Common::Action("FIRE", _("Fire weapon"));
 	act->setCustomEngineActionEvent(kActionFire);
-	act->addDefaultInputMapping("f");
+	act->addDefaultInputMapping("LCTRL");
 	act->addDefaultInputMapping("JOY_B");
+	engineKeyMap->addAction(act);
+
+	act = new Common::Action("MAPIN", _("Zoom in (map)"));
+	act->setCustomEngineActionEvent(kActionAutomapZoomIn);
+	act->addDefaultInputMapping("PLUS");
+	act->addDefaultInputMapping("EQUALS");
+	act->addDefaultInputMapping("KP_PLUS");
+	engineKeyMap->addAction(act);
+
+	act = new Common::Action("MAPOUT", _("Zoom out (map)"));
+	act->setCustomEngineActionEvent(kActionAutomapZoomOut);
+	act->addDefaultInputMapping("MINUS");
+	act->addDefaultInputMapping("KP_MINUS");
 	engineKeyMap->addAction(act);
 
 	return Common::Keymap::arrayOf(engineKeyMap);

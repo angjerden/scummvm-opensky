@@ -508,10 +508,8 @@ begin_credits("Credits");
 	begin_section("ScummVM Team", "scummvm_team");
 		begin_section("Project Leaders", "project_leader");
 			begin_persons();
-				add_person("Pawe&#322; Ko&#322;odziejski", "aquadran", "");
-				add_person("Eugene Sandulenko", "sev", "");
-				add_person("Einar Johan T. S&oslash;m&aring;en", "somaen", "");
-				add_person("Lothar Serra Mari", "felsqualle", "");
+				add_person("Eugene Sandulenko", "sev", "Project Leader");
+				add_person("Lothar Serra Mari", "felsqualle", "Project Co-Leader and Admin");
 			end_persons();
 		end_section();
 
@@ -1117,6 +1115,11 @@ begin_credits("Credits");
 		end_section();
 
 		begin_section("ResidualVM Contributors", "residualvm_contrib");
+			begin_section("Project Leaders");
+				add_person("Pawe&#322; Ko&#322;odziejski", "aquadran", "");
+				add_person("Einar Johan T. S&oslash;m&aring;en", "somaen", "");
+			end_section();
+
 			begin_section("Grim");
 				add_person("Thomas Allen", "olldray", "Various engine code fixes and improvements");
 				add_person("Torbj&ouml;rn Andersson", "eriktorbjorn", "Various code fixes");
@@ -1305,6 +1308,9 @@ begin_credits("Credits");
 
 		add_paragraph(
 			"Ron Davis for releasing the sources and generously giving away the three chapters of God of Thunder.");
+
+		add_paragraph(
+			"David A. Smith for releasing the source code of The Colony, which our engine is based on.");
 
 	end_section();
 

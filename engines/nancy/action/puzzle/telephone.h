@@ -44,8 +44,9 @@ public:
 	};
 
 	enum CallState { kWaiting, kButtonPress, kRinging, kBadNumber, kPreCall, kCall, kHangUp };
+	enum PhoneType { kTelephone, kNewPhone };
 
-	Telephone(bool isNewPhone) :
+	Telephone(PhoneType phoneType) :
 		RenderActionRecord(7),
 		_callState(kWaiting),
 		_buttonLastPushed(-1),
@@ -53,7 +54,7 @@ public:
 		_checkNumbers(false),
 		_font(nullptr),
 		_animIsStopped(false),
-		_isNewPhone(isNewPhone) {}
+		_phoneType(phoneType) {}
 	virtual ~Telephone() {}
 
 	void init() override;
@@ -62,9 +63,10 @@ public:
 	void execute() override;
 	void handleInput(NancyInput &input) override;
 
-protected:
-	Common::String getRecordTypeName() const override { return _isNewPhone ? "NewPhone" : "Telephone"; }
 	bool isViewportRelative() const override { return true; }
+
+protected:
+	Common::String getRecordTypeName() const override { return _phoneType == kNewPhone ? "NewPhone" : "Telephone"; }
 
 	Common::Path _imageName;
 	Common::Array<Common::Rect> _srcRects;
@@ -82,6 +84,11 @@ protected:
 	SceneChangeWithFlag _exitScene;
 	Common::Rect _exitHotspot;
 	Common::Array<PhoneCall> _calls;
+
+	// Number of digits a number needs before the phone starts dialing. Numbers
+	// beginning with a '1' are long distance and have their own length
+	uint16 _numberLength = 7;
+	uint16 _longDistanceNumberLength = 11;
 
 	// NewPhone properties
 	bool _hasDisplay = false;
@@ -121,7 +128,7 @@ protected:
 
 	const Font *_font;
 
-	bool _isNewPhone;
+	PhoneType _phoneType;
 };
 
 } // End of namespace Action

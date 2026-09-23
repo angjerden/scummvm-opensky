@@ -144,6 +144,8 @@ void MazeChasePuzzle::updateGraphics() {
 }
 
 void MazeChasePuzzle::readData(Common::SeekableReadStream &stream) {
+	const bool isNancy10 = g_nancy->getGameType() >= kGameTypeNancy10;
+
 	readFilename(stream, _imageName);
 
 	uint width = stream.readUint16LE();
@@ -152,6 +154,18 @@ void MazeChasePuzzle::readData(Common::SeekableReadStream &stream) {
 
 	_exitPos.x = stream.readUint16LE();
 	_exitPos.y = stream.readUint16LE();
+
+	if (isNancy10) {
+		byte exitBehavior = stream.readByte();
+		if (exitBehavior <= kExitSlideRight) {
+			_exitBehavior = (ExitBehavior)exitBehavior;
+		} else {
+			// nancy14 keeps the piece in place for any other value
+			_exitBehavior = g_nancy->getGameType() >= kGameTypeNancy14 ? kExitStay : kExitSlideRight;
+		}
+	} else {
+		_exitBehavior = _exitPos.x == 0 ? kExitSlideLeft : kExitSlideRight;
+	}
 
 	_grid.resize(height, Common::Array<uint16>(width));
 	for (uint y = 0; y < height; ++y) {
@@ -166,6 +180,14 @@ void MazeChasePuzzle::readData(Common::SeekableReadStream &stream) {
 	for (uint i = 0; i < _startLocations.size(); ++i) {
 		_startLocations[i].x = stream.readUint16LE();
 		_startLocations[i].y = stream.readUint16LE();
+	}
+
+	if (isNancy10) {
+		// Fixed 3 slots (player + up to 2 enemies); skip the unused tail.
+		const uint kMaxSlots = 3;
+		const uint used = numEnemies + 1;
+		if (used < kMaxSlots)
+			stream.skip((kMaxSlots - used) * 4);
 	}
 
 	readRect(stream, _playerSrc);
@@ -219,11 +241,27 @@ void MazeChasePuzzle::execute() {
 		}
 
 		if (_pieces[0]._gridPos == _exitPos) {
-			_pieces[0]._gridPos = _exitPos + Common::Point(_exitPos.x == 0 ? -1 : 1, 0);
-			++_currentAnimFrame;
+			switch (_exitBehavior) {
+			case kExitDisappear:
+				_pieces[0].setVisible(false);
+				break;
+			case kExitSlideLeft:
+			case kExitSlideRight:
+				_pieces[0]._gridPos = _exitPos + Common::Point(_exitBehavior == kExitSlideLeft ? -1 : 1, 0);
+				++_currentAnimFrame;
+				break;
+			case kExitStay:
+				break;
+			}
+
 			g_nancy->_sound->loadSound(_solveSound);
 			g_nancy->_sound->playSound(_solveSound);
 			_solved = true;
+
+			if (g_nancy->getGameType() >= kGameTypeNancy14) {
+				// The delay runs alongside the solve sound, in 3-second steps
+				_solveSoundPlayTime = g_nancy->getTotalPlayTime() + _solveSoundDelay * 3000;
+			}
 			_state = kActionTrigger;
 		} else {
 			for (uint i = 1; i < _pieces.size(); ++i) {

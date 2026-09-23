@@ -62,6 +62,7 @@ public:
 	Common::Array<int8> _solveOrderAlt;
 	Common::Array<byte> _solveRotationsAlt;
 	Common::Array<Common::Array<byte>> _doubles;
+	Common::Array<int16> _pieceGroups;
 	bool _useAltSolution = false;
 
 	bool _useCustomPickUpTile = false;
@@ -85,11 +86,14 @@ public:
 	SolveState _solveState = kNotSolved;
 	RippedLetterPuzzleData *_puzzleState = nullptr;
 
-protected:
-	Common::String getRecordTypeName() const override { return "RippedLetterPuzzle"; }
 	bool isViewportRelative() const override { return true; }
 
+protected:
+	Common::String getRecordTypeName() const override { return "RippedLetterPuzzle"; }
+
 	void drawPiece(const uint pos, const byte rotation, const int pieceID = -1);
+	void copyPieceToPickedUp(const uint pos);
+	Common::Rect getPieceHotspot(const Common::Rect &hotspot, const Common::Rect &screenRect) const;
 	bool checkOrder(bool useAlt);
 };
 

@@ -18,11 +18,13 @@ MODULE_OBJS = \
 	mainmenu.o \
 	metaengine.o \
 	nim.o \
+	outro.o \
 	parser.o \
 	sequence.o \
 	shootemup.o \
 	sound.o \
 	timer.o \
+	titlescreen.o \
 
 # This module can be built as a plugin
 ifeq ($(ENABLE_AVALANCHE), DYNAMIC_PLUGIN)

@@ -34,8 +34,6 @@
 
 namespace Colony {
 
-namespace {
-
 struct MelodyStep {
 	uint32 divider;
 	uint8 ticks;
@@ -99,8 +97,6 @@ const int kBeamMeRamp1Steps = 20;
 const int kBeamMeRamp2Steps = 20;
 const int kBeamMeRamp3Steps = 80;
 
-} // namespace
-
 Sound::Sound(ColonyEngine *vm) : _vm(vm), _resMan(nullptr), _appResMan(nullptr) {
 	_speaker = new Audio::PCSpeaker();
 	_speaker->init();
@@ -141,14 +137,14 @@ bool Sound::isPlaying() const {
 	return _vm->_mixer->isSoundHandleActive(_handle) || _speaker->isPlaying();
 }
 
-void Sound::play(int soundID) {
+void Sound::play(int soundID, bool loop) {
 	stop();
 
 	if (!_vm->isSoundEnabled())
 		return;
 
 	if (_vm->getPlatform() == Common::kPlatformMacintosh)
-		playMacSound(soundID);
+		playMacSound(soundID, loop);
 	else
 		playPCSpeaker(soundID);
 }
@@ -198,6 +194,7 @@ void Sound::playPCSpeaker(int soundID) {
 		}
 		break;
 	case kChime:
+	case kDiDit:
 		queueTick(4649, 7);
 		queueTick(3690, 7);
 		queueTick(3103, 7);
@@ -250,22 +247,17 @@ void Sound::playPCSpeaker(int soundID) {
 		break;
 	}
 	case kLift:
-	{
-		uint32 div = 4649;
-		queueTick(div, 1);
-		while (div > 3103) {
-			div -= 8;
-			queueTick(div, 1);
-		}
-		break;
-	}
 	case kDrop:
 	{
-		uint32 div = 3103;
-		queueTick(div, 1);
-		while (div < 4649) {
-			div += 8;
-			queueTick(div, 1);
+		// VSP uses PIT divisor 0x4000; DURATION 1 waits two interrupts.
+		const uint32 stepUs = uint64(0x4000) * 2 * 1000000 / 1193180;
+		const bool lifting = soundID == kLift;
+		const int step = lifting ? -8 : 8;
+		int div = lifting ? 4649 : 3103;
+		_speaker->playQueue(Audio::PCSpeaker::kWaveFormSquare, 1193180.0f / div, stepUs);
+		while (lifting ? div > 3103 : div < 4649) {
+			div += step;
+			_speaker->playQueue(Audio::PCSpeaker::kWaveFormSquare, 1193180.0f / div, stepUs);
 		}
 		break;
 	}
@@ -345,7 +337,7 @@ void Sound::playPCSpeaker(int soundID) {
 	}
 }
 
-bool Sound::playMacSound(int soundID) {
+bool Sound::playMacSound(int soundID, bool loop) {
 	// Primary resource IDs from original sound.c
 	int resID = -1;
 	switch (soundID) {
@@ -363,23 +355,27 @@ bool Sound::playMacSound(int soundID) {
 	case kPShot: resID = 27539; break;  // PLANETSHOT
 	case kTest: resID = 25795; break;
 	case kDit: resID = 1516; break;
+	case kDiDit: resID = 4274; break;
 	case kSink: resID = 2920; break;
 	case kClatter: resID = 11208; break;
 	case kStop: resID = 29382; break;   // FULLSTOP
 	case kTeleport: resID = 9757; break;
 	case kSlug: resID = 8347; break;
+	case kTunnel1: resID = 16403; break;
 	case kTunnel2: resID = 17354; break;
-	case kLift: resID = 28521; break;
+	case kLift:
+	case kDrop: resID = 28521; break;
 	case kGlass: resID = 19944; break;
 	case kDoor: resID = 26867; break;
 	case kToilet: resID = 4955; break;
 	case kBath: resID = 11589; break;
 	case kMars: resID = 23390; break;
 	case kBeamMe: resID = 5342; break;
+	case kDave: resID = 13651; break;   // DAVE (the monolith's "full of stars" clip)
 	default: break;
 	}
 
-	if (resID != -1 && playResource(resID))
+	if (resID != -1 && playResource(resID, loop))
 		return true;
 
 	// Fallback resource IDs for sounds missing from this binary version.
@@ -392,7 +388,7 @@ bool Sound::playMacSound(int soundID) {
 	default: break;
 	}
 
-	if (altResID != -1 && playResource(altResID))
+	if (altResID != -1 && playResource(altResID, loop))
 		return true;
 
 	// Fallback to DOS sounds if Mac resource is missing
@@ -400,7 +396,7 @@ bool Sound::playMacSound(int soundID) {
 	return false;
 }
 
-bool Sound::playResource(int resID) {
+bool Sound::playResource(int resID, bool loop) {
 	Common::SeekableReadStream *snd = nullptr;
 
 	// Search Zounds first (has most sounds)
@@ -426,7 +422,8 @@ bool Sound::playResource(int resID) {
 	snd->read(data, dataSize);
 	delete snd;
 
-	Audio::AudioStream *stream = Audio::makeRawStream(data, dataSize, 11127, Audio::FLAG_UNSIGNED, DisposeAfterUse::YES);
+	Audio::RewindableAudioStream *raw = Audio::makeRawStream(data, dataSize, 11127, Audio::FLAG_UNSIGNED, DisposeAfterUse::YES);
+	Audio::AudioStream *stream = loop ? Audio::makeLoopingAudioStream(raw, 0) : raw;
 	_vm->_mixer->playStream(Audio::Mixer::kSFXSoundType, &_handle, stream);
 	return true;
 }
