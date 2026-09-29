@@ -1228,7 +1228,7 @@ void Sound::stopSpeech() {
 	_mixer->stopID(SOUND_SPEECH);
 }
 
-bool readWavAudioData(Common::String &filename, std::vector<uint8> &outAudioData, uint32 &sampleRate, uint32 &dataSize) {
+bool Sound::readWavAudioData(Common::String &filename, std::vector<uint8> &outAudioData, uint32 &sampleRate, uint32 &dataSize) {
 	std::ifstream file(filename.c_str(), std::ios::binary);
 	if (!file)
 		return false;
