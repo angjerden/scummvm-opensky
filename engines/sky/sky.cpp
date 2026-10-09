@@ -222,7 +222,7 @@ Common::Error SkyEngine::go() {
 		if (_systemVars->gameVersion > 272 && !SkyEngine::isIbass()) { // don't do intro for floppydemos
 			Intro *skyIntro = new Intro(_skyDisk, _skyScreen, _skyMusic, _skySound, _skyText, _mixer, _system);
 			bool floppyIntro = ConfMan.getBool("alt_intro");
-			//introSkipped = !skyIntro->doIntro(floppyIntro);
+			introSkipped = !skyIntro->doIntro(floppyIntro);
 			delete skyIntro;
 		} else if (SkyEngine::isIbass())
 			introSkipped = true;
