@@ -41,6 +41,7 @@
 #include "director/window.h"
 #include "director/castmember/castmember.h"
 #include "director/castmember/bitmap.h"
+#include "director/castmember/digitalvideo.h"
 #include "director/castmember/palette.h"
 #include "director/castmember/text.h"
 #include "director/castmember/transition.h"
@@ -270,6 +271,8 @@ static const BuiltinProto builtins[] = {
 	{ "trackStartTime",	LB::b_trackStartTime,1,1, 500, FBLTIN },	//				D5 f
 	{ "trackStopTime",	LB::b_trackStopTime,1, 1, 500, FBLTIN },	//				D5 f
 	{ "trackType",		LB::b_trackType,	1, 1, 500, FBLTIN },	//				D5 f
+	{ "trackEnabled",	LB::b_trackEnabled,	2, 2, 500, FBLTIN },	//				D5 f
+	{ "setTrackEnabled",LB::b_setTrackEnabled,	3, 3, 500, CBLTIN },	//				D5 f
 
 	// Save session
 	{ "beginRecording", LB::b_beginRecording,0, 1, 500, CBLTIN },	//				D5 c
@@ -1691,6 +1694,17 @@ void LB::b_getNthFileNameInFolder(int nargs) {
 		}
 	}
 
+	Common::Archive *saved = SearchMan.getArchive(kSavedFilesArchive);
+	if (saved) {
+		Common::ArchiveMemberList files;
+
+		saved->listMatchingMembers(files, path.append(path.empty() ? "*" : "/*", '/'), true);
+
+		for (auto &fi : files) {
+			fileNameList.push_back(Common::lastPathComponent(fi->getName(), '/'));
+		}
+	}
+
 	// Next, mix in files from the game filesystem (if they exist)
 	if (d.exists()) {
 		Common::FSList f;
@@ -1702,11 +1716,18 @@ void LB::b_getNthFileNameInFolder(int nargs) {
 		}
 	}
 
-	if (!fileNameList.empty() && (uint)fileNum < fileNameList.size()) {
-		// Sort files alphabetically
-		Common::sort(fileNameList.begin(), fileNameList.end());
-		r = Datum(fileNameList[fileNum]);
+	// Sort files alphabetically
+	Common::sort(fileNameList.begin(), fileNameList.end());
+
+	for (uint i = 1; i < fileNameList.size();) {
+		if (fileNameList[i].equalsIgnoreCase(fileNameList[i - 1]))
+			fileNameList.remove_at(i);
+		else
+			i++;
 	}
+
+	if ((uint)fileNum < fileNameList.size())
+		r = Datum(fileNameList[fileNum]);
 
 	g_lingo->push(r);
 }
@@ -2077,6 +2098,9 @@ void LB::b_idleLoadDone(int nargs) {
 
 void LB::b_pass(int nargs) {
 	g_lingo->_passEvent = true;
+
+	// Director's `pass` stops the current handler
+	g_lingo->_abort = true;
 }
 
 void LB::b_pause(int nargs) {
@@ -3299,14 +3323,7 @@ void LB::b_puppetSprite(int nargs) {
 			int spriteId = sprite.asInt();
 			Sprite *target = sc->getSpriteById(spriteId);
 			bool val = (bool)state.asInt();
-			bool refresh = (!val) && (target->_puppet);
 			target->_puppet = val;
-			if (refresh) {
-				// puppetSprite set to FALSE, copy back sprite data from frame cache
-				Channel *chan = sc->getChannelById(spriteId);
-				chan->setClean(sc->_currentFrame->_sprites[spriteId]);
-				chan->setDirty();
-			}
 		} else {
 			warning("b_puppetSprite: sprite index out of bounds");
 		}
@@ -4091,7 +4108,7 @@ void LB::b_soundBusy(int nargs) {
 	// Horror Tour 2 calls this with a void argument
 	TYPECHECK2(whichChannel, INT, VOID);
 	int channel = whichChannel.u.i;
-	if (whichChannel.type == VOID) {
+	if (whichChannel.type == VOID || channel == 0) {
 		channel = 1;
 	}
 
@@ -4396,6 +4413,47 @@ void LB::b_trackType(int nargs) {
 	Datum result("video");
 	result.type = SYMBOL;
 	g_lingo->push(result);
+}
+
+void LB::b_trackEnabled(int nargs) {
+	Datum whichTrack = g_lingo->pop();
+	Datum whichSprite = g_lingo->pop();
+	TYPECHECK(whichSprite, SPRITEREF);
+
+	Score *score = g_director->getCurrentMovie()->getScore();
+	Sprite *sprite = score->getSpriteById(whichSprite.u.i);
+	if (!sprite) {
+		g_lingo->push(0);
+		g_lingo->lingoError("b_trackEnabled: invalid sprite reference received");
+		return;
+	}
+	if (!sprite->_cast || (sprite->_cast->_type != kCastDigitalVideo)) {
+		g_lingo->push(0);
+		g_lingo->lingoError("b_trackEnabled: non-digital-video sprite reference received");
+		return;
+	}
+
+	g_lingo->push(((DigitalVideoCastMember *)(sprite->_cast))->getTrackEnabled(whichTrack.asInt()));
+}
+
+void LB::b_setTrackEnabled(int nargs) {
+	Datum trueOrFalse = g_lingo->pop();
+	Datum whichTrack = g_lingo->pop();
+	Datum whichSprite = g_lingo->pop();
+	TYPECHECK(whichSprite, SPRITEREF);
+
+	Score *score = g_director->getCurrentMovie()->getScore();
+	Sprite *sprite = score->getSpriteById(whichSprite.u.i);
+	if (!sprite) {
+		g_lingo->lingoError("b_setTrackEnabled: invalid sprite reference received");
+		return;
+	}
+	if (!sprite->_cast || (sprite->_cast->_type != kCastDigitalVideo)) {
+		g_lingo->lingoError("b_setTrackEnabled: non-digital-video sprite reference received");
+		return;
+	}
+
+	((DigitalVideoCastMember *)(sprite->_cast))->setTrackEnabled(whichTrack.asInt(), trueOrFalse.asInt());
 }
 
 void LB::b_scummvmassert(int nargs) {

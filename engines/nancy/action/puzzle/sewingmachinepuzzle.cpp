@@ -23,7 +23,7 @@
 
 #include "engines/nancy/nancy.h"
 #include "engines/nancy/graphics.h"
-#include "engines/nancy/resource.h"
+#include "engines/nancy/resource/resource.h"
 #include "engines/nancy/sound.h"
 #include "engines/nancy/input.h"
 #include "engines/nancy/util.h"
@@ -79,34 +79,6 @@ void SewingMachinePuzzle::classifyZones() {
 			break;
 		}
 	}
-}
-
-void SewingMachinePuzzle::playSoundBlock(const RandomSoundBlock &block) {
-	if (block.names.empty()) {
-		return;
-	}
-
-	uint idx = block.names.size() == 1 ? 0 : g_nancy->_randomSource->getRandomNumber(block.names.size() - 1);
-	const Common::String &name = block.names[idx];
-	if (name.empty() || name == "NO SOUND") {
-		return;
-	}
-
-	SoundDescription desc;
-	desc.name = name;
-	desc.channelID = block.channel;
-	desc.numLoops = block.numLoops > 0 ? block.numLoops : 1;
-	desc.volume = block.volume;
-
-	g_nancy->_sound->loadSound(desc);
-	g_nancy->_sound->playSound(desc);
-
-	// The mistake lines carry no inline caption; look the subtitle up by sound name,
-	// first in the Autotext table, then in the conversation table.
-	Common::String text = resolveSubtitleText(name);
-	if (text.empty())
-		text = resolveSubtitleText(name, Common::String(), "CONVO");
-	showSubtitle(text);
 }
 
 Common::Point SewingMachinePuzzle::needleInStrip() const {
@@ -228,8 +200,7 @@ void SewingMachinePuzzle::init() {
 	setVisible(true);
 	moveTo(vpBounds);
 
-	g_nancy->_resource->loadImage(_imageName, _image);
-	_image.setTransparentColor(_drawSurface.getTransparentColor());
+	loadImage();
 
 	// The needle's fixed sewing point = the bottom-center of the needle overlay's
 	// dest rect (167,0,285,170).

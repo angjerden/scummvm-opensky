@@ -452,6 +452,7 @@ void ColonyEngine::battleInit() {
 	_battleShip.look = _battleShip.ang = 32;
 
 	_battleRound = 0;
+	_battleSendFarX = false;
 	_projon = false;
 	_pcount = 0;
 
@@ -486,6 +487,8 @@ void ColonyEngine::battleSet() {
 			// Spawn pyramids in this quadrant
 			for (int p = 0; p < kMaxQuad; p++) {
 				int fx, fy;
+				const int shipHalfWidth = 350;
+				const int shipHalfLength = 900;
 				do {
 					fx = 0x2000 * i + kBattleSize + (0x1FFF & _randomSource.getRandomNumber(0x7FFF));
 					while (fx > 0x2000 * (i + 1) - kBattleSize)
@@ -498,10 +501,10 @@ void ColonyEngine::battleSet() {
 						fx < _battleEnter.xloc + 2 * kBattleSize &&
 						fy > _battleEnter.yloc - 2 * kBattleSize &&
 						fy < _battleEnter.yloc + 2 * kBattleSize) ||
-					(fx > _battleShip.xloc - 2 * kBattleSize &&
-						fx < _battleShip.xloc + 2 * kBattleSize &&
-						fy > _battleShip.yloc - 2 * kBattleSize &&
-						fy < _battleShip.yloc + 2 * kBattleSize));
+					(fx > _battleShip.xloc - shipHalfWidth &&
+						fx < _battleShip.xloc + shipHalfWidth &&
+						fy > _battleShip.yloc - shipHalfLength &&
+						fy < _battleShip.yloc + shipHalfLength));
 
 				_pyramids[i][j][p].xloc = fx;
 				_pyramids[i][j][p].yloc = fy;
@@ -954,12 +957,15 @@ void ColonyEngine::battleThink() {
 
 		const int fx = _bfight[i].xloc + (_cost[objWorldAng(ang)] >> 2);
 		const int fy = _bfight[i].yloc + (_sint[objWorldAng(ang)] >> 2);
+		const int shipHalfWidth = 350;
+		const int shipHalfLength = 900;
+
 		if (distance > 250 || tooFar) {
 			if ((!_orbit) &&
-				fx > _battleShip.xloc - 2 * kBattleSize &&
-				fx < _battleShip.xloc + 2 * kBattleSize &&
-				fy > _battleShip.yloc - 4 * kBattleSize &&
-				fy < _battleShip.yloc + 4 * kBattleSize) {
+				fx > _battleShip.xloc - shipHalfWidth &&
+				fx < _battleShip.xloc + shipHalfWidth &&
+				fy > _battleShip.yloc - shipHalfLength &&
+				fy < _battleShip.yloc + shipHalfLength) {
 				ang += 8;
 			} else if (fx > _battleEnter.xloc - 2 * kBattleSize &&
 				fx < _battleEnter.xloc + 2 * kBattleSize &&
@@ -1023,8 +1029,11 @@ void ColonyEngine::battleCommand(int xnew, int ynew) {
 		}
 	}
 
+	const int shipHalfWidth = 350;
+	const int shipHalfLength = 900;
+
 	if (!_orbit &&
-		xnew > _battleShip.xloc - 2 * kBattleSize &&
+		xnew > _battleShip.xloc - shipHalfWidth &&
 		xnew < _battleShip.xloc &&
 		ynew > _battleShip.yloc - kBattleSize / 2 &&
 		ynew < _battleShip.yloc + kBattleSize / 2) {
@@ -1041,10 +1050,10 @@ void ColonyEngine::battleCommand(int xnew, int ynew) {
 	}
 
 	if ((!_orbit &&
-		xnew > _battleShip.xloc - 2 * kBattleSize &&
-		xnew < _battleShip.xloc + 2 * kBattleSize &&
-		ynew > _battleShip.yloc - 4 * kBattleSize &&
-		ynew < _battleShip.yloc + 4 * kBattleSize) ||
+		xnew > _battleShip.xloc - shipHalfWidth &&
+		xnew < _battleShip.xloc + shipHalfWidth &&
+		ynew > _battleShip.yloc - shipHalfLength &&
+		ynew < _battleShip.yloc + shipHalfLength) ||
 		(xnew > _battleEnter.xloc - 2 * kBattleSize &&
 		xnew < _battleEnter.xloc + 2 * kBattleSize &&
 		ynew > _battleEnter.yloc - 2 * kBattleSize &&
@@ -1073,8 +1082,6 @@ void ColonyEngine::battleCommand(int xnew, int ynew) {
 }
 
 void ColonyEngine::battleShoot() {
-	static bool s_sendFarX = false;
-
 	if (_me.power[0] <= 0 || _weapons <= 0 || _fl)
 		return;
 
@@ -1113,14 +1120,14 @@ void ColonyEngine::battleShoot() {
 	target->power[1] -= battlePowerLevel(_me.power[0]);
 	if (target->power[1] < 0) {
 		target->power[1] = 15 + (_randomSource.getRandomNumber(0x0F) & 0x0F);
-		if (s_sendFarX) {
+		if (_battleSendFarX) {
 			target->xloc = battleNormalizeCoord(_me.xloc + 16000);
 			target->yloc = battleNormalizeCoord(_me.yloc + _randomSource.getRandomNumber(0x7FFF));
 		} else {
 			target->xloc = battleNormalizeCoord(_me.xloc + _randomSource.getRandomNumber(0x7FFF));
 			target->yloc = battleNormalizeCoord(_me.yloc + 16000);
 		}
-		s_sendFarX = !s_sendFarX;
+		_battleSendFarX = !_battleSendFarX;
 		_sound->play(Sound::kExplode);
 	}
 }
@@ -1160,11 +1167,14 @@ void ColonyEngine::battleProjCommand(int xcheck, int ycheck) {
 		}
 	}
 
+	const int shipHalfWidth = 350;
+	const int shipHalfLength = 900;
+
 	if ((!_orbit &&
-		xcheck > _battleShip.xloc - 2 * kBattleSize &&
-		xcheck < _battleShip.xloc + 2 * kBattleSize &&
-		ycheck > _battleShip.yloc - 4 * kBattleSize &&
-		ycheck < _battleShip.yloc + 4 * kBattleSize) ||
+		xcheck > _battleShip.xloc - shipHalfWidth &&
+		xcheck < _battleShip.xloc + shipHalfWidth &&
+		ycheck > _battleShip.yloc - shipHalfLength &&
+		ycheck < _battleShip.yloc + shipHalfLength) ||
 		(xcheck > _battleEnter.xloc - 2 * kBattleSize &&
 		xcheck < _battleEnter.xloc + 2 * kBattleSize &&
 		ycheck > _battleEnter.yloc - 2 * kBattleSize &&

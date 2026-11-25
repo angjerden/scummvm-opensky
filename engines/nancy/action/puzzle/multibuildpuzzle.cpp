@@ -21,10 +21,11 @@
 
 #include "engines/nancy/nancy.h"
 #include "engines/nancy/graphics.h"
-#include "engines/nancy/resource.h"
+#include "engines/nancy/resource/resource.h"
 #include "engines/nancy/sound.h"
 #include "engines/nancy/input.h"
 #include "engines/nancy/util.h"
+#include "engines/nancy/puzzledata.h"
 
 #include "engines/nancy/enginedata.h"
 #include "engines/nancy/state/scene.h"
@@ -109,6 +110,16 @@ void MultiBuildPuzzle::init() {
 		p.setZOrder((uint16)(_z + i + 1));
 	}
 
+	if (_retainState) {
+		restoreState();
+	} else if (g_nancy->getGameType() == kGameTypeNancy10) {
+		// Adding ingredients never lowers the flags in Nancy 10, so a new
+		// session lowers them here. Otherwise a mix the player threw away
+		// could still be baked.
+		writeSolveFlag(_minCountFlag, false, _minCountFlagLastValue);
+		writeSolveFlag(_solveScene._flag, false, _solveFlagLastValue);
+	}
+
 	_isInitialized = true;
 }
 
@@ -135,7 +146,7 @@ void MultiBuildPuzzle::readData(Common::SeekableReadStream &stream) {
 	_hasCloseupImage = (secName != "NO_FILE" && !secName.empty());
 
 	if (isNancy10) {
-		_retainState = stream.readByte() != 0;	// TODO: state isn't saved yet
+		_retainState = stream.readByte() != 0;
 	}
 
 	_numPieces = stream.readUint16LE();
@@ -257,12 +268,12 @@ void MultiBuildPuzzle::readData(Common::SeekableReadStream &stream) {
 		_exitCursorID1 = stream.readSint16LE();
 		readFlag(stream, _submitScene._flag);
 
-		_cancelScene._sceneChange.readData(stream);
+		_exitScene._sceneChange.readData(stream);
 		stream.skip(2);
 
 		readRect(stream, _exitHotspot2);
 		_exitCursorID2 = stream.readSint16LE();
-		readFlag(stream, _cancelScene._flag);
+		readFlag(stream, _exitScene._flag);
 		return;
 	}
 
@@ -277,12 +288,12 @@ void MultiBuildPuzzle::readData(Common::SeekableReadStream &stream) {
 	stream.read(textBuf, 200);
 	assembleTextLine(textBuf, _solveText, 200);
 
-	_cancelScene.readData(stream);
+	_exitScene.readData(stream);
 
 	readRect(stream, _exitHotspot);
 	readRect(stream, _exitHotspot2);
 
-	_minCountFlag = _cancelScene._flag;
+	_minCountFlag = _exitScene._flag;
 }
 
 void MultiBuildPuzzle::execute() {
@@ -316,7 +327,7 @@ void MultiBuildPuzzle::execute() {
 			break;
 
 		case kWaitSolveSound:
-			if (!g_nancy->_sound->isSoundPlaying(_solveSound)) {
+			if (!isSolveSoundPlaying()) {
 				g_nancy->_sound->stopSound(_solveSound);
 				_state = kActionTrigger;
 			}
@@ -396,15 +407,17 @@ void MultiBuildPuzzle::execute() {
 		g_nancy->_sound->stopSound(_solveSound);
 		g_nancy->_sound->stopSound(_missedSound);
 		g_nancy->_sound->stopSound(_submitSound);
+		if (g_nancy->getGameType() >= kGameTypeNancy10)
+			saveState();
 		if (_isSubmitted) {
 			NancySceneState.setEventFlag(_submitScene._flag);
 			NancySceneState.changeScene(_submitScene._sceneChange);
 		} else if (_isCancelled) {
-			NancySceneState.changeScene(_cancelScene._sceneChange);
+			NancySceneState.changeScene(_exitScene._sceneChange);
 			// Cancel flag is only set if at least one piece was placed (or
 			// spawned). For sandwich (all counter pieces) the spawn delta is
 			// what trips the gate when a bad ingredient was placed.
-			if (_cancelScene._flag.label != kFlagNoLabel) {
+			if (_exitScene._flag.label != kFlagNoLabel) {
 				uint16 count = 0;
 				for (uint i = 0; i < _numPieces; ++i) {
 					if (_pieces[i]->isPlaced && _pieces[i]->counterByte == 0)
@@ -412,11 +425,10 @@ void MultiBuildPuzzle::execute() {
 				}
 				count += (uint16)(_pieces.size() - _numPieces);
 				if (count > 0)
-					NancySceneState.setEventFlag(_cancelScene._flag);
+					NancySceneState.setEventFlag(_exitScene._flag);
 			}
 		} else {
-			NancySceneState.setEventFlag(_solveScene._flag);
-			NancySceneState.changeScene(_solveScene._sceneChange);
+			_solveScene.execute();
 		}
 		finishExecution();
 		break;
@@ -646,6 +658,7 @@ void MultiBuildPuzzle::handleInput(NancyInput &input) {
 				if (addMode) {
 					// Ingredient goes back to its shelf slot, still pickable.
 					pp.isPlaced = false;
+					pp.curRotation = 0;
 					pp.gameRect = pp.homeRect;
 				} else {
 					pp.isPlaced = true;
@@ -661,6 +674,7 @@ void MultiBuildPuzzle::handleInput(NancyInput &input) {
 				// Missed: the ingredient was thrown away. Return it to the shelf
 				// and play the "Missed." feedback (sound + caption).
 				pp.isPlaced = false;
+				pp.curRotation = 0;
 				pp.gameRect = pp.homeRect;
 				if (isNancy10 && _missedSound.name != "NO SOUND") {
 					g_nancy->_sound->playSound(_missedSound);
@@ -790,8 +804,10 @@ void MultiBuildPuzzle::handleInput(NancyInput &input) {
 
 		if (input.input & NancyInput::kLeftMouseButtonUp) {
 			Piece &pp = *_pieces[topmost];
+			// Taking a placed piece back out undoes its placement.
+			if (g_nancy->getGameType() >= kGameTypeNancy10 && pp.counterByte == 0 && pp.placeCount > 0)
+				pp.placeCount--;
 			pp.isPlaced = false;
-			pp.curRotation = 0;
 			pp.setZOrder((uint16)(_z + (int)_pieces.size() * 2));
 			pp.registerGraphics();
 
@@ -807,8 +823,8 @@ void MultiBuildPuzzle::handleInput(NancyInput &input) {
 				// Direct drag on first click.
 				_isDragging = true;
 				_pickedUpPiece = topmost;
-				_pickedUpWidth  = pp.rotateSurfaces[0].w;
-				_pickedUpHeight = pp.rotateSurfaces[0].h;
+				_pickedUpWidth  = pp.rotateSurfaces[pp.curRotation].w;
+				_pickedUpHeight = pp.rotateSurfaces[pp.curRotation].h;
 				g_nancy->_sound->playSound(_pickupSound);
 			}
 			updatePieceRender(topmost);
@@ -906,6 +922,41 @@ void MultiBuildPuzzle::resetPuzzle() {
 	_solveFlagLastValue = -1;
 }
 
+void MultiBuildPuzzle::saveState() {
+	MultiBuildPuzzleData *data = (MultiBuildPuzzleData *)NancySceneState.getPuzzleData(MultiBuildPuzzleData::getTag());
+	assert(data);
+
+	data->sceneID = NancySceneState.getSceneInfo().sceneID;
+	data->placeCounts.resize(_numPieces);
+	for (uint i = 0; i < _numPieces; ++i)
+		data->placeCounts[i] = _pieces[i]->placeCount;
+}
+
+void MultiBuildPuzzle::restoreState() {
+	MultiBuildPuzzleData *data = (MultiBuildPuzzleData *)NancySceneState.getPuzzleData(MultiBuildPuzzleData::getTag());
+	assert(data);
+
+	if (data->sceneID != NancySceneState.getSceneInfo().sceneID)
+		return;
+
+	// Retaining records put the ingredients back on the shelf after each drop,
+	// so the counts are all there is to restore.
+	for (uint i = 0; i < _numPieces && i < data->placeCounts.size(); ++i)
+		_pieces[i]->placeCount = (uint8)data->placeCounts[i];
+}
+
+void MultiBuildPuzzle::writeSolveFlag(const FlagDescription &flag, bool isSet, int &lastValue) {
+	if (flag.label == kFlagNoLabel)
+		return;
+
+	byte value = isSet ? flag.flag
+		: (flag.flag == g_nancy->_false ? g_nancy->_true : g_nancy->_false);
+	if ((int)value != lastValue) {
+		NancySceneState.setEventFlag(flag.label, value);
+		lastValue = value;
+	}
+}
+
 bool MultiBuildPuzzle::updateSolveFlags() {
 	uint16 total = 0;
 	for (uint i = 0; i < _numPieces; ++i) {
@@ -916,20 +967,11 @@ bool MultiBuildPuzzle::updateSolveFlags() {
 
 	// The cancel scene's flag is the "enough ingredients" flag that enables the
 	// BAKE option in the neighbouring scene. It is raised at/above the threshold.
-	// Below the threshold, Nancy 10 leaves it latched (so backing away from the
-	// counter and stepping back up keeps BAKE available), while Nancy 11+ clears
-	// it. Written only on a value change (see member comment).
-	if (_minCountFlag.label != kFlagNoLabel) {
-		const bool enough = total >= _requiredPieces;
-		if (enough || g_nancy->getGameType() >= kGameTypeNancy11) {
-			byte want = enough ? _minCountFlag.flag
-				: (_minCountFlag.flag == g_nancy->_false ? g_nancy->_true : g_nancy->_false);
-			if ((int)want != _minCountFlagLastValue) {
-				NancySceneState.setEventFlag(_minCountFlag.label, want);
-				_minCountFlagLastValue = want;
-			}
-		}
-	}
+	// Below the threshold, Nancy 10 leaves it as it is (a new session lowers it
+	// in init()), while Nancy 11+ clears it.
+	const bool enough = total >= _requiredPieces;
+	if (enough || g_nancy->getGameType() >= kGameTypeNancy11)
+		writeSolveFlag(_minCountFlag, enough, _minCountFlagLastValue);
 
 	if (total < _requiredPieces)
 		return false;
@@ -956,14 +998,7 @@ bool MultiBuildPuzzle::updateSolveFlags() {
 		}
 	}
 
-	if (_solveScene._flag.label != kFlagNoLabel) {
-		byte want = exact ? _solveScene._flag.flag
-			: (_solveScene._flag.flag == g_nancy->_false ? g_nancy->_true : g_nancy->_false);
-		if ((int)want != _solveFlagLastValue) {
-			NancySceneState.setEventFlag(_solveScene._flag.label, want);
-			_solveFlagLastValue = want;
-		}
-	}
+	writeSolveFlag(_solveScene._flag, exact, _solveFlagLastValue);
 
 	return exact;
 }
