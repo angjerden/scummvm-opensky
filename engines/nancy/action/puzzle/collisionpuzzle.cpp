@@ -21,7 +21,7 @@
 
 #include "engines/nancy/nancy.h"
 #include "engines/nancy/graphics.h"
-#include "engines/nancy/resource.h"
+#include "engines/nancy/resource/resource.h"
 #include "engines/nancy/sound.h"
 #include "engines/nancy/input.h"
 #include "engines/nancy/util.h"
@@ -34,15 +34,9 @@ namespace Nancy {
 namespace Action {
 
 void CollisionPuzzle::init() {
-	Common::Rect screenBounds = NancySceneState.getViewport().getBounds();
-	_drawSurface.create(screenBounds.width(), screenBounds.height(), g_nancy->_graphics->getInputPixelFormat());
-	_drawSurface.clear(g_nancy->_graphics->getTransColor());
-	setTransparent(true);
-	setVisible(true);
-	moveTo(screenBounds);
+	initViewportSurface();
 
-	g_nancy->_resource->loadImage(_imageName, _image);
-	_image.setTransparentColor(_drawSurface.getTransparentColor());
+	loadImage();
 
 	if (_puzzleType == kCollision) {
 		_pieces.resize(_pieceSrcs.size());
@@ -69,6 +63,7 @@ void CollisionPuzzle::init() {
 
 				switch (id) {
 				case 1 :
+				case 6 :
 					newPiece._w = 2;
 					break;
 				case 2 :
@@ -83,9 +78,6 @@ void CollisionPuzzle::init() {
 				case 5 :
 					newPiece._w = 2;
 					newPiece._h = 2;
-					break;
-				case 6 :
-					newPiece._w = 2;
 					break;
 				default :
 					continue;
@@ -131,7 +123,7 @@ void CollisionPuzzle::registerGraphics() {
 		_pieces[i].registerGraphics();
 	}
 
-	RenderActionRecord::registerGraphics();
+	PuzzleRecord::registerGraphics();
 }
 
 void CollisionPuzzle::updateGraphics() {
@@ -397,13 +389,12 @@ void CollisionPuzzle::execute() {
 					return;
 				}
 
-				g_nancy->_sound->loadSound(_solveSound);
-				g_nancy->_sound->playSound(_solveSound);
+				playSolveSound();
 				NancySceneState.setEventFlag(_solveScene._flag);
 				_solveSoundPlayTime = 0;
 				return;
 			} else {
-				if (g_nancy->_sound->isSoundPlaying(_solveSound)) {
+				if (isSolveSoundPlaying()) {
 					return;
 				}
 
@@ -654,9 +645,7 @@ void CollisionPuzzle::handleInput(NancyInput &input) {
 			return;
 		}
 	} else {
-		if (NancySceneState.getViewport().convertViewportToScreen(_exitHotspot).contains(input.mousePos)) {
-			g_nancy->_cursor->setCursorType(g_nancy->_cursor->_puzzleExitCursor);
-
+		if (hoverExitHotspot(input)) {
 			if (input.input & NancyInput::kLeftMouseButtonUp) {
 				_state = kActionTrigger;
 			}

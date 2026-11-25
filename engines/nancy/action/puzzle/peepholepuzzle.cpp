@@ -24,7 +24,7 @@
 #include "engines/nancy/sound.h"
 #include "engines/nancy/input.h"
 #include "engines/nancy/util.h"
-#include "engines/nancy/resource.h"
+#include "engines/nancy/resource/resource.h"
 
 #include "engines/nancy/action/puzzle/peepholepuzzle.h"
 
@@ -107,9 +107,7 @@ void PeepholePuzzle::handleInput(NancyInput &input) {
 
 	bool justReleased = false;
 
-	if (NancySceneState.getViewport().convertViewportToScreen(_exitHotspot).contains(input.mousePos)) {
-		g_nancy->_cursor->setCursorType(g_nancy->_cursor->_puzzleExitCursor);
-
+	if (hoverExitHotspot(input)) {
 		if (input.input & NancyInput::kLeftMouseButtonUp) {
 			_state = kActionTrigger;
 		}

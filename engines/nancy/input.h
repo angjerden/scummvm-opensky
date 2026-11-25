@@ -61,15 +61,19 @@ struct NancyInput {
 		kMouseWheel				= kMouseWheelUp | kMouseWheelDown
 	};
 
-	Common::Point mousePos;
+	Common::Point mousePos;			// in game coordinates
+	Common::Point screenMousePos;	// Nancy16: for what gets drawn at the screen's own resolution
 	uint16 input;
 	Common::Array<Common::KeyState> otherKbdInput;
 
-	void eatMouseInput() { mousePos.x = -1; input &= ~(kLeftMouseButton | kRightMouseButton | kMouseWheel); }
+	void eatMouseInput() { mousePos.x = -1; screenMousePos.x = -1; input &= ~(kLeftMouseButton | kRightMouseButton | kMouseWheel); }
 
 	// Consumes just the wheel input, leaving the mouse position and buttons alone,
 	// so a widget that scrolls can still keep updating its hover state
 	void eatMouseWheelInput() { input &= ~kMouseWheel; }
+
+	// Takes away the esc press, which comes both as the menu key and as a key
+	void eatMainMenuKey();
 };
 
 // This class handles collecting events and translating them to a NancyInput object,
@@ -92,12 +96,19 @@ public:
 	InputManager() :
 		_inputs(0),
 		_mouseEnabled(true),
+		_isEscEaten(false),
 		_inputBeginState(NancyState::kNone) {}
 
 	void processEvents();
 
 	NancyInput getInput() const;
+
+	// Nancy32: whether a key that isn't bound to an action is held down
+	bool isKeyHeld(Common::KeyCode key) const;
 	void forceCleanInput();
+	// Takes away an esc press that skipped something, so nothing else sees it,
+	// in this frame or later ones, until the key gets pressed again
+	void eatMainMenuKey();
 	void setMouseInputEnabled(bool enabled) { _mouseEnabled = enabled; }
 	void setKeymapEnabled(Common::String keymapName, bool enabled);
 	void setVKEnabled(bool enabled);
@@ -109,7 +120,9 @@ public:
 private:
 	uint16 _inputs;
 	Common::Array<Common::KeyState> _otherKbdInput;
+	Common::Array<Common::KeyCode> _heldKeys;
 	bool _mouseEnabled;
+	bool _isEscEaten;
 	NancyState::NancyState _inputBeginState;
 };
 

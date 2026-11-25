@@ -23,6 +23,7 @@
 #define NANCY_H
 
 #include "common/file.h"
+#include "common/hashmap.h"
 #include "common/str.h"
 #include "common/ptr.h"
 
@@ -43,8 +44,18 @@ class Serializer;
  *
  * Status of this engine:
  * The Vampire Diaries and all Nancy Drew games up to and including
- * Nancy Drew: Danger on Deception Island are fully completable.
+ * Nancy Drew: The Creature of Kapu Cave are fully completable.
  * Every other game is untested but definitely unplayable.
+ *
+ * The engine has the following major versions:
+ * - v1: TVD, Nancy1-9
+ * - v2: Nancy10-11 (revamped interface)
+ * - v2a: Nancy12 (moved hardcoded dialog logic)
+ * - v2b: Nancy13-14 (32bpp graphics, scene include scripts)
+ * - v2c: Nancy15 (multiple characters and UI interfaces)
+ * - v3: Nancy16-17 (revamped interface)
+ * - v3a: Nancy18 (PNG graphics)
+ * - v4: Nancy19 and newer (Lua scripting)
  *
  * Games using this engine:
  *	- The Vampire Diaries (1996)
@@ -68,9 +79,17 @@ namespace Nancy {
 // - 11: Nancy12+ TableData holds 100 single values instead of 30, and
 //       the Nancy14/15 player clock only holds the time of the current
 //       day, with the day itself stored separately
-static const int kSavegameVersion = 11;
+// - 12: QuizPuzzle slots are keyed by a 32-bit id, and the Nancy15
+//       protagonists each carry their own cell phone
+static const int kSavegameVersion = 12;
 
-struct NancyGameDescription;
+struct CVTX;
+struct ENVS;
+struct EVNT;
+struct INVD;
+struct PCUI;
+struct VIEW;
+struct ScriptBootData;
 
 class ResourceManager;
 class IFF;
@@ -86,12 +105,16 @@ namespace State {
 class State;
 }
 
+namespace Script {
+class OverrideRecord;
+}
+
 class NancyEngine : public Engine {
 public:
-	NancyEngine(OSystem *syst, const NancyGameDescription *gd);
+	NancyEngine(GameType type, OSystem *syst, const ADGameDescription *gd);
 	~NancyEngine();
 
-	static NancyEngine *create(GameType type, OSystem *syst, const NancyGameDescription *gd);
+	static NancyEngine *create(GameType type, OSystem *syst, const ADGameDescription *gd);
 
 	void errorString(const char *buf_input, char *buf_output, int buf_output_size) override;
 	bool hasFeature(EngineFeature f) const override;
@@ -121,6 +144,9 @@ public:
 	// Scene::reloadPlayerCharacterUI() rebuilds the widgets themselves.
 	bool setPlayerCharacter(uint characterIndex);
 	uint getPlayerCharacter() const { return _playerCharacter; }
+
+	// Adds the texts of a text file to the autotext
+	void addAutotext(const Common::Path &name);
 
 	// A character's "design" is the look their UI wears; it names the CIF tree
 	// everything is loaded from. Nancy's can be changed on the Design Select
@@ -160,6 +186,35 @@ public:
 	// Used to check whether we need to show the SaveDialog
 	bool _hasJustSaved;
 
+	// Nancy22: the records that took a name with SetMessagingName. Each name
+	// goes to one record at a time; records without one go by the
+	// "messagingName" a script stored in them.
+	typedef Common::HashMap<Common::String, Script::OverrideRecord *, Common::IgnoreCase_Hash, Common::IgnoreCase_EqualTo> MessagingNameMap;
+	MessagingNameMap _messagingNames;
+
+	// Nancy21: what the scripts keep apart from the saved games, packed the way
+	// Save:Data packs it. Resorting to Danger keeps its profiles there, in a
+	// file of its own.
+	Common::HashMap<Common::String, Common::Array<byte> > _scriptAttic;
+	bool _isScriptAtticLoaded = false;
+
+	// Lights, Camera, Curses: the profile being played, which is a saved game
+	// named after the player. What follows outlasts the game a new profile, or
+	// loading another one, takes down.
+	struct ProfileState {
+		Common::String current;		// the saved game of the profile; empty for none
+		Common::String newProfile;	// saved once the new game for it has started
+		bool isNewProfileGame = false;
+		// The profile popup comes back up once the next scene runs, with a value
+		// of 0 when the arcade mode got loaded
+		bool hasPendingPopup = false;
+		bool isPopupForArcade = false;
+		// The saved values every profile shares, packed as Save:Data packs them
+		Common::HashMap<Common::String, Common::Array<byte>, Common::IgnoreCase_Hash, Common::IgnoreCase_EqualTo> sharedValues;
+	};
+
+	ProfileState _profile;
+
 protected:
 	Common::Error run() override;
 	void pauseEngineIntern(bool pause) override;
@@ -173,6 +228,13 @@ private:
 	};
 
 	void bootGameEngine();
+#ifdef ENABLE_NANCY_V4
+	void bootScriptedGameEngine();	// Nancy19+
+	void bootScriptedGameData(ScriptBootData *boot, EVNT *flags, INVD *inventory, ENVS *environments, PCUI *players, VIEW *viewport, CVTX *autotext, CVTX *convo);
+#endif
+#ifdef ENABLE_NANCY_V5
+	void bootNancy26Data(ScriptBootData *boot, EVNT *flags, INVD *inventory, ENVS *environments, VIEW *viewport, CVTX *autotext);	// Nancy26+
+#endif
 
 	State::State *getStateObject(NancyState::NancyState state) const;
 	void destroyState(NancyState::NancyState state) const;
@@ -198,9 +260,9 @@ private:
 	const byte _datFileMinorVersion;
 
 	GameFlow _gameFlow;
-	OSystem *_system;
 
-	const NancyGameDescription *_gameDescription;
+	const ADGameDescription *_gameDescription;
+	const GameType _gameType;
 
 	Common::Array<Common::WeakPtr<DeferredLoader>> _deferredLoaderObjects;
 };

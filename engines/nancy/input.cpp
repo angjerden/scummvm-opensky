@@ -19,6 +19,7 @@
  *
  */
 
+#include "common/algorithm.h"
 #include "common/translation.h"
 #include "common/system.h"
 
@@ -29,6 +30,7 @@
 
 #include "engines/nancy/nancy.h"
 #include "engines/nancy/input.h"
+#include "engines/nancy/graphics.h"
 
 namespace Nancy {
 
@@ -44,9 +46,30 @@ void InputManager::processEvents() {
 	while (g_nancy->getEventManager()->pollEvent(event)) {
 		switch (event.type) {
 		case EVENT_KEYDOWN:
+			if (!isKeyHeld(event.kbd.keycode)) {
+				_heldKeys.push_back(event.kbd.keycode);
+			}
+
+			// A held esc key repeats; once its press was taken away, so are the repeats
+			if (event.kbd.keycode == KEYCODE_ESCAPE) {
+				_isEscEaten &= event.kbdRepeat;
+				if (_isEscEaten) {
+					break;
+				}
+			}
+
 			// Push all keyboard events into an array and let getInput() callers handle them
 			_otherKbdInput.push_back(event.kbd);
 			_inputBeginState = g_nancy->getState();
+			break;
+		case EVENT_KEYUP:
+			for (uint i = 0; i < _heldKeys.size(); ++i) {
+				if (_heldKeys[i] == event.kbd.keycode) {
+					_heldKeys.remove_at(i);
+					break;
+				}
+			}
+
 			break;
 		case EVENT_WHEELUP:
 			_inputs |= NancyInput::kMouseWheelUp;
@@ -140,6 +163,10 @@ void InputManager::processEvents() {
 	}
 }
 
+bool InputManager::isKeyHeld(Common::KeyCode key) const {
+	return Common::find(_heldKeys.begin(), _heldKeys.end(), key) != _heldKeys.end();
+}
+
 NancyInput InputManager::getInput() const {
 	NancyInput ret;
 
@@ -154,12 +181,35 @@ NancyInput InputManager::getInput() const {
 	}
 
 	if (_mouseEnabled || g_nancy->getState() == NancyState::kCredits) {
-		ret.mousePos = g_nancy->getEventManager()->getMousePos();
+		ret.screenMousePos = g_nancy->getEventManager()->getMousePos();
+		ret.mousePos = g_nancy->_graphics->screenToGame(ret.screenMousePos);
 	} else {
 		ret.eatMouseInput();
 	}
 
 	return ret;
+}
+
+// The default keymap of the engines turns esc into a key, next to the menu key
+static void removeEscKeys(Common::Array<Common::KeyState> &keys) {
+	for (uint i = 0; i < keys.size();) {
+		if (keys[i].keycode == Common::KEYCODE_ESCAPE) {
+			keys.remove_at(i);
+		} else {
+			++i;
+		}
+	}
+}
+
+void NancyInput::eatMainMenuKey() {
+	input &= ~kOpenMainMenu;
+	removeEscKeys(otherKbdInput);
+}
+
+void InputManager::eatMainMenuKey() {
+	_inputs &= ~NancyInput::kOpenMainMenu;
+	removeEscKeys(_otherKbdInput);
+	_isEscEaten = true;
 }
 
 void InputManager::forceCleanInput() {

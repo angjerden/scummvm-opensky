@@ -59,6 +59,7 @@ public:
 	void stopVideo();
 	void rewindVideo();
 	bool endOfVideo();
+	void reloadVideo();
 
 	uint getTimeScale();
 	uint getMovieCurrentTime();
@@ -72,6 +73,8 @@ public:
 	void setMovieTime(int units);
 	void setMovieRate(double rate);
 	void setFrameRate(int rate);
+	bool getTrackEnabled(int track);
+	void setTrackEnabled(int track, bool value);
 
 	bool hasField(int field) override;
 	Datum getField(int field) override;
@@ -103,6 +106,7 @@ public:
 	bool _avimovie, _qtmovie;
 	bool _dirty;
 	bool _emptyFile;
+	bool _useLinkedPath;
 	FrameRateType _frameRateType;
 	DigitalVideoType _videoType;
 

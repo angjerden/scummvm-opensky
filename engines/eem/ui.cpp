@@ -1088,6 +1088,19 @@ void clampProfileScroll(int &selected, int &start, int count) {
 	start = CLIP<int>(start, 0, maxStart);
 }
 
+struct ChooserTextColors {
+	byte selected;
+	byte normal;
+	byte disabled;
+};
+
+ChooserTextColors getChooserTextColors(const EEMEngine *vm) {
+	// Mac EEM1 CD CODE 6:016e uses these SITEPALS indices in DrawList.
+	if (vm->isMacintosh())
+		return { 0x13, 0x5c, 0x1b };
+	return { 0x0f, 0x07, 0x08 };
+}
+
 void drawProfilePickerFrame(const ProfilePickerView &v) {
 	Graphics::ManagedSurface scratch(v.vm->screenWidth(), v.vm->screenHeight(),
 		Graphics::PixelFormat::createFormatCLUT8());
@@ -1099,12 +1112,14 @@ void drawProfilePickerFrame(const ProfilePickerView &v) {
 					   v.vm->scaleX(kProfilePickerRevealX),
 					   v.vm->scaleY(kProfilePickerRevealY));
 
+	const ChooserTextColors colors = getChooserTextColors(v.vm);
 	const int count = v.entries ? (int)v.entries->size() : 0;
 	for (int row = 0; row < kProfileVisibleRows; row++) {
 		const int idx = v.start + row;
 		if (idx >= count)
 			break;
-		const byte color = idx == v.selected ? 0xF : 0x8;
+		const byte color = idx == v.selected ? colors.selected :
+			v.vm->isMacintosh() ? colors.normal : colors.disabled;
 		v.vm->getFont().drawString(&scratch, (*v.entries)[idx].label,
 									v.vm->scaleX(kProfileListX),
 									v.vm->scaleY(kProfileListY + row * kProfileLineH),
@@ -1351,20 +1366,19 @@ void drawCaseSubmenu(const CaseSubmenuView &v) {
 	const int kLineH  = 10;
 	const int kVisible = 12;
 	const uint count = (uint)v.names->size();
+	const ChooserTextColors colors = getChooserTextColors(v.vm);
 
 	for (int r = 0; r < kVisible; r++) {
 		const uint idx = v.topRow + (uint)r;
 		if (idx >= count)
 			break;
 		const Common::String &name = (*v.names)[idx];
-		byte color = 0xF;  // default
+		byte color = colors.normal;
 		if (idx == v.selRow) {
-			color = 0xF;   // highlighted
+			color = colors.selected;
 		} else if (v.solvedFlags && idx < v.solvedFlags->size() &&
 				   (*v.solvedFlags)[idx]) {
-			color = 0x8;   // greyed (already solved)
-		} else {
-			color = 0x7;   // normal
+			color = colors.disabled;
 		}
 		v.vm->getFont().drawString(&scratch, name,
 			v.vm->scaleX(kListX), v.vm->scaleY(kListY0 + r * kLineH),
@@ -1376,7 +1390,7 @@ void drawCaseSubmenu(const CaseSubmenuView &v) {
 		const int r = (int)(v.selRow - v.topRow);
 		v.vm->getFont().drawString(&scratch, ">",
 			v.vm->scaleX(kListX - 6), v.vm->scaleY(kListY0 + r * kLineH),
-			v.vm->scaleX(6), 0xF);
+			v.vm->scaleX(6), colors.selected);
 	}
 
 	// Scrollbar thumb at (240, 45..146), proportional to scroll position.
@@ -1413,6 +1427,7 @@ void drawActionMenuFrame(const ActionMenuView &v) {
 		const int kListW  = 238 - kListX;
 		const int kListY0 = 35;
 		const int kLineH  = 10;
+		const ChooserTextColors colors = getChooserTextColors(v.vm);
 
 		// Separator/item pairs (0=sep, 1=Choose A Mystery, ..., trailing sep):
 		// 11 rows for EEM1's five picks, 9 for London's four (no ScrapBook 3).
@@ -1422,13 +1437,14 @@ void drawActionMenuFrame(const ActionMenuView &v) {
 			if ((r & 1) == 0) {
 				v.vm->getFont().drawString(&scratch, v.separator,
 										   v.vm->scaleX(kListX), v.vm->scaleY(y),
-										   v.vm->scaleX(kListW), 0x7);
+										   v.vm->scaleX(kListW),
+										   v.vm->isMacintosh() ? colors.disabled : colors.normal);
 				continue;
 			}
 			const uint mp = (uint)(r >> 1);
 			const bool isSel  = (mp == v.pick);
-			const byte color  = isSel             ? 0xF :
-								v.pickEnabled[mp] ? 0x7 : 0x8;
+			const byte color  = isSel ? colors.selected :
+				v.pickEnabled[mp] ? colors.normal : colors.disabled;
 			v.vm->getFont().drawString(&scratch, v.pickLabel[mp],
 									   v.vm->scaleX(kListX), v.vm->scaleY(y),
 									   v.vm->scaleX(kListW), color);
@@ -2903,8 +2919,13 @@ void EEMEngine::doCaseSelection() {
 					break;
 				}
 				if (kChooserExitRect.contains(mouse.x, mouse.y)) {
-					_mystery.clear();
-					return;
+					if (areYouSure()) {
+						_mystery.clear();
+						_nextScreen = kScreenInvalid;
+						return;
+					}
+					dirty = true;
+					continue;
 				}
 				if (kChooserHelpRect.contains(mouse.x, mouse.y)) {
 					saveProfile(_playerName);
@@ -3262,32 +3283,34 @@ Common::String EEMEngine::notebookNoteText(uint clueId, const byte *ni,
 										   uint32 mysSz) const {
 	if (!ni || clueId >= niCount)
 		return Common::String();
-	if (floppyNb && bufBase) {
-		const uint16 textOff = READ_LE_UINT16(ni + clueId * 7);
+	Common::String text;
+	if ((floppyNb || _mystery.usesCompactMacData()) && bufBase) {
+		const uint stride = floppyNb ? 7 : 8;
+		const uint16 textOff = READ_LE_UINT16(ni + clueId * stride);
 		if (textOff == 0 || textOff >= mysSz)
 			return Common::String();
 		const char *p = (const char *)(bufBase + textOff);
 		uint32 len = 0;
 		while (textOff + len < mysSz && p[len] != 0)
 			len++;
-		return parseString(Common::String(p, len),
-						   _playerName, _partner);
+		text = Common::String(p, len);
+	} else {
+		const uint stride = isLondon() ? 2 : 4;
+		const uint16 textOff = READ_LE_UINT16(ni + clueId * stride);
+		text = _mystery.textAt(textOff);
 	}
-	if (_mystery.usesCompactMacData() && bufBase) {
-		const uint16 textOff = READ_LE_UINT16(ni + clueId * 8);
-		if (textOff == 0 || textOff >= mysSz)
-			return Common::String();
-		const char *p = (const char *)(bufBase + textOff);
-		uint32 len = 0;
-		while (textOff + len < mysSz && p[len] != 0)
-			len++;
-		return parseString(Common::String(p, len),
-						   _playerName, _partner);
+
+	// WORKAROUND: Case 49's English and Spanish notebook entries misdescribe
+	// Starr's partner; his dialogue and the solution identify the space alien.
+	if (!isLondon() && _mystery.number() == 49) {
+		Common::replace(text,
+			"Mr. Starr was dancing with someone dressed in a big curly wig.",
+			"Mr. Starr was dancing with someone dressed in a big green alien costume.");
+		Common::replace(text,
+			"Sr. Starr bailaba con alguien vestido de alien con peluca.",
+			"Sr. Starr bailaba con alguien vestido de alien verde.");
 	}
-	const uint stride = isLondon() ? 2 : 4;
-	const uint16 textOff = READ_LE_UINT16(ni + clueId * stride);
-	return parseString(_mystery.textAt(textOff),
-					   _playerName, _partner);
+	return parseString(text, _playerName, _partner);
 }
 
 void EEMEngine::drawNotebookFrame(int &page, TravisScrollBar *scrollBar) {
@@ -4014,27 +4037,8 @@ uint16 EEMEngine::getKDTextBalloon(byte firstChar) const {
 
 Common::String EEMEngine::accuseNoteText(uint clueId,
 										 const AccuseNotesCtx &ctx) const {
-	if (ctx.floppyNote) {
-		const uint16 textOff = READ_LE_UINT16(ctx.ni + clueId * 7);
-		if (textOff == 0 || textOff >= _mystery.dataSize() ||
-			!ctx.bufBaseNotes)
-			return Common::String();
-		return parseString(
-			(const char *)(ctx.bufBaseNotes + textOff),
-			_playerName, _partner);
-	}
-	if (_mystery.usesCompactMacData() && ctx.bufBaseNotes) {
-		const uint16 textOff = READ_LE_UINT16(ctx.ni + clueId * 8);
-		if (textOff == 0 || textOff >= _mystery.dataSize())
-			return Common::String();
-		return parseString(
-			(const char *)(ctx.bufBaseNotes + textOff),
-			_playerName, _partner);
-	}
-	const uint stride = isLondon() ? 2 : 4;
-	const uint16 textOff = READ_LE_UINT16(ctx.ni + clueId * stride);
-	return parseString(_mystery.textAt(textOff),
-					   _playerName, _partner);
+	return notebookNoteText(clueId, ctx.ni, ctx.niCount, ctx.floppyNote,
+		ctx.bufBaseNotes, _mystery.dataSize());
 }
 
 void EEMEngine::accuseRebuildPagination(const AccuseNotesCtx &ctx) {
@@ -4441,8 +4445,8 @@ void EEMEngine::drawKDBalloonOverCurrentScreen(Common::String text) {
 
 	Picture balloon;
 	const bool haveBalloon =
-		_balloonArchive.size() > (bubNum & 0x7F) &&
-		_balloonArchive.loadEntry(bubNum & 0x7F, balloon);
+		_balloonArchive.size() > (bubNum & 0x7Fu) &&
+		_balloonArchive.loadEntry(bubNum & 0x7Fu, balloon);
 
 	const int balloonX = isMacTalkie() ? 100 : scaleX(0x21);
 	const int topBandH = isMacTalkie() ? 155 : scaleY(0x50);
@@ -4835,8 +4839,8 @@ void EEMEngine::doAccuse() {
 			_picsArchive.getPicture(picId, suspect);
 		Picture balloon;
 		const bool haveBalloon =
-			_balloonArchive.size() > (bubNum & 0x7F) &&
-			_balloonArchive.loadEntry(bubNum & 0x7F, balloon);
+			_balloonArchive.size() > (bubNum & 0x7Fu) &&
+			_balloonArchive.loadEntry(bubNum & 0x7Fu, balloon);
 
 		int balloonX = macTalkie ? 100 : 0x21;
 		int balloonY = 1;
@@ -4962,8 +4966,8 @@ void EEMEngine::doAccuse() {
 				rBub = fitBalloonToText(rBub, react);
 				Picture rBalloon;
 				const bool haveR =
-					_balloonArchive.size() > (rBub & 0x7F) &&
-					_balloonArchive.loadEntry(rBub & 0x7F, rBalloon);
+					_balloonArchive.size() > (rBub & 0x7Fu) &&
+					_balloonArchive.loadEntry(rBub & 0x7Fu, rBalloon);
 				const int rX = macTalkie ? 100 : 0x21;
 				int rY = 1;
 				if (haveR && rBalloon.surface.h < (macTalkie ? 155 : 0x4e))
